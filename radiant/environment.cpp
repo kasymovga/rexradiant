@@ -146,6 +146,11 @@ void gamedetect(){
 				return;
 			}
 
+			// try to detect Rexuiz installs
+			if ( gamedetect_check_game( "rexuiz.game", "data/rexuiz.pk3", NULL, buf, p - buf ) ) {
+				return;
+			}
+
 			// we found nothing
 			// go backwards
 			--p;

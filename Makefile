@@ -85,7 +85,7 @@ LIBS_ZLIB          ?= -lz
 CPPFLAGS_JPEG      ?=
 LIBS_JPEG          ?= -ljpeg
 DEPEND_ON_MAKEFILE ?= yes
-DOWNLOAD_GAMEPACKS ?= yes
+DOWNLOAD_GAMEPACKS ?= no
 INSTALL_DLLS       ?= yes
 # set to no to disable gamepack, set to all to even download undistributable gamepacks
 
