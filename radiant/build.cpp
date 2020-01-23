@@ -176,7 +176,7 @@ virtual XMLElementParser& pushElement( const XMLElement& element ) = 0;
 virtual void popElement( const char* name ) = 0;
 };
 
-class VariableStringXMLConstructor : public XMLElementParser
+class VariableStringXMLConstructor final : public XMLElementParser
 {
 StringBuffer m_buffer;
 VariableString& m_variableString;
@@ -198,7 +198,7 @@ void popElement( const char* name ){
 }
 };
 
-class ConditionalXMLConstructor : public XMLElementParser
+class ConditionalXMLConstructor final : public XMLElementParser
 {
 StringBuffer m_buffer;
 Conditional& m_conditional;
@@ -220,7 +220,7 @@ void popElement( const char* name ){
 }
 };
 
-class ToolXMLConstructor : public XMLElementParser
+class ToolXMLConstructor final : public XMLElementParser
 {
 StringBuffer m_buffer;
 Tool& m_tool;
@@ -266,7 +266,7 @@ void flush(){
 typedef VariableString BuildCommand;
 typedef std::list<BuildCommand> Build;
 
-class BuildXMLConstructor : public XMLElementParser
+class BuildXMLConstructor final : public XMLElementParser
 {
 VariableStringXMLConstructor* m_variableString;
 Build& m_build;
@@ -649,9 +649,17 @@ void build_commands_write( const char* filename ){
 #include "gtkutil/dialog.h"
 #include "gtkutil/closure.h"
 #include "gtkutil/window.h"
+#include "gtkutil/accelerator.h"
 #include "gtkdlgs.h"
 
 void Build_refreshMenu( GtkMenu* menu );
+
+#define LAST_ITER_STRING "..."
+inline void last_iter_append( GtkListStore* store ){
+	GtkTreeIter lastIter;
+	gtk_list_store_append( store, &lastIter );
+	gtk_list_store_set( store, &lastIter, 0, LAST_ITER_STRING, -1 );
+}
 
 
 void BSPCommandList_Construct( GtkListStore* store, Project& project ){
@@ -666,8 +674,14 @@ void BSPCommandList_Construct( GtkListStore* store, Project& project ){
 		gtk_list_store_set( store, &buildIter, 0, const_cast<char*>( buildName ), -1 );
 	}
 
-	GtkTreeIter lastIter;
-	gtk_list_store_append( store, &lastIter );
+	last_iter_append( store );
+}
+
+static void project_cell_editing_started( GtkCellRenderer* cell, GtkCellEditable* editable, const gchar* path, gpointer data ) {
+	ASSERT_MESSAGE( GTK_IS_ENTRY( editable ) == TRUE, "editable is not GtkEntry" );
+	GtkEntry* entry = GTK_ENTRY( editable );
+	if( string_equal( LAST_ITER_STRING, gtk_entry_get_text( entry ) ) )
+		gtk_entry_set_text( entry, "" );
 }
 
 class ProjectList
@@ -704,13 +718,12 @@ gboolean project_cell_edited( GtkCellRendererText* cell, gchar* path_string, gch
 			gtk_list_store_set( projectList->m_store, &iter, 0, new_text, -1 );
 		}
 	}
-	else if ( !string_empty( new_text ) ) {
+	else if ( !string_empty( new_text ) && !string_equal( new_text, LAST_ITER_STRING ) ) {
 		projectList->m_changed = true;
 		project.push_back( Project::value_type( new_text, Build() ) );
 
 		gtk_list_store_set( projectList->m_store, &iter, 0, new_text, -1 );
-		GtkTreeIter lastIter;
-		gtk_list_store_append( projectList->m_store, &lastIter );
+		last_iter_append( projectList->m_store );
 		//make command field activatable
 		g_signal_emit_by_name( G_OBJECT( gtk_tree_view_get_selection( GTK_TREE_VIEW( projectList->m_buildView ) ) ), "changed" );
 	}
@@ -722,10 +735,26 @@ gboolean project_cell_edited( GtkCellRendererText* cell, gchar* path_string, gch
 	return FALSE;
 }
 
+
+BuildPair g_buildpair_copied;
+BuildCommand g_buildcommand_copied;
+
+inline bool event_is_del( const GdkEventKey* event ){
+	return accelerator_for_event_key( event ) == Accelerator( GDK_Delete );
+}
+inline bool event_is_copy( const GdkEventKey* event ){
+	return ( accelerator_for_event_key( event ) == Accelerator( 'C', GDK_CONTROL_MASK ) )
+		|| ( accelerator_for_event_key( event ) == Accelerator( GDK_Insert, GDK_CONTROL_MASK ) );
+}
+inline bool event_is_paste( const GdkEventKey* event ){
+	return ( accelerator_for_event_key( event ) == Accelerator( 'V', GDK_CONTROL_MASK ) )
+		|| ( accelerator_for_event_key( event ) == Accelerator( GDK_Insert, GDK_SHIFT_MASK ) );
+}
+
 gboolean project_key_press( GtkWidget* widget, GdkEventKey* event, ProjectList* projectList ){
 	Project& project = projectList->m_project;
 
-	if ( event->keyval == GDK_Delete ) {
+	if ( event_is_del( event ) || event_is_copy( event ) || event_is_paste( event ) ) {
 		GtkTreeSelection* selection = gtk_tree_view_get_selection( GTK_TREE_VIEW( widget ) );
 		GtkTreeIter iter;
 		GtkTreeModel* model;
@@ -734,12 +763,24 @@ gboolean project_key_press( GtkWidget* widget, GdkEventKey* event, ProjectList* 
 			Project::iterator x = Project_find( project, gtk_tree_path_get_indices( path )[0] );
 			gtk_tree_path_free( path );
 
-			if ( x != project.end() ) {
+			if ( event_is_del( event ) && x != project.end() ) {
 				projectList->m_changed = true;
 				project.erase( x );
 				Build_refreshMenu( g_bsp_menu );
 
 				gtk_list_store_remove( projectList->m_store, &iter );
+			}
+			else if ( event_is_copy( event ) && x != project.end() ) {
+				g_buildpair_copied = ( *x );
+			}
+			else if ( event_is_paste( event ) && string_not_empty( g_buildpair_copied.first.c_str() ) ) {
+				projectList->m_changed = true;
+				project.insert( x, g_buildpair_copied );
+				Build_refreshMenu( g_bsp_menu );
+
+				GtkTreeIter newIter;
+				gtk_list_store_insert_before( projectList->m_store, &newIter, &iter );
+				gtk_list_store_set( projectList->m_store, &newIter, 0, g_buildpair_copied.first.c_str(), -1 );
 			}
 		}
 	}
@@ -771,8 +812,7 @@ gboolean project_selection_changed( GtkTreeSelection* selection, GtkListStore* s
 				gtk_list_store_append( store, &commandIter );
 				gtk_list_store_set( store, &commandIter, 0, const_cast<char*>( ( *i ).c_str() ), -1 );
 			}
-			GtkTreeIter lastIter;
-			gtk_list_store_append( store, &lastIter );
+			last_iter_append( store );
 		}
 		else
 		{
@@ -807,14 +847,13 @@ gboolean commands_cell_edited( GtkCellRendererText* cell, gchar* path_string, gc
 
 		gtk_list_store_set( store, &iter, 0, new_text, -1 );
 	}
-	else if ( !string_empty( new_text ) ) {
+	else if ( !string_empty( new_text ) && !string_equal( new_text, LAST_ITER_STRING ) ) {
 		g_build_changed = true;
 		build.push_back( Build::value_type( VariableString( new_text ) ) );
 
 		gtk_list_store_set( store, &iter, 0, new_text, -1 );
 
-		GtkTreeIter lastIter;
-		gtk_list_store_append( store, &lastIter );
+		last_iter_append( store );
 	}
 
 	gtk_tree_path_free( path );
@@ -830,7 +869,7 @@ gboolean commands_key_press( GtkWidget* widget, GdkEventKey* event, GtkListStore
 	}
 	Build& build = *g_current_build;
 
-	if ( event->keyval == GDK_Delete ) {
+	if ( event_is_del( event ) || event_is_copy( event ) || event_is_paste( event ) ) {
 		GtkTreeSelection* selection = gtk_tree_view_get_selection( GTK_TREE_VIEW( widget ) );
 		GtkTreeIter iter;
 		GtkTreeModel* model;
@@ -839,11 +878,22 @@ gboolean commands_key_press( GtkWidget* widget, GdkEventKey* event, GtkListStore
 			Build::iterator i = Build_find( build, gtk_tree_path_get_indices( path )[0] );
 			gtk_tree_path_free( path );
 
-			if ( i != build.end() ) {
+			if ( event_is_del( event ) && i != build.end() ) {
 				g_build_changed = true;
 				build.erase( i );
 
 				gtk_list_store_remove( store, &iter );
+			}
+			else if ( event_is_copy( event ) && i != build.end() ) {
+				g_buildcommand_copied = ( *i );
+			}
+			else if ( event_is_paste( event ) ) {
+				g_build_changed = true;
+				build.insert( i, g_buildcommand_copied );
+
+				GtkTreeIter newIter;
+				gtk_list_store_insert_before( store, &newIter, &iter );
+				gtk_list_store_set( store, &newIter, 0, g_buildcommand_copied.c_str(), -1 );
 			}
 		}
 	}
@@ -897,6 +947,7 @@ GtkWindow* BuildMenuDialog_construct( ModalDialog& modal, ProjectList& projectLi
 					GtkCellRenderer* renderer = gtk_cell_renderer_text_new();
 					object_set_boolean_property( G_OBJECT( renderer ), "editable", TRUE );
 					g_signal_connect( renderer, "edited", G_CALLBACK( project_cell_edited ), &projectList );
+					g_signal_connect( renderer, "editing-started", G_CALLBACK( project_cell_editing_started ), 0 );
 
 					GtkTreeViewColumn* column = gtk_tree_view_column_new_with_attributes( "", renderer, "text", 0, NULL );
 					gtk_tree_view_append_column( GTK_TREE_VIEW( view ), column );
@@ -938,6 +989,7 @@ GtkWindow* BuildMenuDialog_construct( ModalDialog& modal, ProjectList& projectLi
 					//g_object_set( G_OBJECT( renderer ), "ellipsize", PANGO_ELLIPSIZE_MIDDLE, NULL );
 					object_set_int_property( G_OBJECT( renderer ), "wrap-width", 640 );
 					g_signal_connect( renderer, "edited", G_CALLBACK( commands_cell_edited ), store );
+					g_signal_connect( renderer, "editing-started", G_CALLBACK( project_cell_editing_started ), 0 );
 
 					GtkTreeViewColumn* column = gtk_tree_view_column_new_with_attributes( "", renderer, "text", 0, NULL );
 					gtk_tree_view_append_column( GTK_TREE_VIEW( view ), column );
@@ -996,12 +1048,6 @@ GtkWindow* BuildMenuDialog_construct( ModalDialog& modal, ProjectList& projectLi
 	return window;
 }
 
-namespace
-{
-CopiedString g_buildMenu;
-CopiedString g_lastExecutedBuild;
-}
-
 void LoadBuildMenu();
 
 void DoBuildMenu(){
@@ -1038,8 +1084,9 @@ void DoBuildMenu(){
 #include "gtkutil/menu.h"
 #include "mainframe.h"
 #include "preferences.h"
-
 typedef struct _GtkMenuItem GtkMenuItem;
+
+CopiedString g_lastExecutedBuild;
 
 class BuildMenuItem
 {
@@ -1089,8 +1136,30 @@ void Build_refreshMenu( GtkMenu* menu ){
 }
 
 
+namespace
+{
+#include "os/path.h"
+
+CopiedString g_buildMenu;
+
+const char* g_buildMenuFullPah(){
+	if( path_is_absolute( g_buildMenu.c_str() ) )
+		return g_buildMenu.c_str();
+
+	static StringOutputStream buffer( 256 );
+	buffer.clear();
+	buffer << SettingsPath_get() << g_pGameDescription->mGameFile.c_str() << "/" << g_buildMenu.c_str();
+	return buffer.c_str();
+}
+}
+
 void LoadBuildMenu(){
-	if ( string_empty( g_buildMenu.c_str() ) || !build_commands_parse( g_buildMenu.c_str() ) ) {
+	if ( g_buildMenu.empty() || !build_commands_parse( g_buildMenuFullPah() ) ) {
+		if( !string_equal_nocase( g_buildMenu.c_str(), "build_menu.xml" ) ){
+			g_buildMenu = "build_menu.xml";
+			if( build_commands_parse( g_buildMenuFullPah() ) )
+				return;
+		}
 		{
 			StringOutputStream buffer( 256 );
 			buffer << GameToolsPath_get() << "default_build_menu.xml";
@@ -1098,19 +1167,13 @@ void LoadBuildMenu(){
 			bool success = build_commands_parse( buffer.c_str() );
 			ASSERT_MESSAGE( success, "failed to parse default build commands: " << buffer.c_str() );
 		}
-		{
-			StringOutputStream buffer( 256 );
-			buffer << SettingsPath_get() << g_pGameDescription->mGameFile.c_str() << "/build_menu.xml";
-
-			g_buildMenu = buffer.c_str();
-		}
 	}
 }
 
 void SaveBuildMenu(){
 	if ( g_build_changed ) {
 		g_build_changed = false;
-		build_commands_write( g_buildMenu.c_str() );
+		build_commands_write( g_buildMenuFullPah() );
 	}
 }
 

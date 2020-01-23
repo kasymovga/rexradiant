@@ -136,9 +136,9 @@ struct layout_globals_t
 		m_position( -1, -1, 962, 480 ),
 
 		nXYHeight( 377 ),
-		nXYWidth( 600 ),
-		nCamWidth( 300 ),
-		nCamHeight( 230 ),
+		nXYWidth( 480 ),
+		nCamWidth( 480 ),
+		nCamHeight( 250 ),
 		nState( 0 ){
 	}
 };
@@ -665,6 +665,31 @@ void Exit(){
 	}
 }
 
+#include "environment.h"
+
+#ifdef WIN32
+#include <process.h>
+#else
+#include <spawn.h>
+#endif
+void Radiant_Restart(){
+	ConfirmModified( "Restart Radiant" ); // user can choose to not save, it's ok
+
+	char *argv[] = { string_clone( environment_get_app_filepath() ),
+						Map_Unnamed( g_map )? NULL : string_clone( Map_Name( g_map ) ),
+						NULL };
+#ifdef WIN32
+	const int status = !_spawnv( P_NOWAIT, argv[0], argv );
+#else
+	const int status = posix_spawn( NULL, argv[0], NULL, NULL, argv, environ );
+#endif
+
+	// quit if radiant successfully started
+	if ( status == 0 ) {
+		gtk_main_quit();
+	}
+}
+
 
 void Undo(){
 	GlobalUndoSystem().undo();
@@ -728,14 +753,7 @@ void Paste(){
 
 void TranslateToCamera(){
 	CamWnd& camwnd = *g_pParentWnd->GetCamWnd();
-	// Work out the delta
-	Vector3 mid;
-	Select_GetMid( mid );
-	//Vector3 delta = vector3_subtracted( vector3_snapped( Camera_getOrigin( camwnd ), GetSnapGridSize() ), mid );
-	Vector3 delta = vector3_snapped( vector3_subtracted( Camera_getOrigin( camwnd ), mid ), GetSnapGridSize() );
-
-	// Move to camera
-	GlobalSelectionSystem().translateSelected( delta );
+	GlobalSelectionSystem().translateSelected( vector3_snapped( Camera_getOrigin( camwnd ) - GlobalSelectionSystem().getBoundsSelected().origin, GetSnapGridSize() ) );
 }
 
 void PasteToCamera(){
@@ -1383,6 +1401,14 @@ void Selection_Deselect(){
 	}
 }
 
+void Scene_Clone_Selected(){
+	Scene_Clone_Selected( GlobalSceneGraph(), false );
+}
+
+void RepeatTransforms(){
+	GlobalSelectionSystem().repeatTransforms( FreeCaller<Scene_Clone_Selected>() );
+}
+
 
 void Selection_NudgeUp(){
 	UndoableCommand undo( "nudgeSelectedUp" );
@@ -1429,6 +1455,14 @@ void ClipperToolExport( const BoolImportCallback& importCallback ){
 	importCallback( GlobalSelectionSystem().ManipulatorMode() == SelectionSystem::eClip );
 }
 
+void BuildToolExport( const BoolImportCallback& importCallback ){
+	importCallback( GlobalSelectionSystem().ManipulatorMode() == SelectionSystem::eBuild );
+}
+
+void UVToolExport( const BoolImportCallback& importCallback ){
+	importCallback( GlobalSelectionSystem().ManipulatorMode() == SelectionSystem::eUV );
+}
+
 FreeCaller1<const BoolImportCallback&, TranslateToolExport> g_translatemode_button_caller;
 BoolExportCallback g_translatemode_button_callback( g_translatemode_button_caller );
 ToggleItem g_translatemode_button( g_translatemode_button_callback );
@@ -1453,6 +1487,14 @@ FreeCaller1<const BoolImportCallback&, ClipperToolExport> g_clipper_button_calle
 BoolExportCallback g_clipper_button_callback( g_clipper_button_caller );
 ToggleItem g_clipper_button( g_clipper_button_callback );
 
+FreeCaller1<const BoolImportCallback&, BuildToolExport> g_build_button_caller;
+BoolExportCallback g_build_button_callback( g_build_button_caller );
+ToggleItem g_build_button( g_build_button_callback );
+
+FreeCaller1<const BoolImportCallback&, UVToolExport> g_uv_button_caller;
+BoolExportCallback g_uv_button_callback( g_uv_button_caller );
+ToggleItem g_uv_button( g_uv_button_callback );
+
 void ToolChanged(){
 	g_translatemode_button.update();
 	g_rotatemode_button.update();
@@ -1460,6 +1502,8 @@ void ToolChanged(){
 	g_skewmode_button.update();
 	g_dragmode_button.update();
 	g_clipper_button.update();
+	g_build_button.update();
+	g_uv_button.update();
 }
 
 const char* const c_ResizeMode_status = "QE4 Drag Tool: move and resize objects";
@@ -1556,7 +1600,6 @@ void SkewMode(){
 
 const char* const c_ClipperMode_status = "Clipper Tool: apply clip planes to brushes";
 
-
 void ClipperMode(){
 	if ( g_currentToolMode == ClipperMode && g_defaultToolMode != ClipperMode ) {
 		g_defaultToolMode();
@@ -1567,9 +1610,54 @@ void ClipperMode(){
 		g_currentToolModeSupportsComponentEditing = false;
 
 		SelectionSystem_DefaultMode();
+		ComponentModeChanged();
 
 		Sys_Status( c_ClipperMode_status );
 		GlobalSelectionSystem().SetManipulatorMode( SelectionSystem::eClip );
+		ToolChanged();
+		ModeChangeNotify();
+	}
+}
+
+
+const char* const c_BuildMode_status = "Build Tool: extrude, build chains, clone";
+
+void BuildMode(){
+	if ( g_currentToolMode == BuildMode && g_defaultToolMode != BuildMode ) {
+		g_defaultToolMode();
+	}
+	else
+	{
+		g_currentToolMode = BuildMode;
+		g_currentToolModeSupportsComponentEditing = false;
+
+		SelectionSystem_DefaultMode();
+		ComponentModeChanged();
+
+		Sys_Status( c_BuildMode_status );
+		GlobalSelectionSystem().SetManipulatorMode( SelectionSystem::eBuild );
+		ToolChanged();
+		ModeChangeNotify();
+	}
+}
+
+
+const char* const c_UVMode_status = "UV Tool: edit texture alignment";
+
+void UVMode(){
+	if ( g_currentToolMode == UVMode && g_defaultToolMode != UVMode ) {
+		g_defaultToolMode();
+	}
+	else
+	{
+		g_currentToolMode = UVMode;
+		g_currentToolModeSupportsComponentEditing = false;
+
+		SelectionSystem_DefaultMode();
+		ComponentModeChanged();
+
+		Sys_Status( c_UVMode_status );
+		GlobalSelectionSystem().SetManipulatorMode( SelectionSystem::eUV );
 		ToolChanged();
 		ModeChangeNotify();
 	}
@@ -1700,7 +1788,7 @@ void Selection_SnapToGrid(){
 	command << "snapSelected -grid " << GetGridSize();
 	UndoableCommand undo( command.c_str() );
 
-	if ( GlobalSelectionSystem().Mode() == SelectionSystem::eComponent ) {
+	if ( GlobalSelectionSystem().Mode() == SelectionSystem::eComponent && GlobalSelectionSystem().countSelectedComponents() ) {
 		Scene_SnapToGrid_Component_Selected( GlobalSceneGraph(), GetGridSize() );
 	}
 	else
@@ -1875,33 +1963,11 @@ void GlobalCamera_UpdateWindow(){
 	}
 }
 
-void XY_UpdateWindow( MainFrame& mainframe ){
-	if ( mainframe.GetXYWnd() != 0 ) {
-		XYWnd_Update( *mainframe.GetXYWnd() );
-	}
-}
-
-void XZ_UpdateWindow( MainFrame& mainframe ){
-	if ( mainframe.GetXZWnd() != 0 ) {
-		XYWnd_Update( *mainframe.GetXZWnd() );
-	}
-}
-
-void YZ_UpdateWindow( MainFrame& mainframe ){
-	if ( mainframe.GetYZWnd() != 0 ) {
-		XYWnd_Update( *mainframe.GetYZWnd() );
-	}
-}
-
-void XY_UpdateAllWindows( MainFrame& mainframe ){
-	XY_UpdateWindow( mainframe );
-	XZ_UpdateWindow( mainframe );
-	YZ_UpdateWindow( mainframe );
-}
-
 void XY_UpdateAllWindows(){
 	if ( g_pParentWnd != 0 ) {
-		XY_UpdateAllWindows( *g_pParentWnd );
+		g_pParentWnd->forEachXYWnd( []( XYWnd* xywnd ){
+			XYWnd_Update( *xywnd );
+		} );
 	}
 }
 
@@ -2200,6 +2266,7 @@ GtkMenuItem* create_selection_menu(){
 	menu_separator( menu );
 	create_menu_item_with_mnemonic( menu, "Arbitrary rotation...", "ArbitraryRotation" );
 	create_menu_item_with_mnemonic( menu, "Arbitrary scale...", "ArbitraryScale" );
+	create_menu_item_with_mnemonic( menu, "Repeat Transforms", "RepeatTransforms" );
 
 	return selection_menu_item;
 }
@@ -2346,22 +2413,28 @@ void PatchInspector_registerShortcuts(){
 }
 
 void Patch_registerShortcuts(){
-//	command_connect_accelerator( "InvertCurveTextureX" );
-//	command_connect_accelerator( "InvertCurveTextureY" );
-//	command_connect_accelerator( "PatchInsertInsertColumn" );
-//	command_connect_accelerator( "PatchInsertInsertRow" );
-//	command_connect_accelerator( "PatchDeleteLastColumn" );
-//	command_connect_accelerator( "PatchDeleteLastRow" );
-//	command_connect_accelerator( "NaturalizePatch" );
-	//command_connect_accelerator("CapCurrentCurve");
+	command_connect_accelerator( "InvertCurveTextureX" );
+	command_connect_accelerator( "InvertCurveTextureY" );
+	command_connect_accelerator( "PatchInsertInsertColumn" );
+	command_connect_accelerator( "PatchInsertInsertRow" );
+	command_connect_accelerator( "PatchDeleteLastColumn" );
+	command_connect_accelerator( "PatchDeleteLastRow" );
+	command_connect_accelerator( "NaturalizePatch" );
+	command_connect_accelerator( "CapCurrentCurve" );
 }
 
 void Manipulators_registerShortcuts(){
 	toggle_add_accelerator( "MouseRotate" );
 	toggle_add_accelerator( "MouseTranslate" );
 	toggle_add_accelerator( "MouseScale" );
+	toggle_add_accelerator( "MouseTransform" );
 	toggle_add_accelerator( "MouseDrag" );
 	toggle_add_accelerator( "ToggleClipper" );
+	toggle_add_accelerator( "MouseBuild" );
+	toggle_add_accelerator( "MouseUV" );
+
+	command_connect_accelerator( "MouseRotateOrScale" );
+	command_connect_accelerator( "MouseDragOrTransform" );
 }
 
 void TexdefNudge_registerShortcuts(){
@@ -2378,14 +2451,12 @@ void TexdefNudge_registerShortcuts(){
 }
 
 void SelectNudge_registerShortcuts(){
-	//command_connect_accelerator( "MoveSelectionDOWN" );
-	//command_connect_accelerator( "MoveSelectionUP" );
-	//command_connect_accelerator("SelectNudgeLeft");
-	//command_connect_accelerator("SelectNudgeRight");
-	//command_connect_accelerator("SelectNudgeUp");
-	//command_connect_accelerator("SelectNudgeDown");
-	command_connect_accelerator( "UnSelectSelection2" );
-	command_connect_accelerator( "DeleteSelection2" );
+	command_connect_accelerator( "MoveSelectionDOWN" );
+	command_connect_accelerator( "MoveSelectionUP" );
+	command_connect_accelerator( "SelectNudgeLeft" );
+	command_connect_accelerator( "SelectNudgeRight" );
+	command_connect_accelerator( "SelectNudgeUp" );
+	command_connect_accelerator( "SelectNudgeDown" );
 }
 
 void SnapToGrid_registerShortcuts(){
@@ -2402,6 +2473,9 @@ void SurfaceInspector_registerShortcuts(){
 	command_connect_accelerator( "FitTextureHeight" );
 	command_connect_accelerator( "FitTextureWidthOnly" );
 	command_connect_accelerator( "FitTextureHeightOnly" );
+	command_connect_accelerator( "TextureProjectAxial" );
+	command_connect_accelerator( "TextureProjectOrtho" );
+	command_connect_accelerator( "TextureProjectCam" );
 }
 
 void TexBro_registerShortcuts(){
@@ -2412,21 +2486,22 @@ void TexBro_registerShortcuts(){
 
 void Misc_registerShortcuts(){
 	command_connect_accelerator( "RefreshReferences" ); //refresh models
-	command_connect_accelerator( "MouseRotateOrScale" );
-	command_connect_accelerator( "MouseDragOrTransform" );
+	command_connect_accelerator( "UnSelectSelection2" );
+	command_connect_accelerator( "DeleteSelection2" );
+
 }
 
 
 void register_shortcuts(){
 //	PatchInspector_registerShortcuts();
-	//Patch_registerShortcuts();
+//	Patch_registerShortcuts();
 	Grid_registerShortcuts();
 //	XYWnd_registerShortcuts();
 	CamWnd_registerShortcuts();
 	Manipulators_registerShortcuts();
 	SurfaceInspector_registerShortcuts();
 	TexdefNudge_registerShortcuts();
-	SelectNudge_registerShortcuts();
+//	SelectNudge_registerShortcuts();
 //	SnapToGrid_registerShortcuts();
 //	SelectByType_registerShortcuts();
 	TexBro_registerShortcuts();
@@ -2476,11 +2551,6 @@ void ComponentModes_constructToolbar( GtkToolbar* toolbar ){
 	toolbar_append_toggle_button( toolbar, "Select Faces (F)", "modify_faces.png", "DragFaces" );
 }
 
-void Clipper_constructToolbar( GtkToolbar* toolbar ){
-
-	toolbar_append_toggle_button( toolbar, "Clipper (X)", "select_clipper.png", "ToggleClipper" );
-}
-
 void XYWnd_constructToolbar( GtkToolbar* toolbar ){
 	toolbar_append_button( toolbar, "Change views (CTRL + TAB)", "view_change.png", "NextView" );
 }
@@ -2491,8 +2561,9 @@ void Manipulators_constructToolbar( GtkToolbar* toolbar ){
 	toolbar_append_toggle_button( toolbar, "Scale", "select_mousescale.png", "MouseScale" );
 	toolbar_append_toggle_button( toolbar, "Transform (Q)", "select_mousetransform.png", "MouseTransform" );
 	toolbar_append_toggle_button( toolbar, "Resize (Q)", "select_mouseresize.png", "MouseDrag" );
-
-	Clipper_constructToolbar( toolbar );
+	toolbar_append_toggle_button( toolbar, "Clipper (X)", "select_clipper.png", "ToggleClipper" );
+//	toolbar_append_toggle_button( toolbar, "Build (B)", "select_mouserotate.png", "MouseBuild" );
+	toolbar_append_toggle_button( toolbar, "UV Tool (G)", "select_mouseuv.png", "MouseUV" );
 }
 
 GtkToolbar* create_main_toolbar( MainFrame::EViewStyle style ){
@@ -2906,6 +2977,20 @@ gboolean toolbar_redirect_scroll( GtkWidget* widget, GdkEventScroll* event, gpoi
 }
 
 
+void user_shortcuts_init(){
+	StringOutputStream path( 256 );
+	path << SettingsPath_get() << g_pGameDescription->mGameFile.c_str() << '/';
+	LoadCommandMap( path.c_str() );
+	SaveCommandMap( path.c_str() );
+}
+
+void user_shortcuts_save(){
+	StringOutputStream path( 256 );
+	path << SettingsPath_get() << g_pGameDescription->mGameFile.c_str() << '/';
+	SaveCommandMap( path.c_str() );
+}
+
+
 void MainFrame::Create(){
 	GtkWindow* window = GTK_WINDOW( gtk_window_new( GTK_WINDOW_TOPLEVEL ) );
 
@@ -2934,8 +3019,10 @@ void MainFrame::Create(){
 #endif
 
 	g_MainWindowActive.connect( window );
-
+	/* GlobalCommands_insert plugins commands */
 	GetPlugInMgr().Init( GTK_WIDGET( window ) );
+	/* then load shortcuts cfg */
+	user_shortcuts_init();
 
 	GtkWidget* vbox = gtk_vbox_new( FALSE, 0 );
 	gtk_container_add( GTK_CONTAINER( window ), vbox );
@@ -3105,6 +3192,7 @@ void MainFrame::Create(){
 			}
 
 			CamWnd_setParent( *m_pCamWnd, window );
+			CamWnd_Shown_Construct( window );
 			/* workaround for gtk 2.24 issue: not displayed glwidget after toggle */
 			g_object_set_data( G_OBJECT( window ), "glwidget", CamWnd_getWidget( *m_pCamWnd ) );
 
@@ -3230,7 +3318,7 @@ void MainFrame::Create(){
 	SetActiveXY( m_pXYWnd );
 
 	AddGridChangeCallback( SetGridStatusCaller( *this ) );
-	AddGridChangeCallback( ReferenceCaller<MainFrame, XY_UpdateAllWindows>( *this ) );
+	AddGridChangeCallback( FreeCaller<XY_UpdateAllWindows>() );
 
 	g_defaultToolMode = DragMode;
 	g_defaultToolMode();
@@ -3318,6 +3406,8 @@ void MainFrame::Shutdown(){
 
 	// destroying group-dialog last because it may contain texture-browser
 	GroupDialog_destroyWindow();
+
+	user_shortcuts_save();
 }
 
 void MainFrame::RedrawStatusText(){
@@ -3373,7 +3463,7 @@ void GridStatus_changed(){
 	}
 }
 
-CopiedString g_strOpenGLFont = "arial 8";
+CopiedString g_strOpenGLFont = "";
 
 void OpenGLFont_select(){
 	CopiedString newfont;
@@ -3420,40 +3510,40 @@ void Layout_constructPreferences( PreferencesPage& page ){
 		page.appendRadioIcons(
 			"Window Layout",
 			STRING_ARRAY_RANGE( layouts ),
-			LatchedIntImportCaller( g_Layout_viewStyle ),
+			LatchedImportCaller( g_Layout_viewStyle ),
 			IntExportCaller( g_Layout_viewStyle.m_latched )
 			);
 	}
 	page.appendCheckBox(
 		"", "Detachable Menus",
-		LatchedBoolImportCaller( g_Layout_enableDetachableMenus ),
+		LatchedImportCaller( g_Layout_enableDetachableMenus ),
 		BoolExportCaller( g_Layout_enableDetachableMenus.m_latched )
 		);
 	page.appendCheckBox(
 		"", "Main Toolbar",
-		LatchedBoolImportCaller( g_Layout_enableMainToolbar ),
+		LatchedImportCaller( g_Layout_enableMainToolbar ),
 		BoolExportCaller( g_Layout_enableMainToolbar.m_latched )
 		);
 	if ( !string_empty( g_pGameDescription->getKeyValue( "no_patch" ) ) ) {
 		page.appendCheckBox(
 			"", "Patch Toolbar",
-			LatchedBoolImportCaller( g_Layout_enablePatchToolbar ),
+			LatchedImportCaller( g_Layout_enablePatchToolbar ),
 			BoolExportCaller( g_Layout_enablePatchToolbar.m_latched )
 			);
 	}
 	page.appendCheckBox(
 		"", "Plugin Toolbar",
-		LatchedBoolImportCaller( g_Layout_enablePluginToolbar ),
+		LatchedImportCaller( g_Layout_enablePluginToolbar ),
 		BoolExportCaller( g_Layout_enablePluginToolbar.m_latched )
 		);
 	page.appendCheckBox(
 		"", "Filter Toolbar",
-		LatchedBoolImportCaller( g_Layout_enableFilterToolbar ),
+		LatchedImportCaller( g_Layout_enableFilterToolbar ),
 		BoolExportCaller( g_Layout_enableFilterToolbar.m_latched )
 		);
 	page.appendCheckBox(
 		"", "Single Scrollable Toolbar",
-		LatchedBoolImportCaller( g_Layout_SingleToolbar ),
+		LatchedImportCaller( g_Layout_SingleToolbar ),
 		BoolExportCaller( g_Layout_SingleToolbar.m_latched )
 		);
 }
@@ -3501,6 +3591,7 @@ void MainFrame_Construct(){
 	GlobalCommands_insert( "CloneSelectionAndMakeUnique", FreeCaller<Selection_Clone_MakeUnique>(), Accelerator( GDK_space, (GdkModifierType)GDK_SHIFT_MASK ) );
 	GlobalCommands_insert( "DeleteSelection2", FreeCaller<deleteSelection>(), Accelerator( GDK_BackSpace ) );
 	GlobalCommands_insert( "DeleteSelection", FreeCaller<deleteSelection>(), Accelerator( 'Z' ) );
+	GlobalCommands_insert( "RepeatTransforms", FreeCaller<RepeatTransforms>(), Accelerator( 'R', (GdkModifierType)GDK_CONTROL_MASK ) );
 //	GlobalCommands_insert( "ParentSelection", FreeCaller<Scene_parentSelected>() );
 	GlobalCommands_insert( "UnSelectSelection2", FreeCaller<Selection_Deselect>(), Accelerator( GDK_Escape ) );
 	GlobalCommands_insert( "UnSelectSelection", FreeCaller<Selection_Deselect>(), Accelerator( 'C' ) );
@@ -3542,6 +3633,8 @@ void MainFrame_Construct(){
 	GlobalToggles_insert( "MouseScale", FreeCaller<ScaleMode>(), ToggleItem::AddCallbackCaller( g_scalemode_button ) );
 	GlobalToggles_insert( "MouseTransform", FreeCaller<SkewMode>(), ToggleItem::AddCallbackCaller( g_skewmode_button ) );
 	GlobalToggles_insert( "MouseDrag", FreeCaller<DragMode>(), ToggleItem::AddCallbackCaller( g_dragmode_button ) );
+	GlobalToggles_insert( "MouseBuild", FreeCaller<BuildMode>(), ToggleItem::AddCallbackCaller( g_build_button ), Accelerator( 'B' ) );
+	GlobalToggles_insert( "MouseUV", FreeCaller<UVMode>(), ToggleItem::AddCallbackCaller( g_uv_button ), Accelerator( Accelerator( 'G' ) ) );
 	GlobalCommands_insert( "MouseRotateOrScale", FreeCaller<ToggleRotateScaleModes>() );
 	GlobalCommands_insert( "MouseDragOrTransform", FreeCaller<ToggleDragSkewModes>(), Accelerator( 'Q' ) );
 
@@ -3606,13 +3699,13 @@ void MainFrame_Construct(){
 	typedef FreeCaller1<const Selectable&, ComponentMode_SelectionChanged> ComponentModeSelectionChangedCaller;
 	GlobalSelectionSystem().addSelectionChangeCallback( ComponentModeSelectionChangedCaller() );
 
-	GlobalPreferenceSystem().registerPreference( "DetachableMenus", BoolImportStringCaller( g_Layout_enableDetachableMenus.m_latched ), BoolExportStringCaller( g_Layout_enableDetachableMenus.m_latched ) );
-	GlobalPreferenceSystem().registerPreference( "MainToolBar", BoolImportStringCaller( g_Layout_enableMainToolbar.m_latched ), BoolExportStringCaller( g_Layout_enableMainToolbar.m_latched ) );
-	GlobalPreferenceSystem().registerPreference( "PatchToolBar", BoolImportStringCaller( g_Layout_enablePatchToolbar.m_latched ), BoolExportStringCaller( g_Layout_enablePatchToolbar.m_latched ) );
-	GlobalPreferenceSystem().registerPreference( "PluginToolBar", BoolImportStringCaller( g_Layout_enablePluginToolbar.m_latched ), BoolExportStringCaller( g_Layout_enablePluginToolbar.m_latched ) );
-	GlobalPreferenceSystem().registerPreference( "FilterToolBar", BoolImportStringCaller( g_Layout_enableFilterToolbar.m_latched ), BoolExportStringCaller( g_Layout_enableFilterToolbar.m_latched ) );
-	GlobalPreferenceSystem().registerPreference( "SingleToolBar", BoolImportStringCaller( g_Layout_SingleToolbar.m_latched ), BoolExportStringCaller( g_Layout_SingleToolbar.m_latched ) );
-	GlobalPreferenceSystem().registerPreference( "QE4StyleWindows", IntImportStringCaller( g_Layout_viewStyle.m_latched ), IntExportStringCaller( g_Layout_viewStyle.m_latched ) );
+	GlobalPreferenceSystem().registerPreference( "DetachableMenus", makeBoolStringImportCallback( LatchedAssignCaller( g_Layout_enableDetachableMenus ) ), BoolExportStringCaller( g_Layout_enableDetachableMenus.m_latched ) );
+	GlobalPreferenceSystem().registerPreference( "MainToolBar", makeBoolStringImportCallback( LatchedAssignCaller( g_Layout_enableMainToolbar ) ), BoolExportStringCaller( g_Layout_enableMainToolbar.m_latched ) );
+	GlobalPreferenceSystem().registerPreference( "PatchToolBar", makeBoolStringImportCallback( LatchedAssignCaller( g_Layout_enablePatchToolbar ) ), BoolExportStringCaller( g_Layout_enablePatchToolbar.m_latched ) );
+	GlobalPreferenceSystem().registerPreference( "PluginToolBar", makeBoolStringImportCallback( LatchedAssignCaller( g_Layout_enablePluginToolbar ) ), BoolExportStringCaller( g_Layout_enablePluginToolbar.m_latched ) );
+	GlobalPreferenceSystem().registerPreference( "FilterToolBar", makeBoolStringImportCallback( LatchedAssignCaller( g_Layout_enableFilterToolbar ) ), BoolExportStringCaller( g_Layout_enableFilterToolbar.m_latched ) );
+	GlobalPreferenceSystem().registerPreference( "SingleToolBar", makeBoolStringImportCallback( LatchedAssignCaller( g_Layout_SingleToolbar ) ), BoolExportStringCaller( g_Layout_SingleToolbar.m_latched ) );
+	GlobalPreferenceSystem().registerPreference( "QE4StyleWindows", makeIntStringImportCallback( LatchedAssignCaller( g_Layout_viewStyle ) ), IntExportStringCaller( g_Layout_viewStyle.m_latched ) );
 	GlobalPreferenceSystem().registerPreference( "XYHeight", IntImportStringCaller( g_layout_globals.nXYHeight ), IntExportStringCaller( g_layout_globals.nXYHeight ) );
 	GlobalPreferenceSystem().registerPreference( "XYWidth", IntImportStringCaller( g_layout_globals.nXYWidth ), IntExportStringCaller( g_layout_globals.nXYWidth ) );
 	GlobalPreferenceSystem().registerPreference( "CamWidth", IntImportStringCaller( g_layout_globals.nCamWidth ), IntExportStringCaller( g_layout_globals.nCamWidth ) );
@@ -3653,15 +3746,6 @@ void MainFrame_Construct(){
 		g_strEnginePath = path.c_str();
 	}
 
-
-
-	g_Layout_viewStyle.useLatched();
-	g_Layout_enableDetachableMenus.useLatched();
-	g_Layout_enableMainToolbar.useLatched();
-	g_Layout_enablePatchToolbar.useLatched();
-	g_Layout_enablePluginToolbar.useLatched();
-	g_Layout_enableFilterToolbar.useLatched();
-	g_Layout_SingleToolbar.useLatched();
 
 	Layout_registerPreferencesPage();
 	Paths_registerPreferencesPage();

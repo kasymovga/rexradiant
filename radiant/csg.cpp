@@ -456,7 +456,8 @@ void post( const scene::Path& path, scene::Instance& instance ) const {
 		Brush* brush = Node_getBrush( path.top() );
 		if ( brush != 0
 			 && Instance_getSelectable( instance )->isSelected()
-			 && path.size() > 1 ) {
+			 && path.size() > 1
+			 && path.top().get_pointer() != m_keepNode ) {
 			scene::Node& parent = path.parent();
 			Path_deleteTop( path );
 			if( Node_getTraversable( parent )->empty() ){
@@ -746,7 +747,7 @@ void CSG_Subtract(){
 class BrushSplitByPlaneSelected : public scene::Graph::Walker
 {
 const ClipperPoints m_points;
-const Plane3 m_plane;
+const Plane3 m_plane; /* plane to insert */
 const char* m_shader;
 const TextureProjection& m_projection;
 const bool m_split; /* split or clip */
@@ -773,7 +774,7 @@ void post( const scene::Path& path, scene::Instance& instance ) const {
 					NodeSmartReference node( ( new BrushNode() )->node() );
 					Brush* fragment = Node_getBrush( node );
 					fragment->copy( *brush );
-					fragment->addPlane( m_points[0], m_points[1], m_points[2], m_shader, m_projection );
+					fragment->addPlane( m_points[0], m_points[2], m_points[1], m_shader, m_projection );
 					fragment->removeEmptyFaces();
 					ASSERT_MESSAGE( !fragment->empty(), "brush left with no faces after split" );
 
@@ -785,14 +786,13 @@ void post( const scene::Path& path, scene::Instance& instance ) const {
 					}
 				}
 
-				brush->addPlane( m_points[0], m_points[2], m_points[1], m_shader, m_projection );
+				brush->addPlane( m_points[0], m_points[1], m_points[2], m_shader, m_projection );
 				brush->removeEmptyFaces();
 				ASSERT_MESSAGE( !brush->empty(), "brush left with no faces after split" );
 			}
 			else
-			// the plane does not intersect this brush
+			// the plane does not intersect this brush and the brush is in front of the plane
 			if ( !m_split && split.counts[ePlaneFront] != 0 ) {
-				// the brush is "behind" the plane
 				m_gj = true;
 				Path_deleteTop( path );
 			}
@@ -1029,14 +1029,10 @@ public:
 class Scene_gatherSelectedComponents : public scene::Graph::Walker
 {
 MergeVertices& m_mergeVertices;
-void call( const Vector3& value ) const {
-	m_mergeVertices.insert( value );
-}
-typedef ConstMemberCaller1<Scene_gatherSelectedComponents, const Vector3&, &Scene_gatherSelectedComponents::call> Caller;
 const Vector3Callback m_callback;
 public:
 Scene_gatherSelectedComponents( MergeVertices& mergeVertices )
-	: m_mergeVertices( mergeVertices ), m_callback( Vector3Callback( Scene_gatherSelectedComponents::Caller( *this ) ) ){
+	: m_mergeVertices( mergeVertices ), m_callback( [this]( const Vector3& value ){ m_mergeVertices.insert( value ); } ){
 }
 bool pre( const scene::Path& path, scene::Instance& instance ) const {
 	if ( path.top().get().visible() ) {
@@ -1087,63 +1083,63 @@ public:
 	}
 };
 
-#include "convhull_3d.h"
+#include "quickhull/QuickHull.hpp"
 void CSG_build_hull( const MergeVertices& mergeVertices, MergePlanes& mergePlanes ){
 #if 0
-	/* bruteforce new planes */
-	for( MergeVertices::const_iterator i = mergeVertices.begin() + 0; i != mergeVertices.end() - 2; ++i )
-		for( MergeVertices::const_iterator j = i + 1; j != mergeVertices.end() - 1; ++j )
-			for( MergeVertices::const_iterator k = j + 1; k != mergeVertices.end() - 0; ++k ){
-				const Plane3 plane = plane3_for_points( *i, *j, *k );
-				if( plane3_valid( plane ) ){
-					const brushsplit_t split = mergeVertices.classify_plane( plane );
-					if( ( split.counts[ePlaneFront] == 0 ) != ( split.counts[ePlaneBack] == 0 ) ){
-						if( split.counts[ePlaneFront] != 0 )
-							mergePlanes.insert( MergePlane( plane3_flipped( plane ), *i, *j, *k ) );
-						else
-							mergePlanes.insert( MergePlane( plane, *i, *k, *j ) );
+	if( mergeVertices.size() < 130 ){ // use reliable bruteforce path, when possible
+		/* bruteforce new planes */
+		for( MergeVertices::const_iterator i = mergeVertices.begin() + 0; i != mergeVertices.end() - 2; ++i )
+			for( MergeVertices::const_iterator j = i + 1; j != mergeVertices.end() - 1; ++j )
+				for( MergeVertices::const_iterator k = j + 1; k != mergeVertices.end() - 0; ++k ){
+					const Plane3 plane = plane3_for_points( *i, *j, *k );
+					if( plane3_valid( plane ) ){
+						const brushsplit_t split = mergeVertices.classify_plane( plane );
+						if( ( split.counts[ePlaneFront] == 0 ) != ( split.counts[ePlaneBack] == 0 ) ){
+							if( split.counts[ePlaneFront] != 0 )
+								mergePlanes.insert( MergePlane( plane3_flipped( plane ), *i, *k, *j ) );
+							else
+								mergePlanes.insert( MergePlane( plane, *i, *j, *k ) );
+						}
 					}
 				}
-			}
-#else
-	const int nVertices = mergeVertices.size();
-	ch_vertex* vertices = ( ch_vertex* )malloc( mergeVertices.size() * sizeof( ch_vertex ) );
-	for( std::size_t i = 0; i < mergeVertices.size(); ++i ){
-		vertices[i].x = static_cast<double>( mergeVertices[i].x() );
-		vertices[i].y = static_cast<double>( mergeVertices[i].y() );
-		vertices[i].z = static_cast<double>( mergeVertices[i].z() );
 	}
-	int* faceIndices = NULL;
-	int nFaces;
-	convhull_3d_build( vertices, nVertices, &faceIndices, &nFaces );
-	/* Where 'faceIndices' is a flat 2D matrix [nFaces x 3] */
-	for( int i = 0; i < nFaces; ++i ){
-		Vector3 p[3];
-		for( int j = 0; j < 3; ++j ){
-//			p[j] = Vector3( vertices[faceIndices[i * 3 + j]].x, vertices[faceIndices[i * 3 + j]].y, vertices[faceIndices[i * 3 + j]].z );
-			p[j] = mergeVertices[faceIndices[i * 3 + j]];
-		}
-		const Plane3 plane = plane3_for_points( p[0], p[1], p[2] );
-		if( plane3_valid( plane ) ){
-			mergePlanes.insert( MergePlane( plane, p[0], p[2], p[1] ) );
-		}
-	}
-
-	free( vertices );
-	free( faceIndices );
+	else
 #endif
+	{
+		quickhull::QuickHull<double> quickhull;
+		std::vector<quickhull::Vector3<double>> pointCloud;
+		pointCloud.reserve( mergeVertices.size() );
+		for( std::size_t i = 0; i < mergeVertices.size(); ++i ){
+			pointCloud.push_back( quickhull::Vector3<double>( static_cast<double>( mergeVertices[i].x() ),
+															static_cast<double>( mergeVertices[i].y() ),
+															static_cast<double>( mergeVertices[i].z() ) ) );
+		}
+		auto hull = quickhull.getConvexHull( pointCloud, true, true );
+		const auto& indexBuffer = hull.getIndexBuffer();
+		const size_t triangleCount = indexBuffer.size() / 3;
+		for( size_t i = 0; i < triangleCount; ++i ) {
+			Vector3 p[3];
+			for( size_t j = 0; j < 3; ++j ){
+				p[j] = mergeVertices[indexBuffer[i * 3 + j]];
+			}
+			const Plane3 plane = plane3_for_points( p[0], p[1], p[2] );
+			if( plane3_valid( plane ) ){
+				mergePlanes.insert( MergePlane( plane, p[0], p[1], p[2] ) );
+			}
+		}
+	}
 }
 
 void CSG_WrapMerge( const ClipperPoints& clipperPoints ){
-	const bool primit = ( GlobalSelectionSystem().Mode() == SelectionSystem::ePrimitive );
-	brush_vector_t selected_brushes;
-	if( primit )
-		GlobalSceneGraph().traverse( BrushGatherSelected( selected_brushes ) );
-
 	if ( !GlobalSelectionSystem().countSelected() && !GlobalSelectionSystem().countSelectedComponents() ) {
 		globalWarningStream() << "CSG Wrap Merge: No brushes or components selected.\n";
 		return;
 	}
+
+	const bool primit = ( GlobalSelectionSystem().Mode() == SelectionSystem::ePrimitive );
+	brush_vector_t selected_brushes;
+	if( primit )
+		GlobalSceneGraph().traverse( BrushGatherSelected( selected_brushes ) );
 
 	MergeVertices mergeVertices;
 	/* gather unique vertices */
@@ -1187,7 +1183,13 @@ void CSG_WrapMerge( const ClipperPoints& clipperPoints ){
 	}
 
 	NodeSmartReference node( ( new BrushNode() )->node() );
-	Brush* brush = Node_getBrush( node );
+	Brush* brush = GlobalSelectionSystem().countSelected() > 0? Node_getBrush( GlobalSelectionSystem().ultimateSelected().path().top() ) : 0;
+	const bool oldbrush = brush && primit;
+	if( oldbrush )
+		brush->clear();
+	else{
+		brush = Node_getBrush( node );
+	}
 
 	{
 		const char* shader = TextureBrowser_GetSelectedShader();
@@ -1209,26 +1211,31 @@ void CSG_WrapMerge( const ClipperPoints& clipperPoints ){
 	}
 	else
 	{
-		scene::Path path = ultimate_group_path();
+		if( oldbrush ){
+			GlobalSceneGraph().traverse( BrushDeleteSelected( GlobalSelectionSystem().ultimateSelected().path().top().get_pointer() ) );
+		}
+		else{
+			scene::Path path = ultimate_group_path();
 
-		// free the original brushes
-		if( primit )
-			GlobalSceneGraph().traverse( BrushDeleteSelected( path.top().get_pointer() ) );
+			// free the original brushes
+			if( primit )
+				GlobalSceneGraph().traverse( BrushDeleteSelected( path.top().get_pointer() ) );
 
-		Node_getTraversable( path.top() )->insert( node );
-		path.push( makeReference( node.get() ) );
+			Node_getTraversable( path.top() )->insert( node );
+			path.push( makeReference( node.get() ) );
 
-		selectPath( path, true );
+			selectPath( path, true );
+		}
 	}
 }
 
 void CSG_WrapMerge(){
 	UndoableCommand undo( "brushWrapMerge" );
-	CSG_WrapMerge( ClipperPoints() );
+	CSG_WrapMerge( Clipper_getPlanePoints() );
 }
 
 
-
+#if 0
 class find_instance_to_DeleteComponents : public SelectionSystem::Visitor
 {
 public:
@@ -1286,17 +1293,17 @@ void CSG_DeleteComponents(){
 			return;
 		}
 
-		NodeSmartReference node( ( new BrushNode() )->node() );
-		brush = Node_getBrush( node );
-
 		{
+			ComponentSelectionTestable* componentSelectionTestable = Instance_getComponentSelectionTestable( *instance );
+			componentSelectionTestable->setSelectedComponents( false, SelectionSystem::eVertex );
+			componentSelectionTestable->setSelectedComponents( false, SelectionSystem::eEdge );
+			componentSelectionTestable->setSelectedComponents( false, SelectionSystem::eFace );
+
 			const char* shader = TextureBrowser_GetSelectedShader();
 			TextureProjection projection;
 			TexDef_Construct_Default( projection );
 			for( MergePlanes::const_iterator i = mergePlanes.begin(); i != mergePlanes.end(); ++i ){
-				if( i->m_face )
-					brush->addFace( *( i->m_face ) );
-				else
+				if( !i->m_face )
 					brush->addPlane( i->m_v1, i->m_v2, i->m_v3, shader, projection );
 			}
 			brush->removeEmptyFaces();
@@ -1306,21 +1313,14 @@ void CSG_DeleteComponents(){
 		if ( !brush->hasContributingFaces() ) {
 			globalWarningStream() << "CSG_DeleteComponents: Failed - result would not be convex.\n";
 		}
-		else
-		{
-			scene::Path path = instance->path();
-			path.pop();
-
-			Node_getTraversable( path.top() )->insert( node );
-			path.push( makeReference( node.get() ) );
-
-			selectPath( path, true ); //b4 original deletion, so component mode will stay enabled
-
-			// free the original brush
-			Path_deleteTop( instance->path() );
-		}
 	}
 }
+#else
+
+void CSG_DeleteComponents(){
+	Scene_forEachSelectedBrush( []( BrushInstance& brush ){ brush.remove_vertices(); } );
+}
+#endif
 
 
 
@@ -1352,15 +1352,7 @@ CSGToolDialog g_csgtool_dialog;
 #if 0
 DoubleVector3 getExclusion(){
 	if( gtk_toggle_button_get_active( g_csgtool_dialog.radProj ) ){
-		if( GlobalXYWnd_getCurrentViewType() == YZ ){
-			return DoubleVector3( 1, 0, 0 );
-		}
-		else if( GlobalXYWnd_getCurrentViewType() == XZ ){
-			return DoubleVector3( 0, 1, 0 );
-		}
-		else if( GlobalXYWnd_getCurrentViewType() == XY ){
-			return DoubleVector3( 0, 0, 1 );
-		}
+		return DoubleVector3( g_vector3_axes[GlobalXYWnd_getCurrentViewType()] );
 	}
 	if( gtk_toggle_button_get_active( g_csgtool_dialog.radCam ) ){
 		Vector3 angles( Camera_getAngles( *g_pParentWnd->GetCamWnd() ) );
@@ -1424,7 +1416,7 @@ void CSGdlg_getSettings( HollowSettings& settings, const CSGToolDialog& dialog )
 	settings.m_offset = static_cast<float>( gtk_spin_button_get_value( dialog.spin ) );
 	settings.m_exclusionAxis = g_vector3_identity;
 	if( gtk_toggle_button_get_active( dialog.radProj ) ){
-		settings.m_exclusionAxis[ static_cast<int>( GlobalXYWnd_getCurrentViewType() ) ] = 1;
+		settings.m_exclusionAxis = g_vector3_axes[GlobalXYWnd_getCurrentViewType()];
 	}
 	else if( gtk_toggle_button_get_active( dialog.radCam ) ){
 		settings.m_exclusionAxis = Camera_getViewVector( *g_pParentWnd->GetCamWnd() );

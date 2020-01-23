@@ -138,12 +138,13 @@ struct MotionDeltaValues {
 
 enum camera_draw_mode
 {
-	cd_wire,
-	cd_solid,
-	cd_texture,
-	cd_texture_plus_wire,
-	cd_lighting
+	cd_wire = 0,
+	cd_solid = 1,
+	cd_texture = 2,
+	cd_texture_plus_wire = 3,
+	cd_lighting = 4
 };
+const int camera_draw_mode_count = 5;
 
 struct camera_t
 {
@@ -165,9 +166,11 @@ struct camera_t
 	bool m_strafe; // true when in strafemode toggled by the ctrl-key
 	bool m_strafe_forward; // true when in strafemode by ctrl-key and shift is pressed for forward strafing
 	bool m_strafe_forward_invert; //silly option to invert forward strafing to support old fegs
-	bool m_orbit;
+	bool m_orbit = false;
 	Vector3 m_orbit_center;
-	int m_focus_offset;
+	Vector3 m_orbit_initial_pos;
+	int m_orbit_offset = 0;
+	int m_focus_offset = 0;
 
 	unsigned int movementflags; // movement flags
 	Timer m_keycontrol_timer;
@@ -198,7 +201,6 @@ struct camera_t
 		origin( 0, 0, 0 ),
 		angles( 0, 0, 0 ),
 		color( 0, 0, 0 ),
-		m_focus_offset( 0 ),
 		movementflags( 0 ),
 		m_keymove_handler( 0 ),
 		m_keymove_speed_current( 0.f ),
@@ -214,8 +216,13 @@ const float camera_t::near_z = 1.f;
 camera_draw_mode camera_t::draw_mode = cd_texture;
 
 inline Matrix4 projection_for_camera( float near_z, float far_z, float fieldOfView, int width, int height ){
-	const float half_width = static_cast<float>( near_z * tan( degrees_to_radians( fieldOfView * 0.5 ) ) );
-	const float half_height = half_width * ( static_cast<float>( height ) / static_cast<float>( width ) );
+	float half_width = static_cast<float>( near_z * tan( degrees_to_radians( fieldOfView * 0.5 ) ) );
+	const bool swap = height > width;
+	if( swap )
+		std::swap( width, height );
+	float half_height = half_width * ( static_cast<float>( height ) / static_cast<float>( width ) );
+	if( swap )
+		std::swap( half_width, half_height );
 
 	return matrix4_frustum(
 			   -half_width,
@@ -729,7 +736,7 @@ void Camera_motionDelta( int x, int y, unsigned int state, void* data ){
 		cam->m_strafe_forward = true;
 		break;
 	case 4:
-		cam->m_strafe_forward_invert = true;
+		cam->m_strafe_forward_invert = true; // fall through
 	default: /* 3 & 4 */
 		cam->m_strafe = ( state & GDK_CONTROL_MASK ) || ( state & GDK_BUTTON3_MASK ) || ( state & GDK_SHIFT_MASK );
 		cam->m_strafe_forward = ( state & GDK_SHIFT_MASK ) != 0;
@@ -744,75 +751,37 @@ void Camera_motionDelta( int x, int y, unsigned int state, void* data ){
 
 #include "stream/stringstream.h"
 
-#define cam_draw_size_use_tex
 class CamDrawSize
 {
-	GLuint _texs[3];
-	int _widths[3];
-	int _heights[3];
 	Vector3 _extents;
+	RenderTextLabel m_labels[3];
 public:
 	CamDrawSize() : _extents( -99.9f, -99.9f, -99.9f ){
-		_texs[0] = _texs[1] = _texs[2] = 0;
 	}
-	~CamDrawSize(){
-		for( std::size_t i = 0; i < 3; ++i )
-			freeTex( _texs[i] );
-	}
-	void render( const AABB& bounds, const View view ){
-		setState();
+	void render( Renderer& renderer, Shader* shader, const View& view ){
+		const AABB bounds = GlobalSelectionSystem().getBoundsSelected();
+		if( bounds.extents.x() != 0 || bounds.extents.y() != 0 || bounds.extents.z() != 0 ){
+			renderer.SetState( shader, Renderer::eFullMaterials );
 
-		Vector4 points[3] = { Vector4( bounds.origin - g_vector3_axes[1] * bounds.extents - g_vector3_axes[2] * bounds.extents, 1 ),
-								Vector4( bounds.origin - g_vector3_axes[0] * bounds.extents - g_vector3_axes[2] * bounds.extents, 1 ),
-								Vector4( bounds.origin - g_vector3_axes[0] * bounds.extents - g_vector3_axes[1] * bounds.extents, 1 ),
-								};
-		for( std::size_t i = 0; i < 3; ++i ){
-			matrix4_transform_vector4( view.GetViewMatrix(), points[i] );
-			points[i].x() /= points[i].w();
-			points[i].y() /= points[i].w();
-			points[i].z() /= points[i].w();
-			matrix4_transform_vector4( view.GetViewport(), points[i] );
-		}
+			Vector4 points[3] = { Vector4( bounds.origin - g_vector3_axes[1] * bounds.extents - g_vector3_axes[2] * bounds.extents, 1 ),
+									Vector4( bounds.origin - g_vector3_axes[0] * bounds.extents - g_vector3_axes[2] * bounds.extents, 1 ),
+									Vector4( bounds.origin - g_vector3_axes[0] * bounds.extents - g_vector3_axes[1] * bounds.extents, 1 ),
+									};
+			for( std::size_t i = 0; i < 3; ++i ){
+				matrix4_transform_vector4( view.GetViewMatrix(), points[i] );
+				points[i].x() /= points[i].w();
+				points[i].y() /= points[i].w();
+//				points[i].z() /= points[i].w();
+				matrix4_transform_vector4( view.GetViewport(), points[i] );
+			}
 
-		for( std::size_t i = 0; i < 3; ++i ){
-			if( points[i].w() > 0.005f ){
-#ifdef cam_draw_size_use_tex
-				updateTex( i, bounds.extents[i] );
-				if( _texs[i] > 0 ) {
-					glBindTexture( GL_TEXTURE_2D, _texs[i] );
-
-					//Here we draw the texturemaped quads.
-					//The bitmap that we got from FreeType was not
-					//oriented quite like we would like it to be,
-					//so we need to link the texture to the quad
-					//so that the result will be properly aligned.
-					glBegin( GL_QUADS );
-					const float xoffset0 = 0;
-					const float xoffset1 = 1.f / 3.f;
-					glTexCoord2f( xoffset0, 1 );
-					glVertex2f( points[i].x(), points[i].y() );
-					glTexCoord2f( xoffset0, 0 );
-					glVertex2f( points[i].x(), points[i].y() + _heights[i] + .01f );
-					glTexCoord2f( xoffset1, 0 );
-					glVertex2f( points[i].x() + _widths[i] + .01f, points[i].y() + _heights[i] + .01f );
-					glTexCoord2f( xoffset1, 1 );
-					glVertex2f( points[i].x() + _widths[i] + .01f, points[i].y() );
-					glEnd();
-
-					glBindTexture( GL_TEXTURE_2D, 0 );
+			for( std::size_t i = 0; i < 3; ++i ){
+				if( points[i].w() > 0.005f ){
+					updateTex( i, bounds.extents[i] );
+					m_labels[i].screenPos.x() = points[i].x();
+					m_labels[i].screenPos.y() = points[i].y();
+					renderer.addRenderable( m_labels[i], g_matrix4_identity );
 				}
-#else
-				StringOutputStream stream( 16 );
-				stream << ( bounds.extents[i] * 2 );
-
-				glColor3fv( vector3_to_array( g_vector3_identity ) );
-				glRasterPos2fv( vector4_to_array( points[i] + Vector4( 1, -1, 0, 0 ) ) );
-				GlobalOpenGL().drawString( stream.c_str() );
-
-				glColor3fv( vector3_to_array( getColor( i ) ) );
-				glRasterPos2fv( vector4_to_array( points[i] ) );
-				GlobalOpenGL().drawString( stream.c_str() );
-#endif
 			}
 		}
 	}
@@ -830,59 +799,22 @@ private:
 	}
 	void updateTex( const std::size_t i, const float extent ){
 		if( extent != _extents[i] ){
-			freeTex( _texs[i] );
 			_extents[i] = extent;
+			m_labels[i].texFree();
+			StringOutputStream stream( 16 );
+			stream << ( extent * 2 );
+			m_labels[i].texAlloc( stream.c_str(), getColor( i ) );
 		}
-		if( 0 == _texs[i] ){
-			glGenTextures( 1, &_texs[i] );
-			if( _texs[i] > 0 ){
-				StringOutputStream stream( 16 );
-				stream << ( extent * 2 );
-				BasicVector3<unsigned int> colour = getColor( i ) * 255.f;
-				GlobalOpenGL().m_font->renderString( stream.c_str(), _texs[i], colour.data(), _widths[i], _heights[i] );
-			}
-		}
-	}
-	void freeTex( GLuint& tex ){
-		if( tex > 0 ){
-			glDeleteTextures( 1, &tex );
-			tex = 0;
-		}
-	}
-	void setState() const {
-#ifdef cam_draw_size_use_tex
-		glEnable( GL_BLEND );
-		glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
-#else
-		glDisable( GL_BLEND );
-#endif
-		glDisable( GL_DEPTH_TEST );
-
-		glDisableClientState( GL_TEXTURE_COORD_ARRAY );
-		glDisableClientState( GL_NORMAL_ARRAY );
-		glDisableClientState( GL_COLOR_ARRAY );
-#ifdef cam_draw_size_use_tex
-		glEnable( GL_TEXTURE_2D );
-		glDisable( GL_CULL_FACE );
-		glTexEnvi( GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE );
-		glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
-		if ( GlobalOpenGL().GL_1_3() ) {
-			glActiveTexture( GL_TEXTURE0 );
-			glClientActiveTexture( GL_TEXTURE0 );
-		}
-		glShadeModel( GL_FLAT );
-		glColor4f( 1, 1, 1, 1 );
-#else
-		glDisable( GL_TEXTURE_2D );
-#endif
-		glDisable( GL_LIGHTING );
-		glDisable( GL_COLOR_MATERIAL );
 	}
 };
 
 #include "grid.h"
 class RenderableCamWorkzone : public OpenGLRenderable
 {
+	mutable Array<Vector3> m_verticesarr[3];
+	mutable Array<GLboolean> m_edgearr[3];
+	mutable Array<Colour4b> m_colorarr0[3];
+	mutable Array<Colour4b> m_colorarr1[3];
 public:
 void render( RenderStateFlags state ) const {
 	glEnableClientState( GL_EDGE_FLAG_ARRAY );
@@ -910,10 +842,16 @@ void render( RenderStateFlags state ) const {
 		const float grid = GetGridSize();
 		const std::size_t approx_count = ( std::max( 0.f, bounds.extents[i] ) + offset ) * 4 / grid + 8;
 
-		Array<Vector3> verticesarr( approx_count );
-		Array<GLboolean> edgearr( approx_count );
-		Array<Vector4> colorarr0( approx_count );
-		Array<Vector4> colorarr1( approx_count );
+		Array<Vector3>& verticesarr( m_verticesarr[i] );
+		Array<GLboolean>& edgearr( m_edgearr[i] );
+		Array<Colour4b>& colorarr0( m_colorarr0[i] );
+		Array<Colour4b>& colorarr1( m_colorarr1[i] );
+		if( verticesarr.size() < approx_count ){
+			verticesarr.resize( approx_count );
+			edgearr.resize( approx_count );
+			colorarr0.resize( approx_count );
+			colorarr1.resize( approx_count );
+		}
 
 		float coord = float_snapped( bounds.origin[i] - std::max( 0.f, bounds.extents[i] ) - offset, grid );
 //		const float coord_end = float_snapped( bounds.origin[i] + std::max( 0.f, bounds.extents[i] ) + offset, grid ) + 0.1f;
@@ -923,15 +861,15 @@ void render( RenderStateFlags state ) const {
 		for( ; count < approx_count - 4; count += 4 ){
 			verticesarr[count][i] =
 			verticesarr[count + 1][i] = coord;
-			const float alpha = std::min( 1.f, static_cast<float>( ( offset + bounds.extents[i] - fabs( coord - bounds.origin[i] ) ) / offset ) );
-			colorarr0[count] = colorarr0[count + 1] = Vector4( 1, 0, 0, alpha );
-			colorarr1[count] = colorarr1[count + 1] = Vector4( 1, 1, 1, alpha );
+			const float alpha = std::max( 0.f, std::min( 1.f, ( offset + bounds.extents[i] - std::fabs( coord - bounds.origin[i] ) ) / offset ) );
+			colorarr0[count] = colorarr0[count + 1] = Colour4b( 255, 0, 0, alpha * 255 );
+			colorarr1[count] = colorarr1[count + 1] = Colour4b( 255, 255, 255, alpha * 255 );
 			coord += grid;
 			verticesarr[count + 2][i] =
 			verticesarr[count + 3][i] = coord;
-			const float alpha2 = std::min( 1.f, static_cast<float>( ( offset + bounds.extents[i] - fabs( coord - bounds.origin[i] ) ) / offset ) );
-			colorarr0[count + 2] = colorarr0[count + 3] = Vector4( 1, 0, 0, alpha2 );
-			colorarr1[count + 2] = colorarr1[count + 3] = Vector4( 1, 1, 1, alpha2 );
+			const float alpha2 = std::max( 0.f, std::min( 1.f, ( offset + bounds.extents[i] - std::fabs( coord - bounds.origin[i] ) ) / offset ) );
+			colorarr0[count + 2] = colorarr0[count + 3] = Colour4b( 255, 0, 0, alpha2 * 255 );
+			colorarr1[count + 2] = colorarr1[count + 3] = Colour4b( 255, 255, 255, alpha2 * 255 );
 			coord += grid;
 			edgearr[count] =
 			edgearr[count + 2] = GL_FALSE;
@@ -962,11 +900,11 @@ void render( RenderStateFlags state ) const {
 			}
 
 			glPolygonOffset( -2, 2 );
-			glColorPointer( 4, GL_FLOAT, sizeof( Vector4 ), colorarr0.data()->data() );
+			glColorPointer( 4, GL_UNSIGNED_BYTE, sizeof( Colour4b ), colorarr0.data() );
 			glDrawArrays( GL_QUADS, start0? 0 : 2, GLsizei( count - ( start0? 4 : 2 ) ) );
 
 			glPolygonOffset( 1, -1 );
-			glColorPointer( 4, GL_FLOAT, sizeof( Vector4 ), colorarr1.data()->data() );
+			glColorPointer( 4, GL_UNSIGNED_BYTE, sizeof( Colour4b ), colorarr1.data() );
 			glDrawArrays( GL_QUADS, start0? 2 : 0, GLsizei( count - ( start0? 2 : 4 ) ) );
 		}
 	}
@@ -1001,10 +939,12 @@ static Shader* m_state_select1;
 static Shader* m_state_wire;
 static Shader* m_state_facewire;
 static Shader* m_state_workzone;
+static Shader* m_state_text;
 
 FreezePointer m_freezePointer;
 
 CamDrawSize m_draw_size;
+RenderableCamWorkzone m_draw_workzone;
 
 public:
 FBO* m_fbo;
@@ -1047,6 +987,7 @@ void queue_draw(){
 void draw();
 
 static void captureStates(){
+	m_state_text = GlobalShaderCache().capture( "$TEXT" );
 	m_state_workzone = GlobalShaderCache().capture( "$CAM_WORKZONE" );
 	m_state_facewire = GlobalShaderCache().capture( "$CAM_FACEWIRE" );
 	m_state_wire = GlobalShaderCache().capture( "$CAM_WIRE" );
@@ -1059,6 +1000,7 @@ static void releaseStates(){
 	GlobalShaderCache().release( "$CAM_WIRE" );
 	GlobalShaderCache().release( "$CAM_FACEWIRE" );
 	GlobalShaderCache().release( "$CAM_WORKZONE" );
+	GlobalShaderCache().release( "$TEXT" );
 }
 
 camera_t& getCamera(){
@@ -1093,6 +1035,7 @@ Shader* CamWnd::m_state_select1 = 0;
 Shader* CamWnd::m_state_wire = 0;
 Shader* CamWnd::m_state_facewire = 0;
 Shader* CamWnd::m_state_workzone = 0;
+Shader* CamWnd::m_state_text = 0;
 
 CamWnd* NewCamWnd(){
 	return new CamWnd;
@@ -1131,9 +1074,12 @@ GtkWindow* CamWnd_getParent( CamWnd& camwnd ){
 
 ToggleShown g_camera_shown( true );
 
+void CamWnd_Shown_Construct( GtkWindow* parent ){
+	g_camera_shown.connect( GTK_WIDGET( parent ) );
+}
+
 void CamWnd_setParent( CamWnd& camwnd, GtkWindow* parent ){
 	camwnd.m_parent = parent;
-	g_camera_shown.connect( GTK_WIDGET( camwnd.m_parent ) );
 }
 
 void CamWnd_Update( CamWnd& camwnd ){
@@ -1193,13 +1139,17 @@ bool context_menu_try( CamWnd* camwnd ){
 	//doesn't work if cam redraw > 200msec (3x click works): gtk_widget_queue_draw proceeds after timer.start()
 }
 
-void camera_set_orbit_center( camera_t& cam, Vector2 xy ){
+void camera_orbit_init( camera_t& cam, Vector2 xy ){
 	xy.x() = ( ( 2.0f * xy.x() ) / cam.width ) - 1.0f; // window_to_normalised_device
 	xy.y() = ( ( 2.0f * ( cam.height - 1 - xy.y() ) ) / cam.height ) - 1.0f;
 
 	const Vector2 epsilon( 8.f / cam.width, 8.f / cam.height ); //device epsilon
 
 	Scene_Intersect( *cam.m_view, xy.data(), epsilon.data(), cam.m_orbit_center );
+
+	cam.m_orbit_initial_pos = cam.origin;
+	cam.m_orbit_offset = 0;
+	cam.m_orbit = true;
 }
 
 inline bool ORBIT_EVENT( GdkEventButton* event ){
@@ -1219,7 +1169,7 @@ gboolean enable_freelook_button_press( GtkWidget* widget, GdkEventButton* event,
 		}
 		else{
 			if( m2alt )
-				camera_set_orbit_center( camwnd->getCamera(), Vector2( event->x, event->y ) );
+				camera_orbit_init( camwnd->getCamera(), Vector2( event->x, event->y ) );
 			camwnd->EnableFreeMove();
 			camwnd->m_rightClickTimer.start();
 			camwnd->m_rightClickMove = 0;
@@ -1240,7 +1190,7 @@ gboolean disable_freelook_button_press( GtkWidget* widget, GdkEventButton* event
 		}
 		else{
 			if( m2alt )
-				camera_set_orbit_center( camwnd->getCamera(), Vector2( event->x, event->y ) );
+				camera_orbit_init( camwnd->getCamera(), Vector2( event->x, event->y ) );
 			camwnd->m_rightClickTimer.start();
 			camwnd->m_rightClickMove = 0;
 		}
@@ -1253,6 +1203,7 @@ gboolean disable_freelook_button_release( GtkWidget* widget, GdkEventButton* eve
 	const bool m2    = M2_EVENT( event );
 	const bool m2alt = ORBIT_EVENT( event );
 	if ( ( m2 || m2alt ) && event->type == GDK_BUTTON_RELEASE ) {
+		camwnd->getCamera().m_orbit = false;
 		if( ( ( camwnd->m_rightClickTimer.elapsed_msec() < 300 && camwnd->m_rightClickMove < 56 ) == !camwnd->m_bFreeMove_entering ) ){
 			camwnd->DisableFreeMove();
 			return TRUE;
@@ -1276,15 +1227,16 @@ void camwnd_update_xor_rectangle( CamWnd& self, rect_t area ){
 			if ( Map_Valid( g_map ) && ScreenUpdates_Enabled() ) {
 				GlobalOpenGL_debugAssertNoErrors();
 
-				glDrawBuffer( GL_FRONT );
+//				glDrawBuffer( GL_FRONT );
 				self.fbo_get()->blit();
 
 				self.m_XORRectangle.set( area, self.getCamera().width, self.getCamera().height );
 
-				glDrawBuffer( GL_BACK );
+//				glDrawBuffer( GL_BACK );
 
 				GlobalOpenGL_debugAssertNoErrors();
-				glwidget_make_current( self.m_gl_widget );
+//				glwidget_make_current( self.m_gl_widget );
+				glwidget_swap_buffers( self.m_gl_widget );
 			}
 		}
 	}
@@ -1339,33 +1291,58 @@ void CamWnd::selection_motion_freemove( const MotionDeltaValues& delta ){
 typedef MemberCaller1<CamWnd, const MotionDeltaValues&, &CamWnd::selection_motion_freemove> CamWnd_selection_motion_freemove;
 
 
+void camera_orbit_scroll( camera_t& camera ){
+	Vector3 viewvector = vector3_normalised( camera.m_orbit_center - Camera_getOrigin( camera ) );
+	if( vector3_dot( viewvector, -camera.vpn ) < 0 )
+		vector3_negate( viewvector );
+	float offset = vector3_length( camera.m_orbit_center - camera.m_orbit_initial_pos );
+	const int off = camera.m_orbit_offset;
+	if( off < 0 || off > 16 ){
+		offset -= offset * off / 8 * pow( 2.0f, static_cast<float>( off < 0 ? -off : off - 16 ) / 8.f );
+	}
+	else if( off == 8 ){
+		offset = std::min( 8.f, offset / 16.f ); //prevent zero offset, resulting in NAN viewvector in the next scroll step
+	}
+	else{
+		offset -= offset * off / 8;
+	}
+	Camera_setOrigin( camera, camera.m_orbit_center - viewvector * offset );
+}
+
 gboolean wheelmove_scroll( GtkWidget* widget, GdkEventScroll* event, CamWnd* camwnd ){
 	//gtk_window_set_focus( camwnd->m_parent, camwnd->m_gl_widget );
 	gtk_widget_grab_focus( camwnd->m_gl_widget );
 	if( !gtk_window_is_active( camwnd->m_parent ) )
 		gtk_window_present( camwnd->m_parent );
 
+	camera_t& cam = camwnd->getCamera();
+
 	if ( event->direction == GDK_SCROLL_UP ) {
-		if ( camwnd->getCamera().movementflags & MOVE_FOCUS ) {
-			++camwnd->getCamera().m_focus_offset;
+		if ( cam.movementflags & MOVE_FOCUS ) {
+			++cam.m_focus_offset;
+			return FALSE;
+		}
+		else if( cam.m_orbit ){
+			++cam.m_orbit_offset;
+			camera_orbit_scroll( cam );
 			return FALSE;
 		}
 
-		Camera_Freemove_updateAxes( camwnd->getCamera() );
+		Camera_Freemove_updateAxes( cam );
 		if( camwnd->m_bFreeMove || !g_camwindow_globals.m_bZoomInToPointer ){
-			Camera_setOrigin( *camwnd, Camera_getOrigin( *camwnd ) + camwnd->getCamera().forward * static_cast<float>( g_camwindow_globals_private.m_nScrollMoveSpeed ) );
+			Camera_setOrigin( *camwnd, Camera_getOrigin( *camwnd ) + cam.forward * static_cast<float>( g_camwindow_globals_private.m_nScrollMoveSpeed ) );
 		}
 		else{
-			//Matrix4 maa = matrix4_multiplied_by_matrix4( camwnd->getCamera().projection, camwnd->getCamera().modelview );
-			Matrix4 maa = camwnd->getCamera().m_view->GetViewMatrix();
+			//Matrix4 maa = matrix4_multiplied_by_matrix4( cam.projection, cam.modelview );
+			Matrix4 maa = cam.m_view->GetViewMatrix();
 			matrix4_affine_invert( maa );
 
 			float x = static_cast<float>( event->x );
 			float y = static_cast<float>( event->y );
 			Vector3 normalized;
 
-			normalized[0] = 2.0f * ( x ) / static_cast<float>( camwnd->getCamera().width ) - 1.0f;
-			normalized[1] = 2.0f * ( y )/ static_cast<float>( camwnd->getCamera().height ) - 1.0f;
+			normalized[0] = 2.0f * ( x ) / static_cast<float>( cam.width ) - 1.0f;
+			normalized[1] = 2.0f * ( y )/ static_cast<float>( cam.height ) - 1.0f;
 			normalized[1] *= -1.f;
 			normalized[2] = 0.f;
 
@@ -1380,13 +1357,18 @@ gboolean wheelmove_scroll( GtkWidget* widget, GdkEventScroll* event, CamWnd* cam
 		}
 	}
 	else if ( event->direction == GDK_SCROLL_DOWN ) {
-		if ( camwnd->getCamera().movementflags & MOVE_FOCUS ) {
-			--camwnd->getCamera().m_focus_offset;
+		if ( cam.movementflags & MOVE_FOCUS ) {
+			--cam.m_focus_offset;
+			return FALSE;
+		}
+		else if( cam.m_orbit ){
+			--cam.m_orbit_offset;
+			camera_orbit_scroll( cam );
 			return FALSE;
 		}
 
-		Camera_Freemove_updateAxes( camwnd->getCamera() );
-		Camera_setOrigin( *camwnd, Camera_getOrigin( *camwnd ) - camwnd->getCamera().forward * static_cast<float>( g_camwindow_globals_private.m_nScrollMoveSpeed ) );
+		Camera_Freemove_updateAxes( cam );
+		Camera_setOrigin( *camwnd, Camera_getOrigin( *camwnd ) - cam.forward * static_cast<float>( g_camwindow_globals_private.m_nScrollMoveSpeed ) );
 	}
 
 	return FALSE;
@@ -2067,7 +2049,7 @@ void CamWnd::Cam_Draw(){
 	}
 
 
-	unsigned int globalstate = RENDER_DEPTHTEST | RENDER_COLOURWRITE | RENDER_DEPTHWRITE | RENDER_ALPHATEST | RENDER_BLEND | RENDER_CULLFACE | RENDER_COLOURARRAY | RENDER_OFFSETLINE | RENDER_POLYGONSMOOTH | RENDER_LINESMOOTH | RENDER_FOG | RENDER_COLOURCHANGE | RENDER_TEXT;
+	unsigned int globalstate = RENDER_DEPTHTEST | RENDER_COLOURWRITE | RENDER_DEPTHWRITE | RENDER_ALPHATEST | RENDER_BLEND | RENDER_CULLFACE | RENDER_COLOURARRAY | RENDER_OFFSETLINE | RENDER_POLYGONSMOOTH | RENDER_LINESMOOTH | RENDER_FOG | RENDER_COLOURCHANGE;
 	switch ( m_Camera.draw_mode )
 	{
 	case cd_wire:
@@ -2115,26 +2097,15 @@ void CamWnd::Cam_Draw(){
 
 		Scene_Render( renderer, m_view );
 
-		RenderableCamWorkzone workzone;
-		if( g_camwindow_globals_private.m_bShowWorkzone && GlobalSelectionSystem().countSelected() != 0 ){
-			workzone.render( renderer, m_state_workzone );
+		if( g_camwindow_globals_private.m_bShowWorkzone && GlobalSelectionSystem().countSelected() != 0 && GlobalSelectionSystem().ManipulatorMode() != SelectionSystem::eUV ){
+			m_draw_workzone.render( renderer, m_state_workzone );
+		}
+
+		if( g_camwindow_globals_private.m_bShowSize && GlobalSelectionSystem().countSelected() != 0 ){
+			m_draw_size.render( renderer, m_state_text, m_view );
 		}
 
 		renderer.render( m_Camera.modelview, m_Camera.projection );
-	}
-
-	/* size */
-	if( g_camwindow_globals_private.m_bShowSize && GlobalSelectionSystem().countSelected() != 0 ){
-		const AABB bounds = GlobalSelectionSystem().getBoundsSelected();
-		if( bounds.extents.x() != 0 || bounds.extents.y() != 0 || bounds.extents.z() != 0 ){
-			glMatrixMode( GL_PROJECTION );
-			glLoadIdentity();
-			glOrtho( 0, m_Camera.width, 0, m_Camera.height, -100, 100 );
-			glTranslated( m_Camera.width / 2.0, m_Camera.height / 2.0, 0 );
-			glMatrixMode( GL_MODELVIEW );
-			glLoadIdentity();
-			m_draw_size.render( bounds, m_view );
-		}
 	}
 
 	// prepare for 2d stuff
@@ -2284,11 +2255,13 @@ Vector3 Camera_getFocusPos( camera_t& camera ){
 			}
 		}
 	}
-	if( camera.m_focus_offset < 0 || camera.m_focus_offset > 16 ){
-		offset -= offset * camera.m_focus_offset / 8 * pow( 2.0f, static_cast<float>( camera.m_focus_offset < 0 ? -camera.m_focus_offset : camera.m_focus_offset - 16 ) / 8.f );
+
+	const int off = camera.m_focus_offset;
+	if( off < 0 || off > 16 ){
+		offset -= offset * off / 8 * pow( 2.0f, static_cast<float>( off < 0 ? -off : off - 16 ) / 8.f );
 	}
 	else{
-		offset -= offset * camera.m_focus_offset / 8;
+		offset -= offset * off / 8;
 	}
 	return ( aabb.origin - viewvector * offset );
 }
@@ -2359,6 +2332,9 @@ void CamWnd_registerShortcuts(){
 	if ( g_pGameDescription->mGameType == "doom3" ) {
 		command_connect_accelerator( "TogglePreview" );
 	}
+
+	command_connect_accelerator( "CameraModeNext" );
+	command_connect_accelerator( "CameraModePrev" );
 
 	command_connect_accelerator( "CameraSpeedInc" );
 	command_connect_accelerator( "CameraSpeedDec" );
@@ -2440,50 +2416,23 @@ void GlobalCamera_LookThroughCamera(){
 
 
 void RenderModeImport( int value ){
-	switch ( value )
-	{
-	case 0:
-		CamWnd_SetMode( cd_wire );
-		break;
-	case 1:
-		CamWnd_SetMode( cd_solid );
-		break;
-	case 2:
-		CamWnd_SetMode( cd_texture );
-		break;
-	case 3:
-		CamWnd_SetMode( cd_texture_plus_wire );
-		break;
-	case 4:
-		CamWnd_SetMode( cd_lighting );
-		break;
-	default:
-		CamWnd_SetMode( cd_texture );
-	}
+	CamWnd_SetMode( static_cast<camera_draw_mode>( ( value < 0 || value >= camera_draw_mode_count)? 2 : value ) );
 }
 typedef FreeCaller1<int, RenderModeImport> RenderModeImportCaller;
 
 void RenderModeExport( const IntImportCallback& importer ){
-	switch ( CamWnd_GetMode() )
-	{
-	case cd_wire:
-		importer( 0 );
-		break;
-	case cd_solid:
-		importer( 1 );
-		break;
-	case cd_texture:
-		importer( 2 );
-		break;
-	case cd_texture_plus_wire:
-		importer( 3 );
-		break;
-	case cd_lighting:
-		importer( 4 );
-		break;
-	}
+	importer( CamWnd_GetMode() );
 }
 typedef FreeCaller1<const IntImportCallback&, RenderModeExport> RenderModeExportCaller;
+
+void CameraModeNext(){
+	const int count = camera_draw_mode_count - ( g_pGameDescription->mGameType == "doom3"? 0 : 1 );
+	CamWnd_SetMode( static_cast<camera_draw_mode>( ( CamWnd_GetMode() + 1 ) % count ) );
+}
+void CameraModePrev(){
+	const int count = camera_draw_mode_count - ( g_pGameDescription->mGameType == "doom3"? 0 : 1 );
+	CamWnd_SetMode( static_cast<camera_draw_mode>( ( CamWnd_GetMode() + count - 1 ) % count ) );
+}
 
 void CamMSAAImport( int value ){
 	g_camwindow_globals_private.m_MSAA = value ? 1 << value : value;
@@ -2544,27 +2493,13 @@ void Camera_constructPreferences( PreferencesPage& page ){
 		BoolExportCaller( g_camwindow_globals_private.m_bFaceWire )
 		);
 
-	if ( g_pGameDescription->mGameType == "doom3" ) {
-		const char* render_mode[] = { "Wireframe", "Flatshade", "Textured", "Textured+Wire", "Lighting" };
-
-		page.appendCombo(
-			"Render Mode",
-			STRING_ARRAY_RANGE( render_mode ),
-			IntImportCallback( RenderModeImportCaller() ),
-			IntExportCallback( RenderModeExportCaller() )
-			);
-	}
-	else
-	{
-		const char* render_mode[] = { "Wireframe", "Flatshade", "Textured", "Textured+Wire" };
-
-		page.appendCombo(
-			"Render Mode",
-			STRING_ARRAY_RANGE( render_mode ),
-			IntImportCallback( RenderModeImportCaller() ),
-			IntExportCallback( RenderModeExportCaller() )
-			);
-	}
+	const char* render_modes[]{ "Wireframe", "Flatshade", "Textured", "Textured+Wire", "Lighting" };
+	page.appendCombo(
+		"Render Mode",
+		StringArrayRange( render_modes, render_modes + ARRAY_SIZE( render_modes ) - ( g_pGameDescription->mGameType == "doom3"? 0 : 1 ) ),
+		IntImportCallback( RenderModeImportCaller() ),
+		IntExportCallback( RenderModeExportCaller() )
+		);
 
 	if( GlobalOpenGL().support_ARB_framebuffer_object ){
 		const char* samples[] = { "0", "2", "4", "8", "16", "32" };
@@ -2635,6 +2570,9 @@ void CamWnd_Construct(){
 	if ( g_pGameDescription->mGameType == "doom3" ) {
 		GlobalCommands_insert( "TogglePreview", FreeCaller<CamWnd_TogglePreview>(), Accelerator( GDK_F3 ) );
 	}
+
+	GlobalCommands_insert( "CameraModeNext", FreeCaller<CameraModeNext>(), Accelerator( '}', (GdkModifierType)GDK_SHIFT_MASK ) );
+	GlobalCommands_insert( "CameraModePrev", FreeCaller<CameraModePrev>(), Accelerator( '{', (GdkModifierType)GDK_SHIFT_MASK ) );
 
 	GlobalCommands_insert( "CameraSpeedInc", FreeCaller<CameraSpeed_increase>(), Accelerator( GDK_KP_Add, (GdkModifierType)GDK_SHIFT_MASK ) );
 	GlobalCommands_insert( "CameraSpeedDec", FreeCaller<CameraSpeed_decrease>(), Accelerator( GDK_KP_Subtract, (GdkModifierType)GDK_SHIFT_MASK ) );

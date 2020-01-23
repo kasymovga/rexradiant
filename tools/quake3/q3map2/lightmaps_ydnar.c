@@ -60,28 +60,29 @@
  */
 
 void WriteTGA24( char *filename, byte *data, int width, int height, qboolean flip ){
-	int i, c;
-	byte    *buffer, *in;
+	int i;
+	const int headSz = 18;
+	const int sz = width * height * 3 + headSz;
+	byte    *buffer, *pix, *in;
 	FILE    *file;
 
-
 	/* allocate a buffer and set it up */
-	buffer = safe_malloc( width * height * 3 + 18 );
-	memset( buffer, 0, 18 );
-	buffer[ 2 ] = 2;
+	buffer = safe_malloc( sz );
+	pix = buffer + headSz;
+	memset( buffer, 0, headSz );
+	buffer[ 2 ] = 2;		// uncompressed type
 	buffer[ 12 ] = width & 255;
 	buffer[ 13 ] = width >> 8;
 	buffer[ 14 ] = height & 255;
 	buffer[ 15 ] = height >> 8;
-	buffer[ 16 ] = 24;
+	buffer[ 16 ] = 24;	// pixel size
 
 	/* swap rgb to bgr */
-	c = ( width * height * 3 ) + 18;
-	for ( i = 18; i < c; i += 3 )
+	for ( i = 0; i < sz - headSz; i += 3 )
 	{
-		buffer[ i ] = data[ i - 18 + 2 ];       /* blue */
-		buffer[ i + 1 ] = data[ i - 18 + 1 ];   /* green */
-		buffer[ i + 2 ] = data[ i - 18 + 0 ];   /* red */
+		pix[ i + 0 ] = data[ i + 2 ];   /* blue */
+		pix[ i + 1 ] = data[ i + 1 ];   /* green */
+		pix[ i + 2 ] = data[ i + 0 ];   /* red */
 	}
 
 	/* write it and free the buffer */
@@ -92,12 +93,12 @@ void WriteTGA24( char *filename, byte *data, int width, int height, qboolean fli
 
 	/* flip vertically? */
 	if ( flip ) {
-		fwrite( buffer, 1, 18, file );
-		for ( in = buffer + ( ( height - 1 ) * width * 3 ) + 18; in >= buffer; in -= ( width * 3 ) )
+		fwrite( buffer, 1, headSz, file );
+		for ( in = pix + ( ( height - 1 ) * width * 3 ); in >= pix; in -= ( width * 3 ) )
 			fwrite( in, 1, ( width * 3 ), file );
 	}
 	else{
-		fwrite( buffer, 1, c, file );
+		fwrite( buffer, 1, sz, file );
 	}
 
 	/* close the file */
@@ -153,7 +154,7 @@ void ExportLightmaps( void ){
 
 int ExportLightmapsMain( int argc, char **argv ){
 	/* arg checking */
-	if ( argc < 1 ) {
+	if ( argc < 2 ) {
 		Sys_Printf( "Usage: q3map -export [-v] <mapname>\n" );
 		return 0;
 	}
@@ -188,7 +189,7 @@ int ImportLightmapsMain( int argc, char **argv ){
 
 
 	/* arg checking */
-	if ( argc < 1 ) {
+	if ( argc < 2 ) {
 		Sys_Printf( "Usage: q3map -import [-v] <mapname>\n" );
 		return 0;
 	}
@@ -467,7 +468,7 @@ qboolean AddPatchToRawLightmap( int num, rawLightmap_t *lm ){
 	vec3_t delta;
 	mesh_t src, *subdivided, *mesh;
 	float sBasis, tBasis, s, t;
-	float length, widthTable[ MAX_EXPANDED_AXIS ], heightTable[ MAX_EXPANDED_AXIS ];
+	float length, widthTable[ MAX_EXPANDED_AXIS ] = {0}, heightTable[ MAX_EXPANDED_AXIS ] = {0};
 
 
 	/* patches finish a raw lightmap */
@@ -491,8 +492,6 @@ qboolean AddPatchToRawLightmap( int num, rawLightmap_t *lm ){
 
 	/* find the longest distance on each row/column */
 	verts = mesh->verts;
-	memset( widthTable, 0, sizeof( widthTable ) );
-	memset( heightTable, 0, sizeof( heightTable ) );
 	for ( y = 0; y < mesh->height; y++ )
 	{
 		for ( x = 0; x < mesh->width; x++ )
@@ -826,8 +825,7 @@ qboolean AddSurfaceToRawLightmap( int num, rawLightmap_t *lm ){
 	/* for planar surfaces, create lightmap vectors for st->xyz conversion */
 	if ( VectorLength( ds->lightmapVecs[ 2 ] ) || 1 ) {  /* ydnar: can't remember what exactly i was thinking here... */
 		/* allocate space for the vectors */
-		lm->vecs = safe_malloc( 3 * sizeof( vec3_t ) );
-		memset( lm->vecs, 0, 3 * sizeof( vec3_t ) );
+		lm->vecs = safe_calloc( 3 * sizeof( vec3_t ) );
 		VectorCopy( ds->lightmapVecs[ 2 ], lm->vecs[ 2 ] );
 
 		/* project stepped lightmap blocks and subtract to get planevecs */
@@ -998,18 +996,15 @@ void SetupSurfaceLightmaps( void ){
 	/* allocate a list of surface clusters */
 	numSurfaceClusters = 0;
 	maxSurfaceClusters = numBSPLeafSurfaces;
-	surfaceClusters = safe_malloc( maxSurfaceClusters * sizeof( *surfaceClusters ) );
-	memset( surfaceClusters, 0, maxSurfaceClusters * sizeof( *surfaceClusters ) );
+	surfaceClusters = safe_calloc( maxSurfaceClusters * sizeof( *surfaceClusters ) );
 
 	/* allocate a list for per-surface info */
-	surfaceInfos = safe_malloc( numBSPDrawSurfaces * sizeof( *surfaceInfos ) );
-	memset( surfaceInfos, 0, numBSPDrawSurfaces * sizeof( *surfaceInfos ) );
+	surfaceInfos = safe_calloc( numBSPDrawSurfaces * sizeof( *surfaceInfos ) );
 	for ( i = 0; i < numBSPDrawSurfaces; i++ )
 		surfaceInfos[ i ].childSurfaceNum = -1;
 
 	/* allocate a list of surface indexes to be sorted */
-	sortSurfaces = safe_malloc( numBSPDrawSurfaces * sizeof( int ) );
-	memset( sortSurfaces, 0, numBSPDrawSurfaces * sizeof( int ) );
+	sortSurfaces = safe_calloc( numBSPDrawSurfaces * sizeof( int ) );
 
 	/* walk each model in the bsp */
 	for ( i = 0; i < numBSPModels; i++ )
@@ -1130,14 +1125,12 @@ void SetupSurfaceLightmaps( void ){
 
 	/* allocate a list of surfaces that would go into raw lightmaps */
 	numLightSurfaces = 0;
-	lightSurfaces = safe_malloc( numSurfsLightmapped * sizeof( int ) );
-	memset( lightSurfaces, 0, numSurfsLightmapped * sizeof( int ) );
+	lightSurfaces = safe_calloc( numSurfsLightmapped * sizeof( int ) );
 
 	/* allocate a list of raw lightmaps */
 	numRawSuperLuxels = 0;
 	numRawLightmaps = 0;
-	rawLightmaps = safe_malloc( numSurfsLightmapped * sizeof( *rawLightmaps ) );
-	memset( rawLightmaps, 0, numSurfsLightmapped * sizeof( *rawLightmaps ) );
+	rawLightmaps = safe_calloc( numSurfsLightmapped * sizeof( *rawLightmaps ) );
 
 	/* walk the list of sorted surfaces */
 	for ( i = 0; i < numBSPDrawSurfaces; i++ )
@@ -1226,10 +1219,8 @@ void SetupSurfaceLightmaps( void ){
 	/* allocate vertex luxel storage */
 	for ( k = 0; k < MAX_LIGHTMAPS; k++ )
 	{
-		vertexLuxels[ k ] = safe_malloc( numBSPDrawVerts * VERTEX_LUXEL_SIZE * sizeof( float ) );
-		memset( vertexLuxels[ k ], 0, numBSPDrawVerts * VERTEX_LUXEL_SIZE * sizeof( float ) );
-		radVertexLuxels[ k ] = safe_malloc( numBSPDrawVerts * VERTEX_LUXEL_SIZE * sizeof( float ) );
-		memset( radVertexLuxels[ k ], 0, numBSPDrawVerts * VERTEX_LUXEL_SIZE * sizeof( float ) );
+		vertexLuxels[ k ] = safe_calloc( numBSPDrawVerts * VERTEX_LUXEL_SIZE * sizeof( float ) );
+		radVertexLuxels[ k ] = safe_calloc( numBSPDrawVerts * VERTEX_LUXEL_SIZE * sizeof( float ) );
 	}
 
 	/* emit some stats */
@@ -1981,13 +1972,10 @@ static void SetupOutLightmap( rawLightmap_t *lm, outLightmap_t *olm ){
 	olm->numShaders = 0;
 
 	/* allocate buffers */
-	olm->lightBits = safe_malloc( ( olm->customWidth * olm->customHeight / 8 ) + 8 );
-	memset( olm->lightBits, 0, ( olm->customWidth * olm->customHeight / 8 ) + 8 );
-	olm->bspLightBytes = safe_malloc( olm->customWidth * olm->customHeight * 3 );
-	memset( olm->bspLightBytes, 0, olm->customWidth * olm->customHeight * 3 );
+	olm->lightBits = safe_calloc( ( olm->customWidth * olm->customHeight / 8 ) + 8 );
+	olm->bspLightBytes = safe_calloc( olm->customWidth * olm->customHeight * 3 );
 	if ( deluxemap ) {
-		olm->bspDirBytes = safe_malloc( olm->customWidth * olm->customHeight * 3 );
-		memset( olm->bspDirBytes, 0, olm->customWidth * olm->customHeight * 3 );
+		olm->bspDirBytes = safe_calloc( olm->customWidth * olm->customHeight * 3 );
 	}
 }
 
@@ -2184,10 +2172,7 @@ static void FindOutLightmaps( rawLightmap_t *lm, qboolean fastAllocate ){
 		if ( ok == qfalse ) {
 			/* allocate LIGHTMAP_RESERVE_COUNT new output lightmaps */
 			numOutLightmaps += LIGHTMAP_RESERVE_COUNT;
-			olm = safe_malloc( numOutLightmaps * sizeof( outLightmap_t ) );
-			if ( !olm ){
-				Error( "FindOutLightmaps: Failed to allocate memory.\n" );
-			}
+			olm = safe_malloc_info( numOutLightmaps * sizeof( outLightmap_t ), "FindOutLightmaps" );
 
 			if ( outLightmaps != NULL && numOutLightmaps > LIGHTMAP_RESERVE_COUNT ) {
 				memcpy( olm, outLightmaps, ( numOutLightmaps - LIGHTMAP_RESERVE_COUNT ) * sizeof( outLightmap_t ) );
@@ -2514,8 +2499,8 @@ void StoreSurfaceLightmaps( qboolean fastAllocate ){
 	char dirname[ 1024 ], filename[ 1024 ];
 	shaderInfo_t        *csi;
 	char lightmapName[ 128 ];
-	const char              *rgbGenValues[ 256 ];
-	const char              *alphaGenValues[ 256 ];
+	const char              *rgbGenValues[ 256 ] = {0};
+	const char              *alphaGenValues[ 256 ] = {0};
 
 
 	/* note it */
@@ -2530,8 +2515,6 @@ void StoreSurfaceLightmaps( qboolean fastAllocate ){
 		strcpy( dirname, source );
 		StripExtension( dirname );
 	}
-	memset( rgbGenValues, 0, sizeof( rgbGenValues ) );
-	memset( alphaGenValues, 0, sizeof( alphaGenValues ) );
 
 	/* -----------------------------------------------------------------
 	   average the sampled luxels into the bsp luxels
@@ -2563,8 +2546,7 @@ void StoreSurfaceLightmaps( qboolean fastAllocate ){
 			/* allocate bsp luxel storage */
 			if ( lm->bspLuxels[ lightmapNum ] == NULL ) {
 				size = lm->w * lm->h * BSP_LUXEL_SIZE * sizeof( float );
-				lm->bspLuxels[ lightmapNum ] = safe_malloc( size );
-				memset( lm->bspLuxels[ lightmapNum ], 0, size );
+				lm->bspLuxels[ lightmapNum ] = safe_calloc( size );
 			}
 
 			/* allocate radiosity lightmap storage */
@@ -3170,9 +3152,7 @@ void StoreSurfaceLightmaps( qboolean fastAllocate ){
 	timer_start = I_FloatTime();
 
 	/* count the bsp lightmaps and allocate space */
-	if ( bspLightBytes != NULL ) {
-		free( bspLightBytes );
-	}
+	free( bspLightBytes );
 	if ( numBSPLightmaps == 0 || externalLightmaps ) {
 		numBSPLightBytes = 0;
 		bspLightBytes = NULL;
@@ -3180,8 +3160,7 @@ void StoreSurfaceLightmaps( qboolean fastAllocate ){
 	else
 	{
 		numBSPLightBytes = ( numBSPLightmaps * game->lightmapSize * game->lightmapSize * 3 );
-		bspLightBytes = safe_malloc( numBSPLightBytes );
-		memset( bspLightBytes, 0, numBSPLightBytes );
+		bspLightBytes = safe_calloc( numBSPLightBytes );
 	}
 
 	/* walk the list of output lightmaps */
@@ -3193,6 +3172,13 @@ void StoreSurfaceLightmaps( qboolean fastAllocate ){
 		/* fill output lightmap */
 		if ( lightmapFill ) {
 			FillOutLightmap( olm );
+		}
+		else if( lightmapPink ){
+			for ( x = 0; x < olm->customHeight * olm->customWidth; ++x ){
+				if ( ( olm->lightBits[x >> 3] & ( 1 << ( x & 7 ) ) ) == 0 ) { /* not filled */
+					VectorSet( olm->bspLightBytes + x * 3, 255, 0, 255 );
+				}
+			}
 		}
 
 		/* is this a valid bsp lightmap? */
@@ -3512,7 +3498,9 @@ void StoreSurfaceLightmaps( qboolean fastAllocate ){
 
 			/* store it */
 			//%	Sys_Printf( "Emitting: %s (%d", csi->shader, strlen( csi->shader ) );
-			ds->shaderNum = EmitShader( csi->shader, &bspShaders[ ds->shaderNum ].contentFlags, &bspShaders[ ds->shaderNum ].surfaceFlags );
+			int cont = bspShaders[ ds->shaderNum ].contentFlags;
+			int surf = bspShaders[ ds->shaderNum ].surfaceFlags;
+			ds->shaderNum = EmitShader( csi->shader, &cont, &surf );
 			//%	Sys_Printf( ")\n" );
 		}
 
@@ -3523,20 +3511,24 @@ void StoreSurfaceLightmaps( qboolean fastAllocate ){
 			olm = &outLightmaps[ lm->outLightmapNums[ 0 ] ];
 
 			/* do some name mangling */
-			sprintf( lightmapName, "maps/%s/" EXTERNAL_LIGHTMAP, mapName, olm->extLightmapNum );
+			sprintf( lightmapName, "maps/%s/" EXTERNAL_LIGHTMAP "\n\t\ttcgen lightmap", mapName, olm->extLightmapNum );
 
 			/* create custom shader */
 			csi = CustomShader( info->si, "$lightmap", lightmapName );
 
 			/* store it */
 			//%	Sys_Printf( "Emitting: %s (%d", csi->shader, strlen( csi->shader ) );
-			ds->shaderNum = EmitShader( csi->shader, &bspShaders[ ds->shaderNum ].contentFlags, &bspShaders[ ds->shaderNum ].surfaceFlags );
+			int cont = bspShaders[ ds->shaderNum ].contentFlags;
+			int surf = bspShaders[ ds->shaderNum ].surfaceFlags;
+			ds->shaderNum = EmitShader( csi->shader, &cont, &surf );
 			//%	Sys_Printf( ")\n" );
 		}
 
 		/* use the normal plain-jane shader */
 		else{
-			ds->shaderNum = EmitShader( info->si->shader, &bspShaders[ ds->shaderNum ].contentFlags, &bspShaders[ ds->shaderNum ].surfaceFlags );
+			int cont = bspShaders[ ds->shaderNum ].contentFlags;
+			int surf = bspShaders[ ds->shaderNum ].surfaceFlags;
+			ds->shaderNum = EmitShader( info->si->shader, &cont, &surf );
 		}
 	}
 

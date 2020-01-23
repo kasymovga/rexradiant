@@ -77,6 +77,7 @@ private:
 };
 
 #include "timer.h"
+#include "gtkutil/idledraw.h"
 class FBO;
 
 class XYWnd
@@ -86,10 +87,13 @@ guint m_sizeHandler;
 guint m_exposeHandler;
 
 DeferredDraw m_deferredDraw;
+IdleDraw m_deferredOverlayDraw;
 DeferredMotion m_deferred_motion;
-public:
+
 FBO* m_fbo;
+public:
 FBO* fbo_get();
+
 GtkWindow* m_parent;
 XYWnd();
 ~XYWnd();
@@ -101,7 +105,6 @@ GtkWidget* GetWidget(){
 	return m_gl_widget;
 }
 
-public:
 SelectionSystemWindowObserver* m_window_observer;
 XORRectangle m_XORRectangle;
 WindowPositionTracker m_positionTracker;
@@ -113,14 +116,15 @@ static void recaptureStates(){
 	captureStates();
 }
 
-void PositionView( const Vector3& position );
-const Vector3& GetOrigin();
+const Vector3& GetOrigin() const;
 void SetOrigin( const Vector3& origin );
 void Scroll( int x, int y );
 
 void XY_Draw();
-bool XY_Draw_Overlay_start();
-void XY_Draw_Overlay_finish();
+bool overlayStart();
+void overlayFinish();
+void overlayDraw();
+void overlayUpdate();
 void DrawCameraIcon( const Vector3& origin, const Vector3& angles );
 void XY_DrawBlockGrid();
 void XY_DrawAxis();
@@ -134,8 +138,7 @@ void NewBrushDrag_Begin( int x, int y );
 void NewBrushDrag( int x, int y, bool square, bool cube );
 void NewBrushDrag_End( int x, int y );
 
-void XY_ToPoint( int x, int y, Vector3& point );
-void XY_SnapToGrid( Vector3& point );
+Vector3 XY_ToPoint( int x, int y, bool snap = false ) const;
 
 void Move_Begin();
 void Move_End();
@@ -149,21 +152,18 @@ guint m_zoom_focusOut;
 
 void ZoomIn();
 void ZoomOut();
-void ZoomInWithMouse( int pointx, int pointy );
-void FocusOnBounds( AABB& bounds );
+void ZoomInWithMouse( int x, int y );
+void FocusOnBounds( const AABB& bounds );
 
-void RenderActive();
 void SetActive( bool b ){
 	m_bActive = b;
-	RenderActive();
+	overlayUpdate();
 };
 bool Active(){
 	return m_bActive;
 };
-void UpdateCameraIcon();
-void UpdateCameraIcon_();
 
-void SetCustomPivotOrigin( int pointx, int pointy );
+void SetCustomPivotOrigin( int x, int y ) const;
 
 void SetViewType( VIEWTYPE n );
 bool m_bActive;
@@ -176,7 +176,7 @@ int m_chasemouse_delta_x, m_chasemouse_delta_y;
 
 guint m_chasemouse_handler;
 void ChaseMouse();
-bool chaseMouseMotion( int pointx, int pointy );
+bool chaseMouseMotion( int x, int y );
 
 void updateModelview();
 void updateProjection();
@@ -212,9 +212,6 @@ Vector3 m_mousePosition;
 
 VIEWTYPE m_viewType;
 
-void OriginalButtonUp( guint32 nFlags, int point, int pointy );
-void OriginalButtonDown( guint32 nFlags, int point, int pointy );
-
 void PaintSizeInfo( int nDim1, int nDim2 );
 
 int m_entityCreate_x, m_entityCreate_y;
@@ -240,17 +237,17 @@ void EntityCreate_MouseMove( int x, int y );
 void EntityCreate_MouseUp( int x, int y );
 
 void OnEntityCreate( const char* item );
-VIEWTYPE GetViewType(){
+VIEWTYPE GetViewType() const {
 	return m_viewType;
 }
 void SetScale( float f );
-float Scale(){
+float Scale() const {
 	return m_fScale;
 }
-int Width(){
+int Width() const {
 	return m_nWidth;
 }
-int Height(){
+int Height() const {
 	return m_nHeight;
 }
 

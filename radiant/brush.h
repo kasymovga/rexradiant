@@ -72,6 +72,7 @@ const unsigned int BRUSH_DETAIL_MASK = ( 1 << BRUSH_DETAIL_FLAG );
 #define BRUSH_CONNECTIVITY_DEBUG 0
 #define BRUSH_DEGENERATE_DEBUG 0
 
+#define Update_move_planepts_vertex 0
 
 inline bool texdef_sane( const texdef_t& texdef ){
 	return fabs( texdef.shift[0] ) < ( 1 << 16 )
@@ -86,8 +87,9 @@ inline void Winding_DrawWireframe( const Winding& winding ){
 inline void Winding_Draw( const Winding& winding, const Vector3& normal, RenderStateFlags state ){
 	glVertexPointer( 3, GL_FLOAT, sizeof( WindingVertex ), &winding.points.data()->vertex );
 
+	Vector3 normals[c_brush_maxFaces];
+
 	if ( ( state & RENDER_BUMP ) != 0 ) {
-		Vector3 normals[c_brush_maxFaces];
 		typedef Vector3* Vector3Iter;
 		for ( Vector3Iter i = normals, end = normals + winding.numpoints; i != end; ++i )
 		{
@@ -110,7 +112,6 @@ inline void Winding_Draw( const Winding& winding, const Vector3& normal, RenderS
 	else
 	{
 		if ( state & RENDER_LIGHTING ) {
-			Vector3 normals[c_brush_maxFaces];
 			typedef Vector3* Vector3Iter;
 			for ( Vector3Iter i = normals, last = normals + winding.numpoints; i != last; ++i )
 			{
@@ -256,6 +257,13 @@ inline PointVertex pointvertex_for_windingpoint( const Vector3& point, const Col
 			   );
 }
 
+inline DepthTestedPointVertex depthtested_pointvertex_for_windingpoint( const Vector3& point, const Colour4b& colour ){
+	return DepthTestedPointVertex(
+			   vertex3f_for_vector3( point ),
+			   colour
+			   );
+}
+
 inline bool check_plane_is_integer( const PlanePoints& planePoints ){
 	return !float_is_integer( planePoints[0][0] )
 		   || !float_is_integer( planePoints[0][1] )
@@ -269,7 +277,7 @@ inline bool check_plane_is_integer( const PlanePoints& planePoints ){
 }
 
 inline void brush_check_shader( const char* name ){
-	if ( !shader_valid( name ) ) {
+	if ( !texdef_name_valid( name ) ) {
 		globalErrorStream() << "brush face has invalid texture name: '" << name << "'\n";
 	}
 }
@@ -823,7 +831,7 @@ void copy( const Vector3& p0, const Vector3& p1, const Vector3& p2 ){
 	}
 	else
 	{
-		m_planeCached = plane3_for_points( p2, p1, p0 );
+		m_planeCached = plane3_for_points( p0, p1, p2 );
 		updateSource();
 	}
 }
@@ -909,7 +917,6 @@ void exportState( Face& face ) const {
 	m_planeState.exportState( face.getPlane() );
 	m_shaderState.exportState( face.getShader() );
 	m_texdefState.exportState( face.getTexdef() );
-	face.centroid_saved_reset();
 }
 
 void release(){
@@ -932,8 +939,7 @@ TextureProjection m_texdefTransformed;
 
 Winding m_winding;
 Vector3 m_centroid;
-Vector3 m_centroid_saved; //this is far not pretty hack! (invariant point for texlock in AP)
-bool m_centroid_saved_reset; //fixme please :3
+Vector3 m_centroid_cached; //this is far not pretty hack! (invariant point for texlock in AP)
 bool m_filtered;
 
 FaceObserver* m_observer;
@@ -951,7 +957,6 @@ Face( FaceObserver* observer ) :
 	m_refcount( 0 ),
 	m_shader( texdef_name_default() ),
 	m_texdef( m_shader, TextureProjection(), false ),
-	m_centroid_saved_reset( true ),
 	m_filtered( false ),
 	m_observer( observer ),
 	m_undoable_observer( 0 ),
@@ -972,7 +977,6 @@ Face(
 	m_refcount( 0 ),
 	m_shader( shader ),
 	m_texdef( m_shader, projection ),
-	m_centroid_saved_reset( true ),
 	m_observer( observer ),
 	m_undoable_observer( 0 ),
 	m_map( 0 ){
@@ -986,7 +990,6 @@ Face( const Face& other, FaceObserver* observer ) :
 	m_refcount( 0 ),
 	m_shader( other.m_shader.getShader(), other.m_shader.m_flags ),
 	m_texdef( m_shader, other.getTexdef().normalised() ),
-	m_centroid_saved_reset( true ),
 	m_observer( observer ),
 	m_undoable_observer( 0 ),
 	m_map( 0 ){
@@ -1096,13 +1099,18 @@ void texdef_from_points(){
 	Brush_textureChanged();
 }
 
+void transform_texdef( const Matrix4& matrix, const Vector3& invariant = g_vector3_identity ){
+	revertTexdef();
+//	Texdef_transformLocked( m_texdefTransformed, m_shader.width(), m_shader.height(), m_plane.plane3(), matrix, static_cast<Vector3>( m_plane.plane3().normal() * m_plane.plane3().dist() ) );
+	Texdef_transform( m_texdefTransformed, m_shader.width(), m_shader.height(), m_plane.plane3(), matrix, invariant );
+	EmitTextureCoordinates();
+	Brush_textureChanged();
+}
+
 void transform( const Matrix4& matrix, bool mirror ){
 	if ( g_brush_texturelock_enabled ) {
-		if( m_centroid_saved_reset ){
-			m_centroid_saved = m_centroid;
-			m_centroid_saved_reset = false;
-		}
-		Texdef_transformLocked( m_texdefTransformed, m_shader.width(), m_shader.height(), m_plane.plane3(), matrix, contributes() ? m_centroid_saved : static_cast<Vector3>( m_plane.plane3().normal() * m_plane.plane3().dist() ) );
+		Texdef_transformLocked( m_texdefTransformed, m_shader.width(), m_shader.height(), m_plane.plane3(), matrix, contributes() ? m_centroid_cached : static_cast<Vector3>( m_plane.plane3().normal() * m_plane.plane3().dist() ) );
+		Brush_textureChanged();
 	}
 	else if( g_bp_globals.m_texdefTypeId == TEXDEFTYPEID_VALVE ){
 		const DoubleVector3 from = vector3_normalised( vector3_cross( m_texdefTransformed.m_basis_s, m_texdefTransformed.m_basis_t ) );
@@ -1125,10 +1133,6 @@ void transform( const Matrix4& matrix, bool mirror ){
 	ASSERT_MESSAGE( projectionaxis_for_normal( normal ) == projectionaxis_for_normal( plane3().normal() ), "bleh" );
 #endif
 	m_observer->planeChanged();
-
-	if ( g_brush_texturelock_enabled || g_bp_globals.m_texdefTypeId == TEXDEFTYPEID_VALVE ) {
-		Brush_textureChanged();
-	}
 }
 
 void assign_planepts( const PlanePoints planepts ){
@@ -1147,21 +1151,21 @@ void freezeTransform(){
 	m_plane = m_planeTransformed;
 	planepts_assign( m_move_planepts, m_move_planeptsTransformed );
 	m_texdef.m_projection = m_texdefTransformed;
-
-	m_centroid_saved_reset = true;
 }
 
 void update_move_planepts_vertex( std::size_t index, PlanePoints planePoints ){
-	std::size_t numpoints = getWinding().numpoints;
-	ASSERT_MESSAGE( index < numpoints, "update_move_planepts_vertex: invalid index" );
+	if( contributes() ){
+		std::size_t numpoints = getWinding().numpoints;
+		ASSERT_MESSAGE( index < numpoints, "update_move_planepts_vertex: invalid index" );
 
-	std::size_t opposite = Winding_Opposite( getWinding(), index );
-	std::size_t adjacent = Winding_wrap( getWinding(), opposite + numpoints - 1 );
-	planePoints[0] = getWinding()[opposite].vertex;
-	planePoints[1] = getWinding()[index].vertex;
-	planePoints[2] = getWinding()[adjacent].vertex;
-	// winding points are very inaccurate, so they must be quantised before using them to generate the face-plane
-	planepts_quantise( planePoints, GRID_MIN );
+		std::size_t opposite = Winding_Opposite( getWinding(), index );
+		std::size_t adjacent = Winding_wrap( getWinding(), opposite + numpoints - 1 );
+		planePoints[0] = getWinding()[opposite].vertex;
+		planePoints[1] = getWinding()[index].vertex;
+		planePoints[2] = getWinding()[adjacent].vertex;
+		// winding points are very inaccurate, so they must be quantised before using them to generate the face-plane
+//		planepts_quantise( planePoints, GRID_MIN );
+	}
 }
 
 void snapto( float snap ){
@@ -1310,12 +1314,15 @@ Winding& getWinding(){
 	return m_winding;
 }
 
-void centroid_saved_reset() {
-	m_centroid_saved_reset = true;
+void cacheCentroid() {
+	m_centroid_cached = m_centroid;
 }
 
 const Plane3& plane3() const {
 	m_observer->evaluateTransform();
+	return m_planeTransformed.plane3();
+}
+const Plane3& plane3_() const {
 	return m_planeTransformed.plane3();
 }
 FacePlane& getPlane(){
@@ -1417,8 +1424,7 @@ class RenderableWireframe : public OpenGLRenderable
 public:
 void render( RenderStateFlags state ) const {
 #if 1
-	glColorPointer( 4, GL_UNSIGNED_BYTE, sizeof( PointVertex ), &m_vertices->colour );
-	glVertexPointer( 3, GL_FLOAT, sizeof( PointVertex ), &m_vertices->vertex );
+	glVertexPointer( 3, GL_FLOAT, sizeof( DepthTestedPointVertex ), &m_vertices->vertex );
 	glDrawElements( GL_LINES, GLsizei( m_size << 1 ), RenderIndexTypeID, m_faceVertex.data() );
 #else
 	glBegin( GL_LINES );
@@ -1433,7 +1439,7 @@ void render( RenderStateFlags state ) const {
 
 Array<EdgeRenderIndices> m_faceVertex;
 std::size_t m_size;
-const PointVertex* m_vertices;
+const DepthTestedPointVertex* m_vertices;
 };
 
 class Brush;
@@ -1509,16 +1515,6 @@ Face& getFace() const {
 void testSelect( SelectionTest& test, SelectionIntersection& best ){
 	test.TestPoint( getEdge(), best );
 }
-Vector3 bestPlaneIndirect( const SelectionTest& test ) const {
-	const Winding& winding = getFace().getWinding();
-	Vector3 points[2];
-	points[0] = winding[m_faceVertex.getVertex()].vertex;
-	points[1] = winding[Winding_next( winding, m_faceVertex.getVertex() )].vertex;
-	for( std::size_t i = 0; i < 2; ++i ){
-		points[i] = vector4_projected( matrix4_transformed_vector4( test.getVolume().GetViewMatrix(), Vector4( points[i], 1 ) ) );
-	}
-	return line_closest_point( Line( points[0], points[1] ), g_vector3_identity );
-}
 };
 
 class SelectableVertex
@@ -1564,6 +1560,9 @@ virtual void edge_push_back( SelectableEdge& edge ) = 0;
 virtual void vertex_clear() = 0;
 virtual void vertex_push_back( SelectableVertex& vertex ) = 0;
 
+virtual void vertex_select() = 0;
+virtual void vertex_snap( const float snap ) = 0;
+
 virtual void DEBUG_verify() const = 0;
 };
 
@@ -1597,17 +1596,18 @@ Faces m_faces;
 
 // cached data compiled from state
 Array<PointVertex> m_faceCentroidPoints;
-RenderablePointArray m_render_faces;
+RenderablePointArray<PointVertex> m_render_faces;
 
-Array<PointVertex> m_uniqueVertexPoints;
+mutable Array<DepthTestedPointVertex> m_uniqueVertexPoints;
 typedef std::vector<SelectableVertex> SelectableVertices;
 SelectableVertices m_select_vertices;
-RenderablePointArray m_render_vertices;
+RenderablePointArray<DepthTestedPointVertex> m_render_vertices;
+RenderableDepthTestedPointArray m_render_deepvertices;
 
 Array<PointVertex> m_uniqueEdgePoints;
 typedef std::vector<SelectableEdge> SelectableEdges;
 SelectableEdges m_select_edges;
-RenderablePointArray m_render_edges;
+RenderablePointArray<PointVertex> m_render_edges;
 
 Array<EdgeRenderIndices> m_edge_indices;
 Array<EdgeFaces> m_edge_faces;
@@ -1620,6 +1620,7 @@ Callback m_boundsChanged;
 
 mutable bool m_planeChanged;   // b-rep evaluation required
 mutable bool m_transformChanged;   // transform evaluation required
+bool m_BRep_evaluation = false; //mutex for invalidation
 // ----
 
 public:
@@ -1629,6 +1630,7 @@ Callback m_lightsChanged;
 
 // static data
 static Shader* m_state_point;
+static Shader* m_state_deeppoint;
 // ----
 
 static EBrushType m_type;
@@ -1640,6 +1642,7 @@ Brush( scene::Node& node, const Callback& evaluateTransform, const Callback& bou
 	m_map( 0 ),
 	m_render_faces( m_faceCentroidPoints, GL_POINTS ),
 	m_render_vertices( m_uniqueVertexPoints, GL_POINTS ),
+	m_render_deepvertices( m_uniqueVertexPoints, GL_POINTS ),
 	m_render_edges( m_uniqueEdgePoints, GL_POINTS ),
 	m_evaluateTransform( evaluateTransform ),
 	m_boundsChanged( boundsChanged ),
@@ -1653,6 +1656,7 @@ Brush( const Brush& other, scene::Node& node, const Callback& evaluateTransform,
 	m_map( 0 ),
 	m_render_faces( m_faceCentroidPoints, GL_POINTS ),
 	m_render_vertices( m_uniqueVertexPoints, GL_POINTS ),
+	m_render_deepvertices( m_uniqueVertexPoints, GL_POINTS ),
 	m_render_edges( m_uniqueEdgePoints, GL_POINTS ),
 	m_evaluateTransform( evaluateTransform ),
 	m_boundsChanged( boundsChanged ),
@@ -1675,6 +1679,7 @@ Brush( const Brush& other ) :
 	m_map( 0 ),
 	m_render_faces( m_faceCentroidPoints, GL_POINTS ),
 	m_render_vertices( m_uniqueVertexPoints, GL_POINTS ),
+	m_render_deepvertices( m_uniqueVertexPoints, GL_POINTS ),
 	m_render_edges( m_uniqueEdgePoints, GL_POINTS ),
 	m_planeChanged( false ),
 	m_transformChanged( false ){
@@ -1787,12 +1792,11 @@ void updateFiltered(){
 
 // observer
 void planeChanged(){
-	/* m_planeChanged vs m_transformChanged relationship is important
-	b4 (w/o one) cycling dependency occured:
+	/* m_BRep_evaluation mutex prevents cyclic dependency:
 	transformModifier.set ; transformChanged() ; planeChanged() ; pivotChanged() ; sceneChangeNotify() ;
 	sceneRender() ; localAABB ; evaluateBRep ; buildBRep() ; evaluateTransform ; !!!problem starts here!!!! planeChanged() ; pivotChanged() ; sceneChangeNotify() ;
 	sceneRender() ; localAABB ; evaluateBRep ; buildBRep() ; */
-	if( !m_transformChanged ){
+	if( !m_BRep_evaluation ){
 		m_planeChanged = true;
 		aabbChanged();
 		m_lightsChanged();
@@ -1800,7 +1804,7 @@ void planeChanged(){
 }
 void shaderChanged(){
 	updateFiltered();
-	planeChanged();
+	planeChanged(); ///isn't too much for shader changed only?
 }
 
 void evaluateBRep() const {
@@ -1811,18 +1815,16 @@ void evaluateBRep() const {
 }
 
 void transformChanged(){
-	//m_transformChanged = true;
 	planeChanged();
-	m_transformChanged = true; //experimental fix of cyclic dependency
+	m_transformChanged = true;
 }
 typedef MemberCaller<Brush, &Brush::transformChanged> TransformChangedCaller;
 
 void evaluateTransform(){
 	if ( m_transformChanged ) {
-		//m_transformChanged = false;
 		revertTransform();
 		m_evaluateTransform();
-		m_transformChanged = false; //experimental fix of cyclic dependency
+		m_transformChanged = false;
 	}
 }
 const Matrix4& localToParent() const {
@@ -1844,7 +1846,22 @@ void renderComponents( SelectionSystem::EComponentMode mode, Renderer& renderer,
 	switch ( mode )
 	{
 	case SelectionSystem::eVertex:
-		renderer.addRenderable( m_render_vertices, localToWorld );
+		{
+			if( GlobalOpenGL().GL_1_5() ){
+				if( volume.fill() ){
+					renderer.SetState( m_state_deeppoint, Renderer::eFullMaterials );
+					renderer.addRenderable( m_render_deepvertices, localToWorld );
+				}
+				else{
+					for( auto& p : m_uniqueVertexPoints )
+						p.colour = colour_vertex;
+					renderer.addRenderable( m_render_vertices, localToWorld );
+				}
+			}
+			else{
+				renderer.addRenderable( m_render_vertices, localToWorld );
+			}
+		}
 		break;
 	case SelectionSystem::eEdge:
 		renderer.addRenderable( m_render_edges, localToWorld );
@@ -1866,10 +1883,14 @@ void transform( const Matrix4& matrix ){
 	}
 }
 void snapto( float snap ){
-	for ( Faces::iterator i = m_faces.begin(); i != m_faces.end(); ++i )
+	for ( Observers::iterator i = m_observers.begin(); i != m_observers.end(); ++i )
 	{
-		( *i )->snapto( snap );
+		( *i )->vertex_snap( snap );
 	}
+//	for ( Faces::iterator i = m_faces.begin(); i != m_faces.end(); ++i )
+//	{
+//		( *i )->snapto( snap );
+//	}
 }
 void revertTransform(){
 	for ( Faces::iterator i = m_faces.begin(); i != m_faces.end(); ++i )
@@ -1882,7 +1903,39 @@ void freezeTransform(){
 	{
 		( *i )->freezeTransform();
 	}
+	m_transformChanged = false;
 }
+
+	class VertexModeVertex
+	{
+	public:
+		const Vector3 m_vertex;
+		Vector3 m_vertexTransformed;
+		const bool m_selected;
+		std::vector<const Face*> m_faces;
+		VertexModeVertex( const Vector3& vertex, const bool selected ) : m_vertex( vertex ), m_vertexTransformed( vertex ), m_selected( selected ) {
+		}
+	};
+	typedef std::vector<VertexModeVertex> VertexModeVertices;
+
+
+VertexModeVertices m_vertexModeVertices;
+bool m_vertexModeOn{false};
+
+void vertexModeInit(){
+	m_vertexModeOn = true;
+	m_vertexModeVertices.clear();
+	undoSave();
+}
+
+void vertexModeFree(){
+	m_vertexModeOn = false;
+//	m_vertexModeVertices.clear(); //keep, as it may be required by buildBRep() after this call
+}
+
+void vertexModeTransform( const Matrix4& matrix );
+void vertexModeBuildHull( bool allTransformed = false );
+void vertexModeSnap( const float snap, bool all );
 
 /// \brief Returns the absolute index of the \p faceVertex.
 std::size_t absoluteIndex( FaceVertexId faceVertex ){
@@ -1975,9 +2028,11 @@ static void constructStatic( EBrushType type ){
 	g_bp_globals.m_texdefTypeId = BrushType_getTexdefType( type );
 
 	m_state_point = GlobalShaderCache().capture( "$POINT" );
+	m_state_deeppoint = GlobalShaderCache().capture( "$DEEPPOINT" );
 }
 static void destroyStatic(){
 	GlobalShaderCache().release( "$POINT" );
+	GlobalShaderCache().release( "$DEEPPOINT" );
 }
 
 std::size_t DEBUG_size(){
@@ -2104,7 +2159,7 @@ void windingForClipPlane( Winding& winding, const Plane3& plane ) const {
 	bool swap = false;
 
 	// get a poly that covers an effectively infinite area
-	Winding_createInfinite( buffer[swap], plane, m_maxWorldCoord + 1 );
+	Winding_createInfinite( buffer[swap], plane, m_maxWorldCoord );
 
 	// chop the poly by all of the other faces
 	{
@@ -2119,7 +2174,7 @@ void windingForClipPlane( Winding& winding, const Plane3& plane ) const {
 			}
 
 			if( buffer[swap].points.empty() ){
-				//globalErrorStream() << "windingForClipPlane: about to feed empty winding\n";
+				//globalErrorStream() << "windingForClipPlane: about to feed empty winding to Winding_Clip\n";
 				break;
 			}
 
@@ -2204,6 +2259,74 @@ void copy( const Brush& other ){
 		addFace( *( *i ) );
 	}
 	planeChanged();
+}
+
+/// for the only use to quickly check, if about to be transformed brush makes sense
+bool contributes() const {
+	/* plane_unique() ripoff, calling no evaluation */
+	auto plane_unique_ = [this]( std::size_t index ) -> bool {
+		// duplicate plane
+		for ( std::size_t i = 0; i < m_faces.size(); ++i )
+		{
+			if ( index != i && !plane3_inside( m_faces[index]->plane3_(), m_faces[i]->plane3_(), index < i ) ) {
+				return false;
+			}
+		}
+		return true;
+	};
+
+	/* windingForClipPlane() ripoff, calling no evaluation */
+	auto windingForClipPlane_ = [this, &plane_unique_]( const Plane3& plane ) -> bool {
+		FixedWinding buffer[2];
+		bool swap = false;
+
+		// get a poly that covers an effectively infinite area
+		Winding_createInfinite( buffer[swap], plane, m_maxWorldCoord );
+
+		// chop the poly by all of the other faces
+		for ( std::size_t i = 0; i < m_faces.size(); ++i )
+		{
+			const Face& clip = *m_faces[i];
+
+			if ( plane3_equal( clip.plane3_(), plane )
+				|| !plane3_valid( clip.plane3_() ) || !plane_unique_( i )
+				|| plane3_opposing( plane, clip.plane3_() ) ) {
+				continue;
+			}
+
+			if( buffer[swap].points.empty() ){
+				break;
+			}
+
+			buffer[!swap].clear();
+
+			{
+				// flip the plane, because we want to keep the back side
+				Plane3 clipPlane( vector3_negated( clip.plane3_().normal() ), -clip.plane3_().dist() );
+				Winding_Clip( buffer[swap], plane, clipPlane, i, buffer[!swap] );
+			}
+			swap = !swap;
+		}
+
+		return buffer[swap].size() > 2;
+	};
+
+
+	std::size_t contributing = 0;
+
+	for ( std::size_t i = 0; i < m_faces.size(); ++i )
+	{
+		Face& f = *m_faces[i];
+
+		if ( plane3_valid( f.plane3_() ) && plane_unique_( i ) ) {
+			if( windingForClipPlane_( f.plane3_() ) ){
+				++contributing;
+				if( contributing > 3 )
+					return true;
+			}
+		}
+	}
+	return false;
 }
 
 private:
@@ -2387,6 +2510,9 @@ bool buildWindings(){
 
 	{
 		m_aabb_local = AABB();
+
+		if( m_faces.size() )
+			m_faces[0]->plane3(); //force evaluateTransform() first, as m_faces is changed during vertexModeTransform
 
 		for ( std::size_t i = 0; i < m_faces.size(); ++i )
 		{
@@ -2698,7 +2824,6 @@ public:
 RenderablePointVectorPushBack( RenderablePointVector& points ) : m_points( points ){
 }
 void operator()( const Vector3& point ) const {
-	const Colour4b colour_selected( 0, 0, 255, 255 );
 	m_points.push_back( pointvertex_for_windingpoint( point, colour_selected ) );
 }
 };
@@ -2829,36 +2954,41 @@ void snapComponents( float snap ){
 		m_face->freezeTransform();
 	}
 }
+#if Update_move_planepts_vertex
 void update_move_planepts_vertex( std::size_t index ){
 	m_face->update_move_planepts_vertex( index, m_face->m_move_planepts );
 }
 void update_move_planepts_vertex2( std::size_t index, std::size_t other ){
-	const std::size_t numpoints = m_face->getWinding().numpoints;
-	ASSERT_MESSAGE( index < numpoints, "select_vertex: invalid index" );
+	if( m_face->contributes() ){
+		const std::size_t numpoints = m_face->getWinding().numpoints;
+		ASSERT_MESSAGE( index < numpoints, "select_vertex: invalid index" );
 
-	const std::size_t opposite = Winding_Opposite( m_face->getWinding(), index, other );
+		const std::size_t opposite = Winding_Opposite( m_face->getWinding(), index, other );
 
-	if ( triangle_reversed( index, other, opposite ) ) {
-		std::swap( index, other );
+		if ( triangle_reversed( index, other, opposite ) ) {
+			std::swap( index, other );
+		}
+
+		///! this actually happens with ON_EPSILON 1.0 / ( 1 << 8 )
+		ASSERT_MESSAGE(
+			triangles_same_winding(
+				m_face->getWinding()[opposite].vertex,
+				m_face->getWinding()[index].vertex,
+				m_face->getWinding()[other].vertex,
+				m_face->getWinding()[0].vertex,
+				m_face->getWinding()[1].vertex,
+				m_face->getWinding()[2].vertex
+				),
+			"update_move_planepts_vertex2: error"
+			);
+
+		m_face->m_move_planepts[0] = m_face->getWinding()[opposite].vertex;
+		m_face->m_move_planepts[1] = m_face->getWinding()[index].vertex;
+		m_face->m_move_planepts[2] = m_face->getWinding()[other].vertex;
+		planepts_quantise( m_face->m_move_planepts, GRID_MIN ); // winding points are very inaccurate
 	}
-
-	ASSERT_MESSAGE(
-		triangles_same_winding(
-			m_face->getWinding()[opposite].vertex,
-			m_face->getWinding()[index].vertex,
-			m_face->getWinding()[other].vertex,
-			m_face->getWinding()[0].vertex,
-			m_face->getWinding()[1].vertex,
-			m_face->getWinding()[2].vertex
-			),
-		"update_move_planepts_vertex2: error"
-		);
-
-	m_face->m_move_planepts[0] = m_face->getWinding()[opposite].vertex;
-	m_face->m_move_planepts[1] = m_face->getWinding()[index].vertex;
-	m_face->m_move_planepts[2] = m_face->getWinding()[other].vertex;
-	planepts_quantise( m_face->m_move_planepts, GRID_MIN ); // winding points are very inaccurate
 }
+#endif
 void update_selection_vertex(){
 	if ( m_vertexSelection.size() == 0 ) {
 		m_selectableVertices.setSelected( false );
@@ -2866,7 +2996,7 @@ void update_selection_vertex(){
 	else
 	{
 		m_selectableVertices.setSelected( true );
-
+#if Update_move_planepts_vertex
 		if ( m_vertexSelection.size() == 1 ) {
 			std::size_t index = Winding_FindAdjacent( getFace().getWinding(), *m_vertexSelection.begin() );
 
@@ -2883,6 +3013,7 @@ void update_selection_vertex(){
 				update_move_planepts_vertex2( index, other );
 			}
 		}
+#endif
 	}
 }
 void select_vertex( std::size_t index, bool select ){
@@ -2903,15 +3034,17 @@ bool selected_vertex( std::size_t index ) const {
 }
 
 void update_move_planepts_edge( std::size_t index ){
-	std::size_t numpoints = m_face->getWinding().numpoints;
-	ASSERT_MESSAGE( index < numpoints, "select_edge: invalid index" );
+	if( m_face->contributes() ){
+		std::size_t numpoints = m_face->getWinding().numpoints;
+		ASSERT_MESSAGE( index < numpoints, "select_edge: invalid index" );
 
-	std::size_t adjacent = Winding_next( m_face->getWinding(), index );
-	std::size_t opposite = Winding_Opposite( m_face->getWinding(), index );
-	m_face->m_move_planepts[0] = m_face->getWinding()[index].vertex;
-	m_face->m_move_planepts[1] = m_face->getWinding()[adjacent].vertex;
-	m_face->m_move_planepts[2] = m_face->getWinding()[opposite].vertex;
-	planepts_quantise( m_face->m_move_planepts, GRID_MIN ); // winding points are very inaccurate
+		std::size_t adjacent = Winding_next( m_face->getWinding(), index );
+		std::size_t opposite = Winding_Opposite( m_face->getWinding(), index );
+		m_face->m_move_planepts[0] = m_face->getWinding()[index].vertex;
+		m_face->m_move_planepts[1] = m_face->getWinding()[adjacent].vertex;
+		m_face->m_move_planepts[2] = m_face->getWinding()[opposite].vertex;
+//		planepts_quantise( m_face->m_move_planepts, GRID_MIN ); // winding points are very inaccurate
+	}
 }
 void update_selection_edge(){
 	if ( m_edgeSelection.size() == 0 ) {
@@ -3073,24 +3206,29 @@ void testSelect( Selector& selector, SelectionTest& test ){
 		Selector_add( selector, *this, best );
 	}
 }
-void bestPlaneIndirect( const SelectionTest& test, Plane3& plane, Vector3& intersection, float& dist, const Vector3& viewer ) const {
-	const Vector3 intersection_new = m_edge->bestPlaneIndirect( test );
-	const float dist_new = vector3_length_squared( intersection_new );
-	if( dist_new < dist ){
-		FaceVertexId faceVertex = m_edge->m_faceVertex;
-		const Plane3& plane1 = m_faceInstances[faceVertex.getFace()].getFace().plane3();
-		if( ( vector3_dot( plane1.normal(), viewer ) - plane1.dist() ) <= 0 ){
-			plane = plane1;
-			intersection = intersection_new;
-			dist = dist_new;
-		}
-		else{
-			faceVertex = next_edge( m_edge->m_faces, faceVertex );
-			const Plane3& plane2 = m_faceInstances[faceVertex.getFace()].getFace().plane3();
-			if( ( vector3_dot( plane2.normal(), viewer ) - plane2.dist() ) <= 0 ){
-				plane = plane2;
+
+void bestPlaneIndirect( const SelectionTest& test, Plane3& plane, Vector3& intersection, float& dist ) const {
+	const Winding& winding = m_edge->getFace().getWinding();
+	FaceVertexId faceVertex = m_edge->m_faceVertex;
+	Line line( winding[faceVertex.getVertex()].vertex, winding[Winding_next( winding, faceVertex.getVertex() )].vertex );
+	if( matrix4_clip_line_by_nearplane( test.getVolume().GetViewMatrix(), line ) == 2 ){
+		const Vector3 intersection_new = line_closest_point( line, g_vector3_identity );
+		const float dist_new = vector3_length_squared( intersection_new );
+		if( dist_new < dist ){
+			const Plane3& plane1 = m_faceInstances[faceVertex.getFace()].getFace().plane3();
+			if( plane3_distance_to_point( plane1, test.getVolume().getViewer() ) <= 0 ){
+				plane = plane1;
 				intersection = intersection_new;
 				dist = dist_new;
+			}
+			else{
+				faceVertex = next_edge( m_edge->m_faces, faceVertex );
+				const Plane3& plane2 = m_faceInstances[faceVertex.getFace()].getFace().plane3();
+				if( plane3_distance_to_point( plane2, test.getVolume().getViewer() ) <= 0 ){
+					plane = plane2;
+					intersection = intersection_new;
+					dist = dist_new;
+				}
 			}
 		}
 	}
@@ -3159,6 +3297,23 @@ void selectVerticesOnFaces( const FaceInstances_ptrs& faceinstances ){
 	}
 	while ( faceVertex.getFace() != m_vertex->m_faceVertex.getFace() );
 }
+void gather( Brush::VertexModeVertices& vertexModeVertices ) const {
+	vertexModeVertices.emplace_back( m_vertex->getFace().getWinding()[m_vertex->m_faceVertex.getVertex()].vertex, isSelected() );
+	FaceVertexId faceVertex = m_vertex->m_faceVertex;
+	do
+	{
+		vertexModeVertices.back().m_faces.push_back( &m_faceInstances[faceVertex.getFace()].getFace() );
+		faceVertex = next_vertex( m_vertex->m_faces, faceVertex );
+	}
+	while ( faceVertex.getFace() != m_vertex->m_faceVertex.getFace() );
+}
+bool vertex_select( const Vector3& vertex ){
+	if( vector3_length_squared( vertex - m_vertex->getFace().getWinding()[m_vertex->m_faceVertex.getVertex()].vertex ) < ( 0.1 * 0.1 ) ){
+		setSelected( true );
+		return true;
+	}
+	return false;
+}
 };
 
 class BrushInstanceVisitor
@@ -3217,7 +3372,7 @@ mutable RenderableWireframe m_render_wireframe;
 mutable RenderablePointVector m_render_selected;
 mutable AABB m_aabb_component;
 mutable Array<PointVertex> m_faceCentroidPointsCulled;
-RenderablePointArray m_render_faces_wireframe;
+RenderablePointArray<PointVertex> m_render_faces_wireframe;
 mutable bool m_viewChanged;   // requires re-evaluation of view-dependent cached data
 
 BrushClipPlane m_clipPlane;
@@ -3226,7 +3381,7 @@ static Shader* m_state_selpoint;
 
 const LightList* m_lightList;
 
-TransformModifier m_transform;
+BrushTransformModifier m_transform;
 
 BrushInstance( const BrushInstance& other ); // NOT COPYABLE
 BrushInstance& operator=( const BrushInstance& other ); // NOT ASSIGNABLE
@@ -3353,6 +3508,35 @@ void vertex_clear(){
 }
 void vertex_push_back( SelectableVertex& vertex ){
 	m_vertexInstances.push_back( VertexInstance( m_faceInstances, vertex ) );
+}
+
+void vertex_select(){
+	bool src_selected = false;
+	bool dst_selected = false;
+	for( const auto& v : m_brush.m_vertexModeVertices )
+		if( v.m_selected ){
+			src_selected = true;
+			for( auto& i : m_vertexInstances )
+				dst_selected |= i.vertex_select( v.m_vertexTransformed );
+		}
+	if( src_selected && !dst_selected && !m_vertexInstances.empty() )
+		m_vertexInstances[0].setSelected( true ); //select at least something to prevent transform interruption after removing all selected vertices during vertexModeTransform
+}
+
+void vertex_snap( const float snap, bool all ){
+	m_brush.vertexModeInit();
+	m_brush.m_vertexModeVertices.reserve( m_vertexInstances.size() );
+	for ( const auto& i : m_vertexInstances ){
+		i.gather( m_brush.m_vertexModeVertices );
+	}
+	m_brush.vertexModeSnap( snap, all );
+	m_brush.evaluateBRep();
+	m_brush.vertexModeFree();
+	m_brush.freezeTransform();
+}
+
+void vertex_snap( const float snap ){
+	vertex_snap( snap, true );
 }
 
 void DEBUG_verify() const {
@@ -3653,11 +3837,11 @@ void bestPlaneDirect( SelectionTest& test, Plane3& plane, SelectionIntersection&
 		}
 	}
 }
-void bestPlaneIndirect( SelectionTest& test, Plane3& plane, Vector3& intersection, float& dist, const Vector3& viewer ){
+void bestPlaneIndirect( SelectionTest& test, Plane3& plane, Vector3& intersection, float& dist ){
 	test.BeginMesh( localToWorld() );
 	for ( EdgeInstances::iterator i = m_edgeInstances.begin(); i != m_edgeInstances.end(); ++i )
 	{
-		( *i ).bestPlaneIndirect( test, plane, intersection, dist, viewer );
+		( *i ).bestPlaneIndirect( test, plane, intersection, dist );
 	}
 }
 void selectByPlane( const Plane3& plane ){
@@ -3699,12 +3883,8 @@ void selectVerticesOnTestedFaces( SelectionTest& test ){
 }
 
 
-void transformComponents( const Matrix4& matrix ){
-	for ( FaceInstances::iterator i = m_faceInstances.begin(); i != m_faceInstances.end(); ++i )
-	{
-		( *i ).transformComponents( matrix );
-	}
-}
+void transformComponents( const Matrix4& matrix );
+
 const AABB& getSelectedComponentsBounds() const {
 	m_aabb_component = AABB();
 
@@ -3722,33 +3902,118 @@ void gatherSelectedComponents( const Vector3Callback& callback ) const {
 	}
 }
 
-void snapComponents( float snap ){
-	for ( FaceInstances::iterator i = m_faceInstances.begin(); i != m_faceInstances.end(); ++i )
-	{
-		( *i ).snapComponents( snap );
+void insert_vertices( const Brush::VertexModeVertices& vertexModeVertices ){
+	if( !m_vertexInstances.empty() ){
+		m_brush.vertexModeInit();
+		m_brush.m_vertexModeVertices.reserve( m_vertexInstances.size() + 2 );
+		for ( const auto& i : m_vertexInstances ){
+			i.gather( m_brush.m_vertexModeVertices );
+		}
+		for ( const auto& i : vertexModeVertices ){
+			m_brush.m_vertexModeVertices.push_back( i );
+			if( i.m_faces.empty() )
+				m_brush.m_vertexModeVertices.back().m_faces.push_back( m_brush.m_vertexModeVertices[0].m_faces[0] );
+		}
+		m_transform.m_transformFrozen = false;
+		m_transform.setType( TRANSFORM_COMPONENT );
+		m_brush.transformChanged();
+		m_brush.evaluateBRep();
 	}
 }
+
+void remove_vertices(){
+	if( !m_vertexInstances.empty() ){
+		m_brush.vertexModeInit();
+		Brush::VertexModeVertices v;
+		v.reserve( m_vertexInstances.size() );
+		for ( const auto& i : m_vertexInstances ){
+			i.gather( v );
+			if( v.back().m_selected )
+				v.pop_back();
+		}
+		std::vector<bool> ok( v.size(), true );
+		gatherSelectedComponents( [&]( const Vector3 & value ) {
+			for( std::size_t i = 0; i < v.size(); ++i )
+				if( vector3_length_squared( v[i].m_vertex - value ) < 0.05 * 0.05 )
+					ok[i] = false;
+		} );
+
+		m_brush.m_vertexModeVertices.reserve( v.size() );
+		for( std::size_t i = 0; i < v.size(); ++i ){
+			if( ok[i] )
+				m_brush.m_vertexModeVertices.push_back( v[i] );
+		}
+		m_brush.vertexModeBuildHull();
+		m_brush.evaluateBRep();
+		m_brush.vertexModeFree();
+		m_brush.freezeTransform();
+	}
+}
+
+void snapComponents( float snap ){
+	for ( const auto& fi : m_faceInstances ){
+		if( fi.selectedComponents( SelectionSystem::eVertex ) ){
+			vertex_snap( snap, false );
+			return;
+		}
+	}
+
+	for ( auto& fi : m_faceInstances )
+		fi.snapComponents( snap );
+}
 void evaluateTransform(){
-	Matrix4 matrix( m_transform.calculateTransform() );
-	//globalOutputStream() << "matrix: " << matrix << "\n";
+	if( m_transform.m_transformFrozen && m_transform.isIdentity() )
+		return;
+	if( m_transform.m_transformFrozen && !m_transform.isIdentity() ){ /* new transform */
+		m_transform.m_transformFrozen = false;
+		for( auto& i : m_faceInstances )
+			i.getFace().cacheCentroid();
+
+		if( m_transform.getType() == TRANSFORM_COMPONENT ){
+			for ( const auto& i : m_faceInstances ){
+				if( i.selectedComponents( SelectionSystem::eVertex ) ){
+					m_brush.vertexModeInit();
+					m_brush.m_vertexModeVertices.reserve( m_vertexInstances.size() );
+					for ( const auto& i : m_vertexInstances ){
+						i.gather( m_brush.m_vertexModeVertices );
+					}
+					break;
+				}
+			}
+		}
+	}
+
+	const Matrix4 matrix( m_transform.calculateTransform() );
 
 	if ( m_transform.getType() == TRANSFORM_PRIMITIVE ) {
 		m_brush.transform( matrix );
 	}
 	else
 	{
-		const bool tmp = g_brush_texturelock_enabled;
-		/* do not want texture projection transformation while resizing brush */
-		if( GlobalSelectionSystem().ManipulatorMode() == SelectionSystem::eDrag && GlobalSelectionSystem().Mode() == SelectionSystem::ePrimitive )
-			g_brush_texturelock_enabled = false;
-		transformComponents( matrix );
-		g_brush_texturelock_enabled = tmp;
+		if( m_brush.m_vertexModeOn ){
+			m_brush.vertexModeTransform( matrix );
+		}
+		else{
+			const bool tmp = g_brush_texturelock_enabled;
+			/* do not want texture projection transformation while resizing brush */
+			if( GlobalSelectionSystem().ManipulatorMode() == SelectionSystem::eDrag && GlobalSelectionSystem().Mode() == SelectionSystem::ePrimitive )
+				g_brush_texturelock_enabled = false;
+			transformComponents( matrix );
+			g_brush_texturelock_enabled = tmp;
+		}
 	}
 }
 void applyTransform(){
-	m_brush.revertTransform();
-	evaluateTransform();
-	m_brush.freezeTransform();
+	if( !m_transform.isIdentity() ){
+		if( m_transform.m_transformFrozen ){ //not yet unfrozen by evaluateTransform(), so evaluate
+//			m_brush.revertTransform();
+//			evaluateTransform();
+			m_brush.evaluateBRep();
+		}
+		m_brush.freezeTransform();
+		m_transform.setIdentity();
+	}
+	m_brush.vertexModeFree();
 }
 typedef MemberCaller<BrushInstance, &BrushInstance::applyTransform> ApplyTransformCaller;
 

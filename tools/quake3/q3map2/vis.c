@@ -58,18 +58,10 @@ void PlaneFromWinding( fixedWinding_t *w, visPlane_t *plane ){
  */
 
 fixedWinding_t *NewFixedWinding( int points ){
-	fixedWinding_t  *w;
-	int size;
-
 	if ( points > MAX_POINTS_ON_WINDING ) {
 		Error( "NewWinding: %i points", points );
 	}
-
-	size = (int)( (size_t)( (fixedWinding_t *)0 )->points[points] );
-	w = safe_malloc( size );
-	memset( w, 0, size );
-
-	return w;
+	return safe_calloc( offsetof( fixedWinding_t, points[points] ) );
 }
 
 
@@ -943,11 +935,8 @@ void LoadPortals( char *name ){
 	portallongs = portalbytes / sizeof( long );
 
 	// each file portal is split into two memory portals
-	portals = safe_malloc( 2 * numportals * sizeof( vportal_t ) );
-	memset( portals, 0, 2 * numportals * sizeof( vportal_t ) );
-
-	leafs = safe_malloc( portalclusters * sizeof( leaf_t ) );
-	memset( leafs, 0, portalclusters * sizeof( leaf_t ) );
+	portals = safe_calloc( 2 * numportals * sizeof( vportal_t ) );
+	leafs = safe_calloc( portalclusters * sizeof( leaf_t ) );
 
 	for ( i = 0; i < portalclusters; i++ )
 		leafs[i].merged = -1;
@@ -1043,11 +1032,8 @@ void LoadPortals( char *name ){
 
 	}
 
-	faces = safe_malloc( 2 * numfaces * sizeof( vportal_t ) );
-	memset( faces, 0, 2 * numfaces * sizeof( vportal_t ) );
-
-	faceleafs = safe_malloc( portalclusters * sizeof( leaf_t ) );
-	memset( faceleafs, 0, portalclusters * sizeof( leaf_t ) );
+	faces = safe_calloc( 2 * numfaces * sizeof( vportal_t ) );
+	faceleafs = safe_calloc( portalclusters * sizeof( leaf_t ) );
 
 	for ( i = 0, p = faces; i < numfaces; i++ )
 	{
@@ -1148,7 +1134,7 @@ int VisMain( int argc, char **argv ){
 		}
 		else if ( !strcmp( argv[ i ], "-v" ) ) {
 			debugCluster = qtrue;
-			Sys_Printf( "Extra verbous mode enabled\n" );
+			Sys_Printf( "Extra verbose mode enabled\n" );
 		}
 		else if ( !strcmp( argv[i], "-tmpin" ) ) {
 			strcpy( inbase, "/tmp" );

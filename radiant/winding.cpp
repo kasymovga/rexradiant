@@ -26,69 +26,106 @@
 #include "math/line.h"
 
 
-inline double plane3_distance_to_point( const Plane3& plane, const DoubleVector3& point ){
-	return vector3_dot( point, plane.normal() ) - plane.dist();
-}
+#if 0
+#include "math/aabb.h"
+void windingTestInfinity(){
+	static std::size_t windingTestInfinityI = 0;
+	static std::size_t windingTestInfinity_badNormal = 0;
+	static std::size_t windingTestInfinity_planeOuttaWorld = 0;
+	static std::size_t windingTestInfinity_OK = 0;
+	static std::size_t windingTestInfinity_FAIL = 0;
+	const double maxWorldCoord = 64 * 1024;
+	AABB world( g_vector3_identity, Vector3( maxWorldCoord, maxWorldCoord, maxWorldCoord ) );
+	Plane3 worldplanes[6];
+	aabb_planes( world, worldplanes );
+	world.extents += Vector3( 99, 99, 99 );
 
-inline double plane3_distance_to_point( const Plane3& plane, const Vector3& point ){
-	return vector3_dot( point, plane.normal() ) - plane.dist();
-}
+	const std::size_t iterations = 9999999;
+	if( windingTestInfinityI >= iterations )
+		return;
 
-/// \brief Returns the point at which \p line intersects \p plane, or an undefined value if there is no intersection.
-inline DoubleVector3 line_intersect_plane( const DoubleLine& line, const Plane3& plane ){
-	return line.origin + vector3_scaled(
-			   line.direction,
-			   -plane3_distance_to_point( plane, line.origin )
-			   / vector3_dot( line.direction, plane.normal() )
-			   );
-}
-
-inline bool float_is_largest_absolute( double axis, double other ){
-	return fabs( axis ) > fabs( other );
-}
-
-/// \brief Returns the index of the component of \p v that has the largest absolute value.
-inline int vector3_largest_absolute_component_index( const DoubleVector3& v ){
-	return ( float_is_largest_absolute( v[1], v[0] ) )
-		   ? ( float_is_largest_absolute( v[1], v[2] ) )
-		   ? 1
-		   : 2
-		   : ( float_is_largest_absolute( v[0], v[2] ) )
-		   ? 0
-		   : 2;
-}
-
-/// \brief Returns the infinite line that is the intersection of \p plane and \p other.
-DoubleLine plane3_intersect_plane3( const Plane3& plane, const Plane3& other ){
-	DoubleLine line;
-	line.direction = vector3_cross( plane.normal(), other.normal() );
-	switch ( vector3_largest_absolute_component_index( line.direction ) )
+	while( windingTestInfinityI < iterations )
 	{
-	case 0:
-		line.origin.x() = 0;
-		line.origin.y() = ( -other.dist() * plane.normal().z() - -plane.dist() * other.normal().z() ) / line.direction.x();
-		line.origin.z() = ( -plane.dist() * other.normal().y() - -other.dist() * plane.normal().y() ) / line.direction.x();
-		break;
-	case 1:
-		line.origin.x() = ( -plane.dist() * other.normal().z() - -other.dist() * plane.normal().z() ) / line.direction.y();
-		line.origin.y() = 0;
-		line.origin.z() = ( -other.dist() * plane.normal().x() - -plane.dist() * other.normal().x() ) / line.direction.y();
-		break;
-	case 2:
-		line.origin.x() = ( -other.dist() * plane.normal().y() - -plane.dist() * other.normal().y() ) / line.direction.z();
-		line.origin.y() = ( -plane.dist() * other.normal().x() - -other.dist() * plane.normal().x() ) / line.direction.z();
-		line.origin.z() = 0;
-		break;
-	default:
-		break;
+		Plane3 plane;
+		plane.d = ( (double)rand() / (double)RAND_MAX ) * maxWorldCoord * 2;
+		plane.a = ( (double)rand() / (double)RAND_MAX );
+		plane.b = ( (double)rand() / (double)RAND_MAX );
+		plane.c = ( (double)rand() / (double)RAND_MAX );
+		if( vector3_length( plane.normal() ) != 0 ){
+			vector3_normalise( plane.normal() );
+		}
+		else{
+			++windingTestInfinity_badNormal;
+			continue;
+		}
+
+		FixedWinding buffer[2];
+		bool swap = false;
+
+		// get a poly that covers an effectively infinite area
+		Winding_createInfinite( buffer[swap], plane, maxWorldCoord * 8.0 );
+
+		// chop the poly by positive world box faces
+		for ( std::size_t i = 0; i < 3; ++i )
+		{
+			if( buffer[swap].points.empty() ){
+				break;
+			}
+
+			buffer[!swap].clear();
+
+			{
+				// flip the plane, because we want to keep the back side
+				const Plane3 clipPlane( -g_vector3_axes[i], -maxWorldCoord );
+				Winding_Clip( buffer[swap], plane, clipPlane, 0, buffer[!swap] );
+			}
+
+			swap = !swap;
+		}
+
+		if( buffer[swap].points.empty() ){
+			++windingTestInfinity_planeOuttaWorld;
+			continue;
+		}
+
+		++windingTestInfinityI;
+
+		FixedWinding winding;
+//		Winding_createInfinite( winding, plane, maxWorldCoord * sqrt( 2.75 ) ); //is ok for normalized vecs inside of Winding_createInfinite
+		Winding_createInfinite( winding, plane, maxWorldCoord * 2.22 ); //ok for no normalization
+
+		std::size_t i = 0;
+		for( ; i < winding.size(); ++i ){
+			for( std::size_t j = 0; j < 6; ++j ){
+				if( vector3_dot( winding[i].edge.direction, worldplanes[j].normal() ) != 0 ){
+					const DoubleVector3 v = ray_intersect_plane( winding[i].edge, worldplanes[j] );
+					if( aabb_intersects_point( world, v ) ){
+//						globalWarningStream() << "   INFINITE POINT INSIDE WORLD\n";
+						++windingTestInfinity_FAIL;
+						goto fail;
+					}
+				}
+			}
+		}
+		if( i == winding.size() ){
+			++windingTestInfinity_OK;
+		}
+		fail:
+			;
 	}
 
-	return line;
+	globalWarningStream() << windingTestInfinity_badNormal << " windingTestInfinity_badNormal\n";
+	globalWarningStream() << windingTestInfinity_planeOuttaWorld << " windingTestInfinity_planeOuttaWorld\n";
+	globalWarningStream() << windingTestInfinity_OK << " windingTestInfinity_OK\n";
+	globalWarningStream() << windingTestInfinity_FAIL << " windingTestInfinity_FAIL\n";
+
 }
+#endif
 
 
 /// \brief Keep the value of \p infinity as small as possible to improve precision in Winding_Clip.
 void Winding_createInfinite( FixedWinding& winding, const Plane3& plane, double infinity ){
+#if 0
 	double max = -infinity;
 	int x = -1;
 	for ( int i = 0 ; i < 3; i++ )
@@ -129,7 +166,7 @@ void Winding_createInfinite( FixedWinding& winding, const Plane3& plane, double 
 
 	// project a really big  axis aligned box onto the plane
 
-	DoubleLine r1, r2, r3, r4;
+	DoubleRay r1, r2, r3, r4;
 	r1.origin = vector3_added( vector3_subtracted( org, vright ), vup );
 	r1.direction = vector3_normalised( vright );
 	winding.push_back( FixedWindingVertex( r1.origin, r1, c_brush_maxFaces ) );
@@ -142,6 +179,39 @@ void Winding_createInfinite( FixedWinding& winding, const Plane3& plane, double 
 	r4.origin = vector3_subtracted( vector3_subtracted( org, vright ), vup );
 	r4.direction = vector3_normalised( vup );
 	winding.push_back( FixedWindingVertex( r4.origin, r4, c_brush_maxFaces ) );
+#else
+	const auto normal = plane.normal();
+	const auto maxi = vector3_max_abs_component_index( normal );
+
+	if ( !std::isnormal( normal[maxi] ) ) {
+		globalErrorStream() << "invalid plane\n";
+		return;
+	}
+
+	const DoubleVector3 vup0 = ( maxi == 2 )? DoubleVector3( 0, -normal[2], normal[1] )
+									: DoubleVector3( -normal[1], normal[0], 0 );
+	const DoubleVector3 vright0 = vector3_cross( vup0, normal );
+	const DoubleVector3 org = normal * plane.dist();
+
+	const DoubleVector3 vup = vup0 * infinity * 2.22;
+	const DoubleVector3 vright = vright0 * infinity * 2.22;
+
+	// project a really big  axis aligned box onto the plane
+
+	DoubleRay ray;
+	ray.origin = org - vright + vup;
+	ray.direction = vector3_normalised( vright0 );
+	winding.push_back( FixedWindingVertex( ray.origin, ray, c_brush_maxFaces ) );
+	ray.origin = org + vright + vup;
+	ray.direction = vector3_normalised( -vup0 );
+	winding.push_back( FixedWindingVertex( ray.origin, ray, c_brush_maxFaces ) );
+	ray.origin = org + vright - vup;
+	ray.direction = vector3_normalised( -vright0 );
+	winding.push_back( FixedWindingVertex( ray.origin, ray, c_brush_maxFaces ) );
+	ray.origin = org - vright - vup;
+	ray.direction = vector3_normalised( vup0 );
+	winding.push_back( FixedWindingVertex( ray.origin, ray, c_brush_maxFaces ) );
+#endif
 }
 
 
@@ -188,22 +258,19 @@ void WindingVertex_ClassifyPlane( const Vector3& vertex, const Plane3& plane, br
 }
 
 
-#define DEBUG_EPSILON ON_EPSILON
-const double DEBUG_EPSILON_SQUARED = DEBUG_EPSILON * DEBUG_EPSILON;
-
-#define WINDING_DEBUG 0
+const double ON_EPSILON_CLIP = 1.0 / ( 1 << 12 );
 
 /// \brief Clip \p winding which lies on \p plane by \p clipPlane, resulting in \p clipped.
 /// If \p winding is completely in front of the plane, \p clipped will be identical to \p winding.
 /// If \p winding is completely in back of the plane, \p clipped will be empty.
 /// If \p winding intersects the plane, the edge of \p clipped which lies on \p clipPlane will store the value of \p adjacent.
 void Winding_Clip( const FixedWinding& winding, const Plane3& plane, const Plane3& clipPlane, std::size_t adjacent, FixedWinding& clipped ){
-	PlaneClassification classification = Winding_ClassifyDistance( plane3_distance_to_point( clipPlane, winding.back().vertex ), ON_EPSILON );
+	PlaneClassification classification = Winding_ClassifyDistance( plane3_distance_to_point( clipPlane, winding.back().vertex ), ON_EPSILON_CLIP );
 	PlaneClassification nextClassification;
 	// for each edge
 	for ( std::size_t next = 0, i = winding.size() - 1; next != winding.size(); i = next, ++next, classification = nextClassification )
 	{
-		nextClassification = Winding_ClassifyDistance( plane3_distance_to_point( clipPlane, winding[next].vertex ), ON_EPSILON );
+		nextClassification = Winding_ClassifyDistance( plane3_distance_to_point( clipPlane, winding[next].vertex ), ON_EPSILON_CLIP );
 		const FixedWindingVertex& vertex = winding[i];
 
 		// if first vertex of edge is ON
@@ -241,7 +308,7 @@ void Winding_Clip( const FixedWinding& winding, const Plane3& plane, const Plane
 		else
 		{
 			// append intersection point of line and plane to output winding
-			DoubleVector3 mid( line_intersect_plane( vertex.edge, clipPlane ) );
+			DoubleVector3 mid( ray_intersect_plane( vertex.edge, clipPlane ) );
 
 			if ( classification == ePlaneFront ) {
 				// this edge lies on the clip plane
@@ -301,10 +368,10 @@ void Winding_Centroid( const Winding& winding, const Plane3& plane, Vector3& cen
 	const indexremap_t remap = indexremap_for_projectionaxis( axis );
 	for ( std::size_t i = winding.numpoints - 1, j = 0; j < winding.numpoints; i = j, ++j )
 	{
-		const double ai = winding[i].vertex[remap.x] * winding[j].vertex[remap.y] - winding[j].vertex[remap.x] * winding[i].vertex[remap.y];
+		const double ai = static_cast<double>( winding[i].vertex[remap.x] ) * winding[j].vertex[remap.y] - static_cast<double>( winding[j].vertex[remap.x] ) * winding[i].vertex[remap.y];
 		area2 += ai;
-		x_sum += ( winding[j].vertex[remap.x] + winding[i].vertex[remap.x] ) * ai;
-		y_sum += ( winding[j].vertex[remap.y] + winding[i].vertex[remap.y] ) * ai;
+		x_sum += ( static_cast<double>( winding[j].vertex[remap.x] ) + winding[i].vertex[remap.x] ) * ai;
+		y_sum += ( static_cast<double>( winding[j].vertex[remap.y] ) + winding[i].vertex[remap.y] ) * ai;
 	}
 
 	centroid[remap.x] = static_cast<float>( x_sum / ( 3 * area2 ) );
@@ -316,4 +383,5 @@ void Winding_Centroid( const Winding& winding, const Plane3& plane, Vector3& cen
 		ray.direction[remap.z] = 1;
 		centroid[remap.z] = static_cast<float>( ray_distance_to_plane( ray, plane ) );
 	}
+//	windingTestInfinity();
 }

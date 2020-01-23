@@ -86,9 +86,7 @@ int numFogs;
 dfog_t dfogs[MAX_MAP_FOGS];
 
 void SetLightBytes( int n ){
-	if ( lightBytes != 0 ) {
-		free( lightBytes );
-	}
+	free( lightBytes );
 
 	numLightBytes = n;
 
@@ -96,15 +94,11 @@ void SetLightBytes( int n ){
 		return;
 	}
 
-	lightBytes = safe_malloc_info( numLightBytes, "SetLightBytes" );
-
-	memset( lightBytes, 0, numLightBytes );
+	lightBytes = safe_calloc_info( numLightBytes, "SetLightBytes" );
 }
 
 void SetGridPoints( int n ){
-	if ( gridData != 0 ) {
-		free( gridData );
-	}
+	free( gridData );
 
 	numGridPoints = n;
 
@@ -112,9 +106,7 @@ void SetGridPoints( int n ){
 		return;
 	}
 
-	gridData = safe_malloc_info( numGridPoints * 8, "SetGridPoints" );
-
-	memset( gridData, 0, numGridPoints * 8 );
+	gridData = safe_calloc_info( numGridPoints * 8, "SetGridPoints" );
 }
 
 void IncDrawVerts(){
@@ -145,56 +137,36 @@ void IncDrawVerts(){
 }
 
 void SetDrawVerts( int n ){
-	if ( drawVerts != 0 ) {
-		free( drawVerts );
-	}
+	free( drawVerts );
 
-	numDrawVerts = n;
-	numDrawVertsBuffer = numDrawVerts;
+	numDrawVerts =
+	numDrawVertsBuffer = n;
 
-	drawVerts = safe_malloc_info( sizeof( drawVert_t ) * numDrawVertsBuffer, "IncDrawVerts" );
-
-	memset( drawVerts, 0, n * sizeof( drawVert_t ) );
+	drawVerts = safe_calloc_info( sizeof( drawVert_t ) * numDrawVertsBuffer, "IncDrawVerts" );
 }
 
 void SetDrawSurfacesBuffer(){
-	if ( drawSurfaces != 0 ) {
-		free( drawSurfaces );
-	}
+	free( drawSurfaces );
 
 	numDrawSurfacesBuffer = MAX_MAP_DRAW_SURFS;
 
-	drawSurfaces = safe_malloc_info( sizeof( dsurface_t ) * numDrawSurfacesBuffer, "IncDrawSurfaces" );
-
-	memset( drawSurfaces, 0, MAX_MAP_DRAW_SURFS * sizeof( drawVert_t ) );
+	drawSurfaces = safe_calloc_info( sizeof( dsurface_t ) * numDrawSurfacesBuffer, "IncDrawSurfaces" );
 }
 
 void SetDrawSurfaces( int n ){
-	if ( drawSurfaces != 0 ) {
-		free( drawSurfaces );
-	}
+	free( drawSurfaces );
 
-	numDrawSurfaces = n;
-	numDrawSurfacesBuffer = numDrawSurfaces;
+	numDrawSurfaces =
+	numDrawSurfacesBuffer = n;
 
-	drawSurfaces = safe_malloc_info( sizeof( dsurface_t ) * numDrawSurfacesBuffer, "IncDrawSurfaces" );
-
-	memset( drawSurfaces, 0, n * sizeof( drawVert_t ) );
+	drawSurfaces = safe_calloc_info( sizeof( dsurface_t ) * numDrawSurfacesBuffer, "IncDrawSurfaces" );
 }
 
 void BspFilesCleanup(){
-	if ( drawVerts != 0 ) {
-		free( drawVerts );
-	}
-	if ( drawSurfaces != 0 ) {
-		free( drawSurfaces );
-	}
-	if ( lightBytes != 0 ) {
-		free( lightBytes );
-	}
-	if ( gridData != 0 ) {
-		free( gridData );
-	}
+	free( drawVerts );
+	free( drawSurfaces );
+	free( lightBytes );
+	free( gridData );
 }
 
 //=============================================================================
@@ -294,10 +266,9 @@ void SwapBSPFile( void ) {
    =============
  */
 int GetLumpElements( dheader_t  *header, int lump, int size ) {
-	int length, ofs;
+	int length;
 
 	length = header->lumps[lump].filelen;
-	ofs = header->lumps[lump].fileofs;
 
 	if ( length % size ) {
 		Error( "LoadBSPFile: odd lump size" );
@@ -523,10 +494,7 @@ void StripTrailing( char *e ) {
    =================
  */
 epair_t *ParseEpair( void ) {
-	epair_t *e;
-
-	e = safe_malloc( sizeof( epair_t ) );
-	memset( e, 0, sizeof( epair_t ) );
+	epair_t *e = safe_calloc( sizeof( epair_t ) );
 
 	if ( strlen( token ) >= MAX_KEY - 1 ) {
 		Error( "ParseEpar: token too long" );

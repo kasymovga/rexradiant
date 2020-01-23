@@ -637,6 +637,7 @@ void AddBrushBevels( void ){
 	float dist;
 	vec3_t vec, vec2;
 	float d, minBack;
+	int surfaceFlagsMask = game->brushBevelsSurfaceFlagsMask;
 
 	//
 	// add the axial planes
@@ -699,6 +700,22 @@ void AddBrushBevels( void ){
 
 				s->planenum = FindFloatPlane( normal, dist, 0, NULL );
 				s->contentFlags = buildBrush->sides[ 0 ].contentFlags;
+				/* handle bevel surfaceflags for topmost one only: assuming that only walkable ones are meaningful */
+				if( axis == 2 && dir == 1 ){
+					for ( j = 0; j < buildBrush->numsides; j++ ) {
+						s2 = buildBrush->sides + j;
+						w = s2->winding;
+						if ( !w ) {
+							continue;
+						}
+						for ( k = 0; k < w->numpoints; k++ ) {
+							if ( fabs( dist - w->p[k][axis] ) < .1f ) {
+								s->surfaceFlags |= ( s2->surfaceFlags & surfaceFlagsMask );
+								break;
+							}
+						}
+					}
+				}
 				s->bevel = qtrue;
 				c_boxbevels++;
 			}
@@ -763,6 +780,9 @@ void AddBrushBevels( void ){
 
 						// if this plane has allready been used, skip it
 						if ( PlaneEqual( &mapplanes[buildBrush->sides[k].planenum], normal, dist ) ) {
+							if( buildBrush->sides[k].bevel ){ /* handle bevel surfaceflags */
+								buildBrush->sides[k].surfaceFlags |= ( s->surfaceFlags & surfaceFlagsMask );
+							}
 							break;
 						}
 
@@ -809,6 +829,7 @@ void AddBrushBevels( void ){
 
 					s2->planenum = FindFloatPlane( normal, dist, 1, &w->p[ j ] );
 					s2->contentFlags = buildBrush->sides[0].contentFlags;
+					s2->surfaceFlags = ( s->surfaceFlags & surfaceFlagsMask ); /* handle bevel surfaceflags */
 					s2->bevel = qtrue;
 					c_edgebevels++;
 				}
@@ -854,11 +875,11 @@ brush_t *FinishBrush( qboolean noCollapseGroups ){
 	if ( buildBrush->compileFlags & C_ORIGIN ) {
 		vec3_t origin;
 
-		Sys_Printf( "Entity %i, Brush %i: origin brush detected\n",
-					mapEnt->mapEntityNum, entitySourceBrushes );
+		Sys_Printf( "Entity %i (%s), Brush %i: origin brush detected\n",
+					mapEnt->mapEntityNum, ValueForKey( mapEnt, "classname" ), entitySourceBrushes );
 
 		if ( numEntities == 1 ) {
-			Sys_Printf( "Entity %i, Brush %i: origin brushes not allowed in world\n",
+			Sys_FPrintf( SYS_WRN, "Entity %i, Brush %i: origin brushes not allowed in world\n",
 						mapEnt->mapEntityNum, entitySourceBrushes );
 			return NULL;
 		}
@@ -875,7 +896,7 @@ brush_t *FinishBrush( qboolean noCollapseGroups ){
 	/* determine if the brush is an area portal */
 	if ( buildBrush->compileFlags & C_AREAPORTAL ) {
 		if ( numEntities != 1 ) {
-			Sys_Printf( "Entity %i, Brush %i: areaportals only allowed in world\n", numEntities - 1, entitySourceBrushes );
+			Sys_FPrintf( SYS_WRN, "Entity %i (%s), Brush %i: areaportals only allowed in world\n", numEntities - 1, ValueForKey( mapEnt, "classname" ), entitySourceBrushes );
 			return NULL;
 		}
 	}
@@ -1625,8 +1646,7 @@ void LoadEntityIndexMap( entity_t *e ){
 	}
 
 	/* create a new index map */
-	im = safe_malloc( sizeof( *im ) );
-	memset( im, 0, sizeof( *im ) );
+	im = safe_calloc( sizeof( *im ) );
 
 	/* set it up */
 	im->w = w;

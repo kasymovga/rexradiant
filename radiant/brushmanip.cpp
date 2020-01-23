@@ -395,19 +395,6 @@ void Brush_ConstructIcosahedron( Brush& brush, const AABB& bounds, std::size_t s
 
 } //namespace icosahedron
 
-int GetViewAxis(){
-	switch ( GlobalXYWnd_getCurrentViewType() )
-	{
-	case XY:
-		return 2;
-	case XZ:
-		return 1;
-	case YZ:
-		return 0;
-	}
-	return 2;
-}
-
 void Brush_ConstructPrefab( Brush& brush, EBrushPrefab type, const AABB& bounds, std::size_t sides, const char* shader, const TextureProjection& projection ){
 	switch ( type )
 	{
@@ -420,7 +407,7 @@ void Brush_ConstructPrefab( Brush& brush, EBrushPrefab type, const AABB& bounds,
 	break;
 	case eBrushPrism:
 	{
-		int axis = GetViewAxis();
+		const int axis = GlobalXYWnd_getCurrentViewType();
 		StringOutputStream command;
 		command << c_brushPrism_name << " -sides " << Unsigned( sides ) << " -axis " << axis;
 		UndoableCommand undo( command.c_str() );
@@ -688,30 +675,27 @@ void operator()( Face& face ) const {
 }
 };
 
-class FaceFindShader
+class FaceSelectByShader
 {
-const char* m_find;
+const char* m_name;
 public:
-FaceFindShader( const char* find ) : m_find( find ){
+FaceSelectByShader( const char* name )
+	: m_name( name ){
 }
-void operator()( FaceInstance& faceinst ) const {
-	if ( shader_equal( faceinst.getFace().GetShader(), m_find ) ) {
-		faceinst.setSelected( SelectionSystem::eFace, true );
+void operator()( FaceInstance& face ) const {
+	if ( shader_equal( face.getFace().GetShader(), m_name ) ) {
+		face.setSelected( SelectionSystem::eFace, true );
 	}
 }
 };
 
 void Scene_BrushFacesSelectByShader( scene::Graph& graph, const char* name ){
-	Scene_ForEachBrush_ForEachFaceInstance( graph, FaceFindShader( name ) );
-}
-
-bool DoingSearch( const char *repl ){
-	return ( repl == NULL || ( strcmp( "textures/", repl ) == 0 ) );
+	Scene_ForEachBrush_ForEachFaceInstance( graph, FaceSelectByShader( name ) );
 }
 
 void Scene_BrushFindReplaceShader( scene::Graph& graph, const char* find, const char* replace ){
-	if ( DoingSearch( replace ) ) {
-		Scene_ForEachBrush_ForEachFaceInstance( graph, FaceFindShader( find ) );
+	if ( !replace ) {
+		Scene_ForEachBrush_ForEachFaceInstance( graph, FaceSelectByShader( find ) );
 	}
 	else
 	{
@@ -720,9 +704,9 @@ void Scene_BrushFindReplaceShader( scene::Graph& graph, const char* find, const 
 }
 
 void Scene_BrushFindReplaceShader_Selected( scene::Graph& graph, const char* find, const char* replace ){
-	if ( DoingSearch( replace ) ) {
+	if ( !replace ) {
 		Scene_ForEachSelectedBrush_ForEachFaceInstance( graph,
-														FaceFindShader( find ) );
+														FaceSelectByShader( find ) );
 	}
 	else
 	{
@@ -734,8 +718,9 @@ void Scene_BrushFindReplaceShader_Selected( scene::Graph& graph, const char* fin
 // TODO: find for components
 // d1223m: dont even know what they are...
 void Scene_BrushFindReplaceShader_Component_Selected( scene::Graph& graph, const char* find, const char* replace ){
-	if ( DoingSearch( replace ) ) {
-
+	if ( !replace ) {
+		Scene_ForEachSelectedBrush_ForEachFaceInstance( graph,
+														FaceSelectByShader( find ) );
 	}
 	else
 	{
@@ -896,21 +881,6 @@ bool pre( const scene::Path& path, scene::Instance& instance ) const {
 void Scene_BrushSelectByShader( scene::Graph& graph, const char* name ){
 	graph.traverse( BrushSelectByShaderWalker( name ) );
 }
-
-class FaceSelectByShader
-{
-const char* m_name;
-public:
-FaceSelectByShader( const char* name )
-	: m_name( name ){
-}
-void operator()( FaceInstance& face ) const {
-	printf( "checking %s = %s\n", face.getFace().GetShader(), m_name );
-	if ( shader_equal( face.getFace().GetShader(), m_name ) ) {
-		face.setSelected( SelectionSystem::eFace, true );
-	}
-}
-};
 
 void Scene_BrushSelectByShader_Component( scene::Graph& graph, const char* name ){
 	Scene_ForEachSelectedBrush_ForEachFaceInstance( graph, FaceSelectByShader( name ) );
@@ -1163,6 +1133,9 @@ filter_brush_all_faces g_filter_brush_fullclip( &g_filter_face_fullclip );
 filter_face_shader g_filter_face_botclip( "textures/common/botclip" );
 filter_brush_all_faces g_filter_brush_botclip( &g_filter_face_botclip );
 
+filter_face_shader g_filter_face_donotenter( "textures/common/donotenter" );
+filter_brush_all_faces g_filter_brush_donotenter( &g_filter_face_donotenter );
+
 filter_face_shader_prefix g_filter_face_caulk( "textures/common/caulk" );
 filter_brush_all_faces g_filter_brush_caulk( &g_filter_face_caulk );
 
@@ -1219,6 +1192,7 @@ void BrushFilters_construct(){
 	add_brush_filter( g_filter_brush_fullclip, EXCLUDE_CLIP );
 	add_brush_filter( g_filter_brush_commonclip, EXCLUDE_CLIP );
 	add_brush_filter( g_filter_brush_botclip, EXCLUDE_BOTCLIP );
+	add_brush_filter( g_filter_brush_donotenter, EXCLUDE_BOTCLIP );
 	add_brush_filter( g_filter_brush_caulk, EXCLUDE_CAULK );
 	add_brush_filter( g_filter_brush_caulk_ja, EXCLUDE_CAULK );
 	add_face_filter( g_filter_face_caulk, EXCLUDE_CAULK );
@@ -1496,7 +1470,7 @@ BrushPrefab( EBrushPrefab type )
 	: m_type( type ){
 }
 void set(){
-	DoSides( m_type, GetViewAxis() );
+	DoSides( m_type, GlobalXYWnd_getCurrentViewType() );
 }
 typedef MemberCaller<BrushPrefab, &BrushPrefab::set> SetCaller;
 };
@@ -1591,6 +1565,7 @@ void Brush_constructMenu( GtkMenu* menu ){
 	create_menu_item_with_mnemonic( menu, "Reset Texture", "TextureReset/Cap" );
 	create_menu_item_with_mnemonic( menu, "Copy Face Texture", "Copy" );
 	create_menu_item_with_mnemonic( menu, "Paste Face Texture", "Paste" );
+	create_menu_item_with_mnemonic( menu, "AutoCaulk Selected", "AutoCaulkSelected" );
 
 	command_connect_accelerator( "Brush3Sided" );
 	command_connect_accelerator( "Brush4Sided" );

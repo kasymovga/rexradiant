@@ -107,8 +107,7 @@ static void CreateSunLight( sun_t *sun ){
 
 		/* create a light */
 		numSunLights++;
-		light = safe_malloc( sizeof( *light ) );
-		memset( light, 0, sizeof( *light ) );
+		light = safe_calloc( sizeof( *light ) );
 		light->next = lights;
 		lights = light;
 
@@ -254,8 +253,7 @@ void CreateEntityLights( void ){
 
 		/* create a light */
 		numPointLights++;
-		light = safe_malloc( sizeof( *light ) );
-		memset( light, 0, sizeof( *light ) );
+		light = safe_calloc( sizeof( *light ) );
 		light->next = lights;
 		lights = light;
 
@@ -592,8 +590,7 @@ void CreateSurfaceLights( void ){
 			VectorScale( origin, 0.5f, origin );
 
 			/* create a light */
-			light = safe_malloc( sizeof( *light ) );
-			memset( light, 0, sizeof( *light ) );
+			light = safe_calloc( sizeof( *light ) );
 			light->next = lights;
 			lights = light;
 
@@ -1857,14 +1854,10 @@ void SetupGrid( void ){
 	numBSPGridPoints = numRawGridPoints;
 
 	/* allocate lightgrid */
-	rawGridPoints = safe_malloc( numRawGridPoints * sizeof( *rawGridPoints ) );
-	memset( rawGridPoints, 0, numRawGridPoints * sizeof( *rawGridPoints ) );
+	rawGridPoints = safe_calloc( numRawGridPoints * sizeof( *rawGridPoints ) );
 
-	if ( bspGridPoints != NULL ) {
-		free( bspGridPoints );
-	}
-	bspGridPoints = safe_malloc( numBSPGridPoints * sizeof( *bspGridPoints ) );
-	memset( bspGridPoints, 0, numBSPGridPoints * sizeof( *bspGridPoints ) );
+	free( bspGridPoints );
+	bspGridPoints = safe_calloc( numBSPGridPoints * sizeof( *bspGridPoints ) );
 
 	/* clear lightgrid */
 	for ( i = 0; i < numRawGridPoints; i++ )
@@ -1955,6 +1948,13 @@ void LightWorld( qboolean fastAllocate ){
 		if ( minGrid == qfalse ) {
 			VectorScale( color, f, minGridLight );
 		}
+	}
+
+	/* maxlight */
+	value = ValueForKey( &entities[ 0 ], "_maxlight" );
+	if ( value[ 0 ] != '\0' ) {
+		f = atof( value );
+		maxLight = f > 255? 255 : f < 0? 0 : f;
 	}
 
 	/* create world lights */
@@ -2109,7 +2109,6 @@ void LightWorld( qboolean fastAllocate ){
 int LightMain( int argc, char **argv ){
 	int i;
 	float f;
-	char mapSource[ 1024 ];
 	const char  *value;
 	int lightmapMergeSize = 0;
 	qboolean lightSamplesInsist = qfalse;
@@ -2416,24 +2415,17 @@ int LightMain( int argc, char **argv ){
 			i++;
 		}
 
-		/* Lighting brightness */
+		/* Lightmaps brightness */
 		else if( !strcmp( argv[ i ], "-brightness" ) ){
-			f = atof( argv[ i + 1 ] );
-			lightmapBrightness = f;
-			Sys_Printf( "Lighting brightness set to %f\n", lightmapBrightness );
+			lightmapBrightness = atof( argv[ i + 1 ] );
+			Sys_Printf( "Scaling lightmaps brightness by %f\n", lightmapBrightness );
 			i++;
 		}
 
 		/* Lighting contrast */
 		else if( !strcmp( argv[ i ], "-contrast" ) ){
 			f = atof( argv[ i + 1 ] );
-			lightmapContrast = f;
-			if( lightmapContrast > 255 ){
-				lightmapContrast = 255;
-			}
-			else if( lightmapContrast < -255 ){
-				lightmapContrast = -255;
-			}
+			lightmapContrast = f > 255? 255 : f < -255? -255 : f;
 			Sys_Printf( "Lighting contrast set to %f\n", lightmapContrast );
 			i++;
 			/* change to factor in range of 0 to 129.5 */
@@ -2563,7 +2555,8 @@ int LightMain( int argc, char **argv ){
 			Sys_Printf( "Storing all lightmaps externally\n" );
 		}
 
-		else if ( !strcmp( argv[ i ], "-lightmapsize" ) ) {
+		else if ( !strcmp( argv[ i ], "-lightmapsize" )
+				|| !strcmp( argv[ i ], "-extlmhacksize" ) ) {
 			lmCustomSize = atoi( argv[ i + 1 ] );
 
 			/* must be a power of 2 and greater than 2 */
@@ -2576,7 +2569,9 @@ int LightMain( int argc, char **argv ){
 
 			/* enable external lightmaps */
 			if ( lmCustomSize != game->lightmapSize ) {
-				externalLightmaps = qtrue;
+				/* -lightmapsize might just require -external for native external lms, but it has already been used in existing batches alone,
+				so brand new switch here for external lms, referenced by shaders hack/behavior */
+				externalLightmaps = ( qboolean )strcmp( argv[ i - 1 ], "-extlmhacksize" );
 				Sys_Printf( "Storing all lightmaps externally\n" );
 			}
 		}
@@ -2939,6 +2934,9 @@ int LightMain( int argc, char **argv ){
 			lightmapFill = qtrue;
 			Sys_Printf( "Filling lightmap colors from surrounding pixels to improve JPEG compression\n" );
 		}
+		else if ( !strcmp( argv[ i ], "-fillpink" ) ) {
+			lightmapPink = qtrue;
+		}
 		/* unhandled args */
 		else
 		{
@@ -2996,9 +2994,12 @@ int LightMain( int argc, char **argv ){
 	strcpy( source, ExpandArg( argv[ i ] ) );
 	StripExtension( source );
 	DefaultExtension( source, ".bsp" );
-	strcpy( mapSource, ExpandArg( argv[ i ] ) );
-	StripExtension( mapSource );
-	DefaultExtension( mapSource, ".map" );
+
+	strcpy( name, ExpandArg( argv[ i ] ) );
+	if ( strcmp( name + strlen( name ) - 4, ".reg" ) ) { /* not .reg */
+		StripExtension( name );
+		DefaultExtension( name, ".map" );
+	}
 
 	/* ydnar: set default sample size */
 	SetDefaultSampleSize( sampleSize );
@@ -3025,7 +3026,7 @@ int LightMain( int argc, char **argv ){
 	/* load map file */
 	value = ValueForKey( &entities[ 0 ], "_keepLights" );
 	if ( value[ 0 ] != '1' ) {
-		LoadMapFile( mapSource, qtrue, qfalse );
+		LoadMapFile( name, qtrue, qfalse );
 	}
 
 	/* set the entity/model origins and init yDrawVerts */

@@ -23,7 +23,7 @@
 typedef struct
 {
 	int numpoints;
-	vec3_t p[1];        // variable sized
+	vec3_t p[];
 } winding_t;
 
 #define MAX_POINTS_ON_WINDING   512
@@ -41,7 +41,7 @@ void    ClipWindingEpsilon( winding_t *in, vec3_t normal, vec_t dist,
 void    ClipWindingEpsilonStrict( winding_t *in, vec3_t normal, vec_t dist,
 								  vec_t epsilon, winding_t **front, winding_t **back );
 winding_t   *ChopWinding( winding_t *in, vec3_t normal, vec_t dist );
-winding_t   *CopyWinding( winding_t *w );
+winding_t   *CopyWinding( const winding_t *w );
 winding_t   *ReverseWinding( winding_t *w );
 winding_t   *BaseWindingForPlane( vec3_t normal, vec_t dist );
 void    CheckWinding( winding_t *w );
@@ -67,10 +67,10 @@ void pw( winding_t *w );
 typedef struct
 {
 	int numpoints;
-	vec3_accu_t p[1]; // variable sized
+	vec3_accu_t p[];
 } winding_accu_t;
 
 winding_accu_t  *BaseWindingForPlaneAccu( vec3_t normal, vec_t dist );
 void    ChopWindingInPlaceAccu( winding_accu_t **w, vec3_t normal, vec_t dist, vec_t epsilon );
-winding_t   *CopyWindingAccuToRegular( winding_accu_t *w );
+winding_t   *CopyWindingAccuToRegular( const winding_accu_t *w );
 void    FreeWindingAccu( winding_accu_t *w );

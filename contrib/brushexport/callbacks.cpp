@@ -1,34 +1,44 @@
 #include <glib.h>
 #include <gtk/gtk.h>
+#include <gdk/gdkkeysyms.h>
 #include <set>
 
 #include "qerplugin.h"
 #include "debugging/debugging.h"
+#include "os/path.h"
 #include "support.h"
 #include "export.h"
-
-// stuff from interface.cpp
-void DestroyWindow();
 
 
 namespace callbacks {
 
-void OnDestroy( GtkWidget* w, gpointer data ){
-	DestroyWindow();
-}
+static std::string s_export_path;
 
-void OnExportClicked( GtkButton* button, gpointer user_data ){
+void OnExportClicked( GtkButton* button, gpointer choose_path ){
 	GtkWidget* window = lookup_widget( GTK_WIDGET( button ), "w_plugplug2" );
 	ASSERT_NOTNULL( window );
-	const char* cpath = GlobalRadiant().m_pfnFileDialog( window, false, "Save as Obj", 0, 0, false, false, true );
-	if ( !cpath ) {
+	if( choose_path ){
+		const char* cpath = GlobalRadiant().m_pfnFileDialog( window, false, "Save as Obj", 0, 0, false, false, true );
+		if ( !cpath ) {
+			return;
+		}
+		s_export_path = cpath;
+		// enable button to reexport with the selected name
+		GtkWidget* b_export = lookup_widget( GTK_WIDGET( button ), "b_export" );
+		ASSERT_NOTNULL( b_export );
+		gtk_widget_set_sensitive( b_export, TRUE );
+		// add tooltip
+		gtk_widget_set_tooltip_text( b_export, ( std::string( "ReExport to " ) + s_export_path ).c_str() );
+	}
+	else if( s_export_path.empty() ){
 		return;
 	}
 
-	std::string path( cpath );
-
 	// get ignore list from ui
-	std::set<std::string> ignore;
+	StringSetWithLambda ignore
+		( []( const std::string& lhs, const std::string& rhs )->bool{
+			return string_less_nocase( lhs.c_str(), rhs.c_str() );
+		} );
 
 	GtkTreeView* view = GTK_TREE_VIEW( lookup_widget( GTK_WIDGET( button ), "t_materialist" ) );
 	GtkListStore* list = GTK_LIST_STORE( gtk_tree_view_get_model( view ) );
@@ -39,15 +49,17 @@ void OnExportClicked( GtkButton* button, gpointer user_data ){
 	{
 		gchar* data;
 		gtk_tree_model_get( GTK_TREE_MODEL( list ), &iter, 0, &data, -1 );
+#ifdef _DEBUG
 		globalOutputStream() << data << "\n";
+#endif
 		ignore.insert( std::string( data ) );
 		g_free( data );
 		valid = gtk_tree_model_iter_next( GTK_TREE_MODEL( list ), &iter );
 	}
-
-	for ( std::set<std::string>::iterator it( ignore.begin() ); it != ignore.end(); ++it )
-		globalOutputStream() << it->c_str() << "\n";
-
+#ifdef _DEBUG
+	for ( const std::string& str : ignore )
+		globalOutputStream() << str.c_str() << "\n";
+#endif
 	// collapse mode
 	collapsemode mode = COLLAPSE_NONE;
 
@@ -73,45 +85,31 @@ void OnExportClicked( GtkButton* button, gpointer user_data ){
 		}
 	}
 
+	GtkWidget* toggle;
 	// export materials?
-	GtkWidget* toggle = lookup_widget( GTK_WIDGET( button ), "t_exportmaterials" );
-	ASSERT_NOTNULL( toggle );
-
-	bool exportmat = FALSE;
-
-	if ( gtk_toggle_button_get_active( GTK_TOGGLE_BUTTON( toggle ) ) ) {
-		exportmat = TRUE;
-	}
+	ASSERT_NOTNULL( ( toggle = lookup_widget( GTK_WIDGET( button ), "t_exportmaterials" ) ) );
+	const bool exportmat = gtk_toggle_button_get_active( GTK_TOGGLE_BUTTON( toggle ) );
 
 	// limit material names?
-	toggle = lookup_widget( GTK_WIDGET( button ), "t_limitmatnames" );
-	ASSERT_NOTNULL( toggle );
-
-	bool limitMatNames = FALSE;
-
-	if ( gtk_toggle_button_get_active( GTK_TOGGLE_BUTTON( toggle ) ) && exportmat ) {
-		limitMatNames = TRUE;
-	}
+	ASSERT_NOTNULL( ( toggle = lookup_widget( GTK_WIDGET( button ), "t_limitmatnames" ) ) );
+	const bool limitMatNames = gtk_toggle_button_get_active( GTK_TOGGLE_BUTTON( toggle ) );
 
 	// create objects instead of groups?
-	toggle = lookup_widget( GTK_WIDGET( button ), "t_objects" );
-	ASSERT_NOTNULL( toggle );
+	ASSERT_NOTNULL( ( toggle = lookup_widget( GTK_WIDGET( button ), "t_objects" ) ) );
+	const bool objects = gtk_toggle_button_get_active( GTK_TOGGLE_BUTTON( toggle ) );
 
-	bool objects = FALSE;
-
-	if ( gtk_toggle_button_get_active( GTK_TOGGLE_BUTTON( toggle ) )  && exportmat ) {
-		objects = TRUE;
-	}
+	ASSERT_NOTNULL( ( toggle = lookup_widget( GTK_WIDGET( button ), "t_weld" ) ) );
+	const bool weld = gtk_toggle_button_get_active( GTK_TOGGLE_BUTTON( toggle ) );
 
 	// export
-	ExportSelection( ignore, mode, exportmat, path, limitMatNames, objects );
+	ExportSelection( ignore, mode, exportmat, s_export_path, limitMatNames, objects, weld );
 }
 
 void OnAddMaterial( GtkButton* button, gpointer user_data ){
 	GtkEntry* edit = GTK_ENTRY( lookup_widget( GTK_WIDGET( button ), "ed_materialname" ) );
 	ASSERT_NOTNULL( edit );
 
-	const gchar* name = gtk_entry_get_text( edit );
+	const gchar* name = path_get_filename_start( gtk_entry_get_text( edit ) );
 	if ( g_utf8_strlen( name, -1 ) > 0 ) {
 		GtkListStore* list = GTK_LIST_STORE( gtk_tree_view_get_model( GTK_TREE_VIEW( lookup_widget( GTK_WIDGET( button ), "t_materialist" ) ) ) );
 		GtkTreeIter iter;
@@ -132,18 +130,10 @@ void OnRemoveMaterial( GtkButton* button, gpointer user_data ){
 	}
 }
 
-void OnExportMatClicked( GtkButton* button, gpointer user_data ){
-	GtkWidget* toggleLimit = lookup_widget( GTK_WIDGET( button ), "t_limitmatnames" );
-	GtkWidget* toggleObject = lookup_widget( GTK_WIDGET( button ), "t_objects" );
-
-	if ( gtk_toggle_button_get_active( GTK_TOGGLE_BUTTON( button ) ) ) {
-		gtk_widget_set_sensitive( GTK_WIDGET( toggleLimit ), TRUE );
-		gtk_widget_set_sensitive( GTK_WIDGET( toggleObject ), TRUE );
-	}
-	else {
-		gtk_widget_set_sensitive( GTK_WIDGET( toggleLimit ), FALSE );
-		gtk_widget_set_sensitive( GTK_WIDGET( toggleObject ), FALSE );
-	}
+gboolean OnRemoveMaterialKb( GtkWidget* widget, GdkEventKey* event, gpointer user_data ){
+	if( event->keyval == GDK_Delete )
+		OnRemoveMaterial( reinterpret_cast<GtkButton*>( widget ), NULL );
+	return FALSE;
 }
 
 } // callbacks

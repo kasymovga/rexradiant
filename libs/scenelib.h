@@ -36,6 +36,8 @@
 #include "container/stack.h"
 #include "typesystem.h"
 
+#include <functional>
+
 class Selector;
 class SelectionTest;
 
@@ -49,7 +51,7 @@ virtual void setSelectedComponents( bool select, SelectionSystem::EComponentMode
 virtual void testSelectComponents( Selector& selector, SelectionTest& test, SelectionSystem::EComponentMode mode ) = 0;
 };
 
-typedef Callback1<const Vector3&> Vector3Callback;
+typedef std::function<void( const Vector3& )> Vector3Callback;
 
 class ComponentEditable
 {
@@ -864,12 +866,9 @@ inline void Instance_setSelected( scene::Instance& instance, bool selected ){
 	}
 }
 
-inline bool Instance_isSelected( scene::Instance& instance ){
-	Selectable* selectable = Instance_getSelectable( instance );
-	if ( selectable != 0 ) {
-		return selectable->isSelected();
-	}
-	return false;
+inline bool Instance_isSelected( const scene::Instance& instance ){
+	const Selectable* selectable = Instance_getSelectable( instance );
+	return selectable != 0 && selectable->isSelected();
 }
 
 inline scene::Instance& findInstance( const scene::Path& path ){

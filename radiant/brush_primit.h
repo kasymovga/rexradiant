@@ -106,12 +106,14 @@ void Texdef_ProjectTexture( TextureProjection& projection, std::size_t width, st
 void Texdef_FitTexture( TextureProjection& projection, std::size_t width, std::size_t height, const Vector3& normal, const Winding& w, float s_repeat, float t_repeat, bool only_dimension );
 void Texdef_Construct_local2tex( const TextureProjection& projection, std::size_t width, std::size_t height, const Vector3& normal, Matrix4& local2tex );
 void Texdef_Construct_local2tex4projection( const texdef_t& texdef, std::size_t width, std::size_t height, const Vector3& normal, const Vector3* direction, Matrix4& local2tex );
+void Texdef_Construct_local2tex_from_ST( const DoubleVector3 points[3], const DoubleVector3 st[3], Matrix4& local2tex );
 void Texdef_EmitTextureCoordinates( const TextureProjection& projection, std::size_t width, std::size_t height, Winding& w, const Vector3& normal, const Matrix4& localToWorld );
 
 void ShiftScaleRotate_fromFace( texdef_t& shiftScaleRotate, const TextureProjection& projection );
 void ShiftScaleRotate_toFace( const texdef_t& shiftScaleRotate, TextureProjection& projection );
 
-void Texdef_transformLocked( TextureProjection& projection, std::size_t width, std::size_t height, const Plane3& plane, const Matrix4& transform, const Vector3 centroid = Vector3( 0, 0, 0 ) );
+void Texdef_transformLocked( TextureProjection& projection, std::size_t width, std::size_t height, const Plane3& plane, const Matrix4& transform, const Vector3& invariant = g_vector3_identity );
+void Texdef_transform( TextureProjection& projection, std::size_t width, std::size_t height, const Plane3& plane, const Matrix4& transform, const Vector3& invariant = g_vector3_identity );
 void Texdef_normalise( TextureProjection& projection, float width, float height );
 
 enum TexdefTypeId
@@ -131,7 +133,54 @@ extern float g_texdef_default_scale;
 
 void Texdef_Convert( TexdefTypeId in, TexdefTypeId out, const Plane3& plane, TextureProjection& projection, std::size_t width, std::size_t height );
 void Texdef_from_ST( TextureProjection& projection, const DoubleVector3 points[3], const DoubleVector3 st[3], std::size_t width, std::size_t height );
-template <typename Element>
-void ComputeAxisBase( const BasicVector3<Element>& normal, BasicVector3<Element>& texS, BasicVector3<Element>& texT );
+
+//++timo replace everywhere texX by texS etc. ( ----> and in q3map !)
+// NOTE : ComputeAxisBase here and in q3map code must always BE THE SAME !
+// WARNING : special case behaviour of atan2(y,x) <-> atan(y/x) might not be the same everywhere when x == 0
+// rotation by (0,RotY,RotZ) assigns X to normal
+template <typename Element, typename OtherElement>
+inline void ComputeAxisBase( const BasicVector3<Element>& normal, BasicVector3<OtherElement>& texS, BasicVector3<OtherElement>& texT ){
+#if 1
+	const BasicVector3<Element> up( 0, 0, 1 );
+	const BasicVector3<Element> down( 0, 0, -1 );
+
+	if ( vector3_equal_epsilon( normal, up, Element(1e-6) ) ) {
+		texS = BasicVector3<OtherElement>( 0, 1, 0 );
+		texT = BasicVector3<OtherElement>( 1, 0, 0 );
+	}
+	else if ( vector3_equal_epsilon( normal, down, Element(1e-6) ) ) {
+		texS = BasicVector3<OtherElement>( 0, 1, 0 );
+		texT = BasicVector3<OtherElement>( -1, 0, 0 );
+	}
+	else
+	{
+		texS = vector3_normalised( vector3_cross( normal, up ) );
+		texT = vector3_normalised( vector3_cross( normal, texS ) );
+		vector3_negate( texS );
+	}
+
+#else
+	float RotY,RotZ;
+	// do some cleaning
+	/*
+	   if (fabs(normal[0])<1e-6)
+	      normal[0]=0.0f;
+	   if (fabs(normal[1])<1e-6)
+	      normal[1]=0.0f;
+	   if (fabs(normal[2])<1e-6)
+	      normal[2]=0.0f;
+	 */
+	RotY = -atan2( normal[2],sqrt( normal[1] * normal[1] + normal[0] * normal[0] ) );
+	RotZ = atan2( normal[1],normal[0] );
+	// rotate (0,1,0) and (0,0,1) to compute texS and texT
+	texS[0] = -sin( RotZ );
+	texS[1] = cos( RotZ );
+	texS[2] = 0;
+	// the texT vector is along -Z ( T texture coorinates axis )
+	texT[0] = -sin( RotY ) * cos( RotZ );
+	texT[1] = -sin( RotY ) * sin( RotZ );
+	texT[2] = -cos( RotY );
+#endif
+}
 
 #endif

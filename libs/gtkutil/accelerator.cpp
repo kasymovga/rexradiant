@@ -109,11 +109,14 @@ bool accelerator_map_erase( AcceleratorMap& acceleratorMap, Accelerator accelera
 }
 
 Accelerator accelerator_for_event_key( guint keyval, guint state ){
-	keyval = gdk_keyval_to_upper( keyval );
 	if ( keyval == GDK_ISO_Left_Tab ) {
 		keyval = GDK_Tab;
 	}
 	return Accelerator( keyval, (GdkModifierType)( state & gtk_accelerator_get_default_mod_mask() ) );
+}
+
+Accelerator accelerator_for_event_key( const GdkEventKey* event ){
+	return accelerator_for_event_key( event->keyval, event->state );
 }
 
 bool AcceleratorMap_activate( const AcceleratorMap& acceleratorMap, const Accelerator& accelerator ){
@@ -342,14 +345,14 @@ AcceleratorMap g_keydown_accelerators;
 AcceleratorMap g_keyup_accelerators;
 
 bool Keys_press( PressedKeys::Keys& keys, guint keyval ){
-	if ( keys.insert( gdk_keyval_to_upper( keyval ) ).second ) {
+	if ( keys.insert( gdk_keyval_to_lower( keyval ) ).second ) {
 		return AcceleratorMap_activate( g_keydown_accelerators, accelerator_for_event_key( keyval, 0 ) );
 	}
 	return g_keydown_accelerators.find( accelerator_for_event_key( keyval, 0 ) ) != g_keydown_accelerators.end();
 }
 
 bool Keys_release( PressedKeys::Keys& keys, guint keyval ){
-	if ( keys.erase( gdk_keyval_to_upper( keyval ) ) != 0 ) {
+	if ( keys.erase( gdk_keyval_to_lower( keyval ) ) != 0 ) {
 		return AcceleratorMap_activate( g_keyup_accelerators, accelerator_for_event_key( keyval, 0 ) );
 	}
 	return g_keyup_accelerators.find( accelerator_for_event_key( keyval, 0 ) ) != g_keyup_accelerators.end();

@@ -86,20 +86,6 @@ static void vfsAddSlash( char *str ){
 	}
 }
 
-static void vfsFixDOSName( char *src ){
-	if ( src == NULL ) {
-		return;
-	}
-
-	while ( *src )
-	{
-		if ( *src == '\\' ) {
-			*src = '/';
-		}
-		src++;
-	}
-}
-
 //!\todo Define globally or use heap-allocated string.
 #define NAME_MAX 255
 
@@ -128,17 +114,16 @@ static void vfsInitPakFile( const char *filename ){
 	{
 		char filename_inzip[NAME_MAX];
 		unz_file_info file_info;
-		VFS_PAKFILE* file;
 
 		err = unzGetCurrentFileInfo( uf, &file_info, filename_inzip, sizeof( filename_inzip ), NULL, 0, NULL, 0 );
 		if ( err != UNZ_OK ) {
 			break;
 		}
 
-		file = (VFS_PAKFILE*)safe_malloc( sizeof( VFS_PAKFILE ) );
+		VFS_PAKFILE* file = safe_malloc( sizeof( VFS_PAKFILE ) );
 		g_pakFiles = g_slist_append( g_pakFiles, file );
 
-		vfsFixDOSName( filename_inzip );
+		FixDOSName( filename_inzip );
 		g_strdown( filename_inzip );
 
 		file->name = strdup( filename_inzip );
@@ -192,7 +177,7 @@ void vfsInitDirectory( const char *path ){
 
 	strncpy( g_strDirs[g_numDirs], path, PATH_MAX );
 	g_strDirs[g_numDirs][PATH_MAX] = 0;
-	vfsFixDOSName( g_strDirs[g_numDirs] );
+	FixDOSName( g_strDirs[g_numDirs] );
 	vfsAddSlash( g_strDirs[g_numDirs] );
 	g_numDirs++;
 
@@ -230,7 +215,7 @@ void vfsInitDirectory( const char *path ){
 						}
 						snprintf( g_strDirs[g_numDirs], PATH_MAX, "%s/%s", path, name );
 						g_strDirs[g_numDirs][PATH_MAX] = '\0';
-						vfsFixDOSName( g_strDirs[g_numDirs] );
+						FixDOSName( g_strDirs[g_numDirs] );
 						vfsAddSlash( g_strDirs[g_numDirs] );
 						++g_numDirs;
 					}
@@ -252,14 +237,13 @@ void vfsInitDirectory( const char *path ){
 
 
 // lists all .shader files
-void vfsListShaderFiles( char* list, int *num ){
+void vfsListShaderFiles( StrList* list, void pushStringCallback( StrList* list, const char* string ) ){
 	//char filename[PATH_MAX];
 	char *dirlist;
 	GDir *dir;
-	int i, k;
 	char path[NAME_MAX];
 /* search in dirs */
-	for ( i = 0; i < g_numDirs; i++ ){
+	for ( int i = 0; i < g_numDirs; i++ ){
 		snprintf( path, NAME_MAX, "%sscripts/", g_strDirs[ i ] );
 
 		dir = g_dir_open( path, 0, NULL );
@@ -278,12 +262,7 @@ void vfsListShaderFiles( char* list, int *num ){
 					continue;
 				}
 
-				for ( k = 0; k < *num; k++ ){
-					if ( !Q_stricmp( list + k*65, dirlist ) ) goto shISdouplicate;
-				}
-				strcpy( list + (*num)*65, dirlist );
-				(*num)++;
-shISdouplicate:
+				pushStringCallback( list, dirlist );
 				g_free( dirlist );
 			}
 			g_dir_close( dir );
@@ -304,13 +283,7 @@ shISdouplicate:
 		//name + ext this time
 		ext = strrchr( file->name, '/' );
 		ext++;
-
-		for ( k = 0; k < *num; k++ ){
-			if ( !Q_stricmp( list + k*65, ext ) ) goto shISdouplicate2;
-		}
-		strcpy( list + (*num)*65, ext );
-		(*num)++;
-shISdouplicate2:
+		pushStringCallback( list, ext );
 		continue;
 	}
 }
@@ -340,7 +313,7 @@ int vfsGetFileCount( const char *filename ){
 	GSList *lst;
 
 	strcpy( fixed, filename );
-	vfsFixDOSName( fixed );
+	FixDOSName( fixed );
 	g_strdown( fixed );
 
 	for ( lst = g_pakFiles; lst != NULL; lst = g_slist_next( lst ) )
@@ -373,23 +346,17 @@ int vfsLoadFile( const char *filename, void **bufferptr, int index ){
 	// filename is a full path
 	if ( index == -1 ) {
 		strcpy( g_strLoadedFileLocation, filename );
-		long len;
-		FILE *f;
 
-		f = fopen( filename, "rb" );
+		FILE *f = fopen( filename, "rb" );
 		if ( f == NULL ) {
 			return -1;
 		}
 
 		fseek( f, 0, SEEK_END );
-		len = ftell( f );
+		const long len = ftell( f );
 		rewind( f );
 
 		*bufferptr = safe_malloc( len + 1 );
-		if ( *bufferptr == NULL ) {
-			fclose( f );
-			return -1;
-		}
 
 		if ( fread( *bufferptr, 1, len, f ) != (size_t) len ) {
 			fclose( f );
@@ -405,7 +372,7 @@ int vfsLoadFile( const char *filename, void **bufferptr, int index ){
 
 	*bufferptr = NULL;
 	strcpy( fixed, filename );
-	vfsFixDOSName( fixed );
+	FixDOSName( fixed );
 	g_strdown( fixed );
 
 	for ( i = 0; i < g_numDirs; i++ )
@@ -416,23 +383,16 @@ int vfsLoadFile( const char *filename, void **bufferptr, int index ){
 			if ( count == index ) {
 				strcpy( g_strLoadedFileLocation, tmp );
 
-				long len;
-				FILE *f;
-
-				f = fopen( tmp, "rb" );
+				FILE *f = fopen( tmp, "rb" );
 				if ( f == NULL ) {
 					return -1;
 				}
 
 				fseek( f, 0, SEEK_END );
-				len = ftell( f );
+				const long len = ftell( f );
 				rewind( f );
 
 				*bufferptr = safe_malloc( len + 1 );
-				if ( *bufferptr == NULL ) {
-					fclose( f );
-					return -1;
-				}
 
 				if ( fread( *bufferptr, 1, len, f ) != (size_t) len ) {
 					fclose( f );
@@ -459,9 +419,7 @@ int vfsLoadFile( const char *filename, void **bufferptr, int index ){
 		}
 
 		if ( count == index ) {
-			strcpy( g_strLoadedFileLocation, file->unzFilePath );
-			strcat( g_strLoadedFileLocation, " :: " );
-			strcat( g_strLoadedFileLocation, filename );
+			snprintf( g_strLoadedFileLocation, sizeof( g_strLoadedFileLocation ), "%s :: %s", file->unzFilePath, filename );
 
 			memcpy( file->zipfile, &file->zipinfo, sizeof( unz_s ) );
 
@@ -499,7 +457,7 @@ qboolean vfsPackFile( const char *filename, const char *packname, const int comp
 
 	byte *bufferptr = NULL;
 	strcpy( fixed, filename );
-	vfsFixDOSName( fixed );
+	FixDOSName( fixed );
 	g_strdown( fixed );
 
 	for ( i = 0; i < g_numDirs; i++ )
@@ -555,7 +513,7 @@ qboolean vfsPackFile( const char *filename, const char *packname, const int comp
 
 		bufferptr = safe_malloc( file->size + 1 );
 		// we need to end the buffer with a 0
-		( (char*) ( bufferptr ) )[file->size] = 0;
+		bufferptr[file->size] = 0;
 
 		i = unzReadCurrentFile( file->zipfile, bufferptr, file->size );
 		unzCloseCurrentFile( file->zipfile );

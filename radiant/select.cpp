@@ -539,10 +539,6 @@ void Select_GetBounds( Vector3& mins, Vector3& maxs ){
 	mins = vector3_subtracted( bounds.origin, bounds.extents );
 }
 
-void Select_GetMid( Vector3& mid ){
-	mid = vector3_snapped( GlobalSelectionSystem().getBoundsSelected().origin );
-}
-
 
 void Select_FlipAxis( int axis ){
 	Vector3 flip( 1, 1, 1 );
@@ -704,6 +700,9 @@ void FindReplaceTextures( const char* pFind, const char* pReplace, bool bSelecte
 	StringOutputStream command;
 	command << "textureFindReplace -find " << pFind << " -replace " << pReplace;
 	UndoableCommand undo( command.c_str() );
+
+	if( shader_equal( pReplace, "textures/" ) )
+		pReplace = 0; //do search
 
 	if ( bSelected ) {
 		if ( GlobalSelectionSystem().Mode() != SelectionSystem::eComponent ) {

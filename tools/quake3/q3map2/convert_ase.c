@@ -35,6 +35,7 @@
 
 /* dependencies */
 #include "q3map2.h"
+#include "convert_obj.h"
 
 
 
@@ -44,7 +45,8 @@
  */
 
 int numLightmapsASE = 0;
-static void ConvertSurface( FILE *f, bspModel_t *model, int modelNum, bspDrawSurface_t *ds, int surfaceNum, vec3_t origin ){
+
+static void ConvertSurface( FILE *f, bspModel_t *model, int modelNum, bspDrawSurface_t *ds, int surfaceNum, vec3_t origin, const int* lmIndices ){
 	int i, v, face, a, b, c;
 	bspDrawVert_t   *dv;
 	vec3_t normal;
@@ -140,7 +142,12 @@ static void ConvertSurface( FILE *f, bspModel_t *model, int modelNum, bspDrawSur
 	{
 		v = i + ds->firstVert;
 		dv = &bspDrawVerts[ v ];
-		fprintf( f, "\t\t\t*MESH_TVERT\t%d\t%f\t%f\t%f\r\n", i, dv->st[ 0 ], ( 1.0 - dv->st[ 1 ] ), 1.0f );
+		if ( lightmapsAsTexcoord ) {
+			fprintf( f, "\t\t\t*MESH_TVERT\t%d\t%f\t%f\t%f\r\n", i, dv->lightmap[0][0], ( 1.0 - dv->lightmap[0][1] ), 1.0f ); // dv->lightmap[0][1] internal, ( 1.0 - dv->lightmap[0][1] ) external
+		}
+		else{
+			fprintf( f, "\t\t\t*MESH_TVERT\t%d\t%f\t%f\t%f\r\n", i, dv->st[ 0 ], ( 1.0 - dv->st[ 1 ] ), 1.0f );
+		}
 	}
 	fprintf( f, "\t\t}\r\n" );
 
@@ -165,11 +172,12 @@ static void ConvertSurface( FILE *f, bspModel_t *model, int modelNum, bspDrawSur
 	fprintf( f, "\t*PROP_CASTSHADOW\t1\r\n" );
 	fprintf( f, "\t*PROP_RECVSHADOW\t1\r\n" );
 	if ( lightmapsAsTexcoord ) {
-		if ( ds->lightmapNum[0] >= 0 && ds->lightmapNum[0] + (int)deluxemap < numLightmapsASE ) {
-			fprintf( f, "\t*MATERIAL_REF\t%d\r\n", ds->lightmapNum[0] + deluxemap );
+		const int lmNum = ds->lightmapNum[0] >= 0? ds->lightmapNum[0]: lmIndices[ds->shaderNum] >= 0? lmIndices[ds->shaderNum] : ds->lightmapNum[0];
+		if ( lmNum >= 0 && lmNum + (int)deluxemap < numLightmapsASE ) {
+			fprintf( f, "\t*MATERIAL_REF\t%d\r\n", lmNum + deluxemap );
 		}
 		else{
-			Sys_Warning( "lightmap %d out of range, not exporting\n", ds->lightmapNum[0] + deluxemap );
+			Sys_Warning( "lightmap %d out of range, not exporting\n", lmNum + deluxemap );
 		}
 	}
 	else{
@@ -185,7 +193,7 @@ static void ConvertSurface( FILE *f, bspModel_t *model, int modelNum, bspDrawSur
    exports a bsp model to an ase chunk
  */
 
-static void ConvertModel( FILE *f, bspModel_t *model, int modelNum, vec3_t origin ){
+static void ConvertModel( FILE *f, bspModel_t *model, int modelNum, vec3_t origin, const int* lmIndices ){
 	int i, s;
 	bspDrawSurface_t    *ds;
 
@@ -195,7 +203,7 @@ static void ConvertModel( FILE *f, bspModel_t *model, int modelNum, vec3_t origi
 	{
 		s = i + model->firstBSPSurface;
 		ds = &bspDrawSurfaces[ s ];
-		ConvertSurface( f, model, modelNum, ds, s, origin );
+		ConvertSurface( f, model, modelNum, ds, s, origin, lmIndices );
 	}
 }
 
@@ -310,7 +318,10 @@ static void ConvertLightmap( FILE *f, const char *base, int lightmapNum ){
 		fprintf( f, "\t\t\t*MAP_SUBNO\t1\r\n" );
 		fprintf( f, "\t\t\t*MAP_AMOUNT\t1.0\r\n" );
 		fprintf( f, "\t\t\t*MAP_TYPE\tScreen\r\n" );
-		fprintf( f, "\t\t\t*BITMAP\t\"%s\\lm_%04d.tga\"\r\n", base, lightmapNum );
+		if( shadersAsBitmap )
+			fprintf( f, "\t\t\t*BITMAP\t\"maps\\%s\\" EXTERNAL_LIGHTMAP "\"\r\n", base, lightmapNum );
+		else
+			fprintf( f, "\t\t\t*BITMAP\t\"%s\\" EXTERNAL_LIGHTMAP "\"\r\n", base, lightmapNum );
 		fprintf( f, "\t\t\t*BITMAP_FILTER\tPyramidal\r\n" );
 		fprintf( f, "\t\t}\r\n" );
 	}
@@ -334,6 +345,7 @@ int ConvertBSPToASE( char *bspName ){
 	vec3_t origin;
 	const char      *key;
 	char name[ 1024 ], base[ 1024 ], dirname[ 1024 ];
+	int lmIndices[ numBSPShaders ];
 
 
 	/* note it */
@@ -371,25 +383,11 @@ int ConvertBSPToASE( char *bspName ){
 	/* print materials */
 	fprintf( f, "*MATERIAL_LIST\t{\r\n" );
 	if ( lightmapsAsTexcoord ) {
-		int lightmapCount;
-		for ( lightmapCount = 0; lightmapCount < numBSPLightmaps; lightmapCount++ )
-			;
-		for ( ; ; lightmapCount++ )
-		{
-			char buf[1024];
-			FILE *tmp;
-			snprintf( buf, sizeof( buf ), "%s/lm_%04d.tga", dirname, lightmapCount );
-			buf[sizeof( buf ) - 1] = 0;
-			tmp = fopen( buf, "rb" );
-			if ( !tmp ) {
-				break;
-			}
-			fclose( tmp );
-		}
-		fprintf( f, "\t*MATERIAL_COUNT\t%d\r\n", lightmapCount );
-		for ( i = 0; i < lightmapCount; i++ )
+		numLightmapsASE = Convert_CountLightmaps( dirname );
+		fprintf( f, "\t*MATERIAL_COUNT\t%d\r\n", numLightmapsASE );
+		for ( i = 0; i < numLightmapsASE; i++ )
 			ConvertLightmap( f, base, i );
-		numLightmapsASE = lightmapCount;
+		Convert_ReferenceLightmaps( base, lmIndices );
 	}
 	else
 	{
@@ -430,7 +428,7 @@ int ConvertBSPToASE( char *bspName ){
 		}
 
 		/* convert model */
-		ConvertModel( f, model, modelNum, origin );
+		ConvertModel( f, model, modelNum, origin, lmIndices );
 	}
 
 	/* close the file and return */

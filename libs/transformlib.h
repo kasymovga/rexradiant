@@ -82,8 +82,11 @@ struct Skew{
 	}
 	Skew( std::size_t index_, float amount_ ) : index( index_ ), amount( amount_ ){
 	}
-	bool operator!= ( const Skew& other ){
-		return index != other.index || amount != other.amount;
+	bool operator!= ( const Skew& other ) const {
+		return !( *this == other );
+	}
+	bool operator== ( const Skew& other ) const {
+		return ( amount == 0 && other.amount == 0 ) || ( index == other.index && amount == other.amount );
 	}
 };
 
@@ -175,15 +178,9 @@ void setSkew( const Skew& value ){
 	m_changed();
 }
 void freezeTransform(){
-	if ( m_translation != c_translation_identity
-		 || m_rotation != c_rotation_identity
-		 || m_scale != c_scale_identity
-		 || m_skew != c_skew_identity ) {
+	if ( !isIdentity() ) {
 		m_apply();
-		m_translation = c_translation_identity;
-		m_rotation = c_rotation_identity;
-		m_scale = c_scale_identity;
-		m_skew = c_skew_identity;
+		setIdentity();
 		m_changed();
 	}
 }
@@ -201,6 +198,95 @@ const Skew& getSkew() const {
 }
 Matrix4 calculateTransform() const {
 	return matrix4_transform_for_components( getTranslation(), getRotation(), getScale(), getSkew() );
+}
+private:
+bool isIdentity() const {
+	return m_translation == c_translation_identity
+		 && m_rotation == c_rotation_identity
+		 && m_scale == c_scale_identity
+		 && m_skew == c_skew_identity;
+}
+void setIdentity(){
+	m_translation = c_translation_identity;
+	m_rotation = c_rotation_identity;
+	m_scale = c_scale_identity;
+	m_skew = c_skew_identity;
+}
+};
+
+class BrushTransformModifier : public Transformable
+{
+Translation m_translation;
+Rotation m_rotation;
+Scale m_scale;
+Skew m_skew;
+Callback m_changed;
+Callback m_apply;
+TransformModifierType m_type;
+public:
+bool m_transformFrozen = true;
+
+BrushTransformModifier( const Callback& changed, const Callback& apply ) :
+	m_translation( c_translation_identity ),
+	m_rotation( c_quaternion_identity ),
+	m_scale( c_scale_identity ),
+	m_skew( c_skew_identity ),
+	m_changed( changed ),
+	m_apply( apply ),
+	m_type( TRANSFORM_PRIMITIVE ){
+}
+void setType( TransformModifierType type ){
+	m_type = type;
+}
+TransformModifierType getType() const {
+	return m_type;
+}
+void setTranslation( const Translation& value ){
+	m_translation = value;
+	m_changed();
+}
+void setRotation( const Rotation& value ){
+	m_rotation = value;
+	m_changed();
+}
+void setScale( const Scale& value ){
+	m_scale = value;
+	m_changed();
+}
+void setSkew( const Skew& value ){
+	m_skew = value;
+	m_changed();
+}
+void freezeTransform(){
+	m_apply();
+	m_transformFrozen = true;
+}
+const Translation& getTranslation() const {
+	return m_translation;
+}
+const Rotation& getRotation() const {
+	return m_rotation;
+}
+const Scale& getScale() const {
+	return m_scale;
+}
+const Skew& getSkew() const {
+	return m_skew;
+}
+Matrix4 calculateTransform() const {
+	return matrix4_transform_for_components( getTranslation(), getRotation(), getScale(), getSkew() );
+}
+bool isIdentity() const {
+	return m_translation == c_translation_identity
+		 && m_rotation == c_rotation_identity
+		 && m_scale == c_scale_identity
+		 && m_skew == c_skew_identity;
+}
+void setIdentity(){
+	m_translation = c_translation_identity;
+	m_rotation = c_rotation_identity;
+	m_scale = c_scale_identity;
+	m_skew = c_skew_identity;
 }
 };
 

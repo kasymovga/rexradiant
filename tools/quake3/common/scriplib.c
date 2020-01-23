@@ -58,6 +58,7 @@ qboolean tokenready;                     // only qtrue if UnGetToken was just ca
  */
 void AddScriptToStack( const char *filename, int index ){
 	int size;
+	void* buffer;
 
 	script++;
 	if ( script == &scriptstack[MAX_INCLUDES] ) {
@@ -65,10 +66,11 @@ void AddScriptToStack( const char *filename, int index ){
 	}
 	strcpy( script->filename, ExpandPath( filename ) );
 
-	size = vfsLoadFile( script->filename, (void **)&script->buffer, index );
+	size = vfsLoadFile( script->filename, &buffer, index );
 
 	if ( size == -1 ) {
 		Sys_FPrintf( SYS_WRN, "Script file %s was not found\n", script->filename );
+		script--;
 	}
 	else
 	{
@@ -78,11 +80,12 @@ void AddScriptToStack( const char *filename, int index ){
 		else{
 			Sys_Printf( "entering %s\n", script->filename );
 		}
-	}
 
-	script->line = 1;
-	script->script_p = script->buffer;
-	script->end_p = script->buffer + size;
+		script->buffer = buffer;
+		script->line = 1;
+		script->script_p = script->buffer;
+		script->end_p = script->buffer + size;
+	}
 }
 
 
@@ -224,11 +227,8 @@ qboolean GetToken( qboolean crossline ){
 // skip space
 //
 skipspace:
-	while ( *script->script_p <= 32 )
+	while ( script->script_p < script->end_p && *script->script_p <= 32 )
 	{
-		if ( script->script_p >= script->end_p ) {
-			return EndOfScript( crossline );
-		}
 		if ( *script->script_p++ == '\n' ) {
 			if ( !crossline ) {
 				Error( "Line %i is incomplete\nFile location be: %s\n", scriptline, g_strLoadedFileLocation );

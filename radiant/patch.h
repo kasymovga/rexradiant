@@ -930,7 +930,8 @@ void RotateTexture( float angle );
 void SetTextureRepeat( float s, float t ); // call with s=1 t=1 for FIT
 void CapTexture();
 void NaturalTexture();
-Vector3 Calculate_AvgNormal();
+Vector3 Calculate_AvgNormal() const;
+void Calculate_AvgAxes( Vector3& wDir, Vector3& hDir ) const;
 void ProjectTexture( TextureProjection projection, const Vector3& normal );
 void ProjectTexture( const texdef_t& texdef, const Vector3* direction );
 void createThickenedOpposite(const Patch& sourcePatch, const float thickness, const int axis, bool& no12, bool& no34 );
@@ -994,7 +995,7 @@ void releaseShader(){
 }
 
 void check_shader(){
-	if ( !shader_valid( GetShader() ) ) {
+	if ( !texdef_name_valid( GetShader() ) ) {
 		globalErrorStream() << "patch has invalid texture name: '" << GetShader() << "'\n";
 	}
 }
@@ -1629,9 +1630,9 @@ void bestPlaneDirect( SelectionTest& test, Plane3& plane, SelectionIntersection&
 	test.BeginMesh( localToWorld() );
 	m_dragPlanes.bestPlaneDirect( m_patch.localAABB(), test, plane, intersection );
 }
-void bestPlaneIndirect( SelectionTest& test, Plane3& plane, Vector3& intersection, float& dist, const Vector3& viewer ){
+void bestPlaneIndirect( SelectionTest& test, Plane3& plane, Vector3& intersection, float& dist ){
 	test.BeginMesh( localToWorld() );
-	m_dragPlanes.bestPlaneIndirect( m_patch.localAABB(), test, plane, intersection, dist, viewer );
+	m_dragPlanes.bestPlaneIndirect( m_patch.localAABB(), test, plane, intersection, dist );
 }
 void selectByPlane( const Plane3& plane ){
 	m_dragPlanes.selectByPlane( m_patch.localAABB(), plane );

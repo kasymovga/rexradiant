@@ -489,8 +489,9 @@ void FocusViews( const Vector3& point, float angle ){
 	angles[CAMERA_YAW] = angle;
 	Camera_setAngles( camwnd, angles );
 
-	XYWnd* xywnd = g_pParentWnd->GetXYWnd();
-	xywnd->SetOrigin( point );
+	g_pParentWnd->forEachXYWnd( [&point]( XYWnd* xywnd ){
+		xywnd->SetOrigin( point );
+	} );
 }
 
 #include "stringio.h"
@@ -1537,11 +1538,6 @@ void Scene_Exclude_All( bool exclude ){
 	GlobalSceneGraph().traverse( ExcludeAllWalker( exclude ) );
 }
 
-bool Instance_isSelected( const scene::Instance& instance ){
-	const Selectable* selectable = Instance_getSelectable( instance );
-	return selectable != 0 && selectable->isSelected();
-}
-
 class ExcludeSelectedWalker : public scene::Graph::Walker
 {
 bool m_exclude;
@@ -1562,25 +1558,19 @@ void Scene_Exclude_Selected( bool exclude ){
 
 class ExcludeRegionedWalker : public scene::Graph::Walker
 {
-bool m_exclude;
+const bool m_exclude;
+const AABB m_region = aabb_for_minmax( g_region_mins, g_region_maxs );
 public:
 ExcludeRegionedWalker( bool exclude )
 	: m_exclude( exclude ){
 }
 bool pre( const scene::Path& path, scene::Instance& instance ) const {
-	if( !path.top().get().isRoot() ) /* don't touch model node: disabling one will disable all its instances! */
-		exclude_node(
-			path.top(),
-			!(
-				(
-					aabb_intersects_aabb(
-						instance.worldAABB(),
-						aabb_for_minmax( g_region_mins, g_region_maxs )
-						) != 0
-				) ^ m_exclude
-				)
-			);
-
+	if( !path.top().get().isRoot() ){ /* don't touch model node: disabling one will disable all its instances! */
+		const bool exclude = m_exclude == aabb_intersects_aabb( instance.worldAABB(), m_region );
+		exclude_node( path.top(), exclude );
+		if( exclude )
+			Instance_setSelected( instance, false );
+	}
 	return true;
 }
 };
@@ -1614,12 +1604,9 @@ void Map_ApplyRegion(){
 	g_region_item.update();
 
 	Scene_Exclude_Region( false );
-	/* newly created brushes have to visible! */
+	/* newly created brushes have to be visible! */
 	if( scene::Node* w = Map_FindWorldspawn( g_map ) )
 		exclude_node( *w, false );
-
-	if( GlobalSelectionSystem().countSelected() != 0 )
-		GlobalSelectionSystem().setSelectedAll( false );
 }
 
 
@@ -1638,7 +1625,7 @@ void Map_RegionSelectedBrushes(){
 		Select_GetBounds( g_region_mins, g_region_maxs );
 
 		Scene_Exclude_Selected( false );
-		/* newly created brushes have to visible! */
+		/* newly created brushes have to be visible! */
 		if( scene::Node* w = Map_FindWorldspawn( g_map ) )
 			exclude_node( *w, false );
 
@@ -1669,8 +1656,6 @@ void Map_RegionBounds( const AABB& bounds ){
 	g_region_mins = vector3_subtracted( bounds.origin, bounds.extents );
 	g_region_maxs = vector3_added( bounds.origin, bounds.extents );
 
-//	deleteSelection();
-
 	Map_ApplyRegion();
 }
 
@@ -1684,10 +1669,11 @@ void Map_RegionBrush( void ){
 		scene::Instance& instance = GlobalSelectionSystem().ultimateSelected();
 		Map_RegionBounds( instance.worldAABB() );
 
-		if( Selectable* selectable = Instance_getSelectable( instance ) ){
-			selectable->setSelected( true );
-			deleteSelection();
+		if( GlobalSelectionSystem().countSelected() != 1 ){
+			GlobalSelectionSystem().setSelectedAll( false );
+			Instance_setSelected( instance, true );
 		}
+		deleteSelection();
 	}
 	else{
 		globalErrorStream() << "Nothing is selected!\n";
@@ -2079,17 +2065,15 @@ void RegionOff(){
 }
 
 void RegionXY(){
-	VIEWTYPE viewtype = GlobalXYWnd_getCurrentViewType();
-	int nDim1 = ( viewtype == YZ ) ? 1 : 0;
-	int nDim2 = ( viewtype == XY ) ? 1 : 2;
-	int nDim = static_cast<int>( viewtype );
-	XYWnd* wnd = g_pParentWnd->ActiveXY();
+	const int nDim = GlobalXYWnd_getCurrentViewType();
+	NDIM1NDIM2( nDim );
+	const XYWnd& wnd = *( g_pParentWnd->ActiveXY() );
 	Vector3 min, max;
-	min[nDim1] = wnd->GetOrigin()[nDim1] - 0.5f * wnd->Width() / wnd->Scale();
-	min[nDim2] = wnd->GetOrigin()[nDim2] - 0.5f * wnd->Height() / wnd->Scale();
+	min[nDim1] = wnd.GetOrigin()[nDim1] - 0.5f * wnd.Width() / wnd.Scale();
+	min[nDim2] = wnd.GetOrigin()[nDim2] - 0.5f * wnd.Height() / wnd.Scale();
 	min[nDim] = g_MinWorldCoord + 64;
-	max[nDim1] = wnd->GetOrigin()[nDim1] + 0.5f * wnd->Width() / wnd->Scale();
-	max[nDim2] = wnd->GetOrigin()[nDim2] + 0.5f * wnd->Height() / wnd->Scale();
+	max[nDim1] = wnd.GetOrigin()[nDim1] + 0.5f * wnd.Width() / wnd.Scale();
+	max[nDim2] = wnd.GetOrigin()[nDim2] + 0.5f * wnd.Height() / wnd.Scale();
 	max[nDim] = g_MaxWorldCoord - 64;
 
 	Map_RegionXY( min, max );
@@ -2169,7 +2153,9 @@ void SelectBrush( int entitynum, int brushnum ){
 		Selectable* selectable = Instance_getSelectable( *instance );
 		ASSERT_MESSAGE( selectable != 0, "SelectBrush: path not selectable" );
 		selectable->setSelected( true );
-		g_pParentWnd->GetXYWnd()->PositionView( instance->worldAABB().origin );
+		g_pParentWnd->forEachXYWnd( [instance]( XYWnd* xywnd ){
+			xywnd->SetOrigin( instance->worldAABB().origin );
+		} );
 	}
 }
 
@@ -2330,6 +2316,260 @@ void DoFind(){
 	gtk_widget_destroy( GTK_WIDGET( window ) );
 }
 
+
+#include "filterbar.h"
+////
+void map_autocaulk_selected(){
+	if ( Map_Unnamed( g_map ) ) {
+		if( !Map_SaveAs() )
+			return;
+	}
+
+	{
+		class DeselectTriggers : public scene::Graph::Walker
+		{
+			mutable const scene::Instance* m_trigger = 0;
+		public:
+			bool pre( const scene::Path& path, scene::Instance& instance ) const {
+				if( path.size() == 2 ){
+					Entity* entity = Node_getEntity( path.top() );
+					if( entity != 0 && entity->isContainer() && string_equal_nocase_n( entity->getEntityClass().name(), "trigger_", 8 )
+							&& ( instance.childSelected() || instance.isSelected() ) )
+						m_trigger = &instance;
+					else
+						return false;
+				}
+				return true;
+			}
+			void post( const scene::Path& path, scene::Instance& instance ) const {
+				if( m_trigger )
+					Instance_setSelected( instance, false );
+				if( m_trigger == &instance )
+					m_trigger = 0;
+			}
+		};
+		GlobalSceneGraph().traverse( DeselectTriggers() );
+	}
+
+	if( GlobalSelectionSystem().countSelected() == 0 ){
+		globalErrorStream() << "map_autocaulk_selected(): nothing is selected\n";
+		return;
+	}
+
+	ScopeDisableScreenUpdates disableScreenUpdates( "processing", "autocaulk" );
+
+	StringOutputStream filename( 256 );
+	filename << StringRange( g_map.m_name.c_str(), path_get_filename_base_end( g_map.m_name.c_str() ) ) << "_ac.map";
+
+	{// write .map
+		const Vector3 spawn( Camera_getOrigin( *g_pParentWnd->GetCamWnd() ) );
+		Vector3 mins, maxs;
+		Select_GetBounds( mins, maxs );
+		mins -= Vector3( 1024, 1024, 1024 );
+		maxs += Vector3( 1024, 1024, 1024 );
+
+		if( !aabb_intersects_point( aabb_for_minmax( mins, maxs ), spawn ) ){
+			globalErrorStream() << "map_autocaulk_selected(): camera must be near selection!\n";
+			return;
+		}
+
+		TextFileOutputStream file( filename.c_str() );
+		if ( file.failed() ) {
+			globalErrorStream() << "writting " << filename.c_str() << " failure\n";
+			return;
+		}
+
+		// all brushes to the worldspawn
+		file << "{\n"
+				"\"classname\" \"worldspawn\"";
+		TokenWriter& writer = GlobalScripLibModule::getTable().m_pfnNewSimpleTokenWriter( file );
+		class WriteBrushesWalker : public scene::Traversable::Walker
+		{
+			TokenWriter& m_writer;
+		public:
+			WriteBrushesWalker( TokenWriter& writer )
+				: m_writer( writer ){
+			}
+			bool pre( scene::Node& node ) const {
+				if( Node_getBrush( node ) ){
+					NodeTypeCast<MapExporter>::cast( node )->exportTokens( m_writer );
+				}
+				return true;
+			}
+		};
+		Map_Traverse_Selected( GlobalSceneGraph().root(), WriteBrushesWalker( writer ) );
+		// plus box
+		scene::Node* box[6];
+		for ( std::size_t i = 0; i < 6; ++i ){
+			box[i] = &GlobalBrushCreator().createBrush();
+			box[i]->IncRef();
+		}
+		ConstructRegionBrushes( box, mins, maxs );
+		for ( std::size_t i = 0; i < 6; ++i ){
+			NodeTypeCast<MapExporter>::cast( *box[i] )->exportTokens( writer );
+			box[i]->DecRef();
+		}
+		// close world
+		file << "\n}\n";
+		// spawn
+		file << "{\n"
+				"\"classname\" \"info_player_start\"\n"
+				"\"origin\" \"" << spawn[0] << " " << spawn[1] << " " << spawn[2] << "\"\n"
+				"}\n";
+		// point entities
+		const MapFormat& format = MapFormat_forFile( filename.c_str() );
+		auto traverse_selected_point_entities = []( scene::Node& root, const scene::Traversable::Walker& walker ){
+			scene::Traversable* traversable = Node_getTraversable( root );
+			if ( traversable != 0 ) {
+				class selected_point_entities_walker : public scene::Traversable::Walker
+				{
+					const scene::Traversable::Walker& m_walker;
+					mutable bool m_skip;
+				public:
+					selected_point_entities_walker( const scene::Traversable::Walker& walker )
+						: m_walker( walker ), m_skip( false ){
+					}
+					bool pre( scene::Node& node ) const {
+						Entity* entity = Node_getEntity( node );
+						if( !node.isRoot() && entity != 0 && !entity->isContainer() && Node_instanceSelected( node ) ) {
+							m_walker.pre( node );
+						}
+						else{
+							m_skip = true;
+						}
+						return false;
+					}
+					void post( scene::Node& node ) const {
+						if( m_skip )
+							m_skip = false;
+						else
+							m_walker.post( node );
+					}
+				};
+				traversable->traverse( selected_point_entities_walker( walker ) );
+			}
+		};
+		format.writeGraph( GlobalSceneGraph().root(), traverse_selected_point_entities, file );
+
+		writer.release();
+	}
+
+	{ // compile
+		StringOutputStream str( 256 );
+		str << AppPath_get() << "q3map2." << RADIANT_EXECUTABLE
+							<< " -game quake3"
+							<< " -fs_basepath \"" << EnginePath_get()
+							<< "\" -fs_homepath \"" << g_qeglobals.m_userEnginePath.c_str()
+							<< "\" -fs_game " << gamename_get()
+							<< " -autocaulk -fulldetail"
+							<< " \"" << filename.c_str() << "\"";
+		// run
+		Q_Exec( NULL, str.c_str(), NULL, false, true );
+	}
+
+	typedef std::map<std::size_t, CopiedString> CaulkMap;
+	CaulkMap map;
+	{ // load
+		filename.clear();
+		filename << StringRange( g_map.m_name.c_str(), path_get_filename_base_end( g_map.m_name.c_str() ) ) << "_ac.caulk";
+
+		TextFileInputStream file( filename.c_str() );
+		if( file.failed() ){
+			globalErrorStream() << "reading " << filename.c_str() << " failure\n";
+			return;
+		}
+
+		Tokeniser& tokeniser = GlobalScripLibModule::getTable().m_pfnNewSimpleTokeniser( file );
+		while( 1 ){
+			const char* num = tokeniser.getToken();
+			if( !num )
+				break;
+			std::size_t n;
+			string_parse_size( num, n );
+
+			const char* faces = tokeniser.getToken();
+			if( !faces )
+				break;
+			tokeniser.nextLine();
+
+			map.emplace( n, faces );
+		}
+		tokeniser.release();
+	}
+
+	{ // apply
+		class CaulkBrushesWalker : public scene::Traversable::Walker
+		{
+			const CaulkMap& m_map;
+			mutable std::size_t m_brushIndex = 0;
+			const CopiedString m_caulk = GetCommonShader( "caulk" );
+			const CopiedString m_watercaulk = GetCommonShader( "watercaulk" );
+			const CopiedString m_lavacaulk = GetCommonShader( "lavacaulk" );
+			const CopiedString m_slimecaulk = GetCommonShader( "slimecaulk" );
+			const CopiedString m_nodraw = GetCommonShader( "nodraw" );
+			const CopiedString m_nodrawnonsolid = GetCommonShader( "nodrawnonsolid" );
+		public:
+			mutable std::size_t m_caulkedCount = 0;
+			CaulkBrushesWalker( CaulkMap& map )
+				: m_map( map ){
+			}
+			bool pre( scene::Node& node ) const {
+				Brush* brush = Node_getBrush( node );
+				if( brush ){
+					CaulkMap::const_iterator iter = m_map.find( m_brushIndex );
+					if( iter != m_map.end() ){
+						const char* faces = ( *iter ).second.c_str();
+						for ( Brush::const_iterator f = brush->begin(); f != brush->end() && *faces; ++f ){
+							Face& face = *( *f );
+							if ( face.contributes() ){
+								++m_caulkedCount;
+								switch ( *faces )
+								{
+								case 'c':
+									face.SetShader( m_caulk.c_str() );
+									break;
+								case 'w':
+									face.SetShader( m_watercaulk.c_str() );
+									break;
+								case 'l':
+									face.SetShader( m_lavacaulk.c_str() );
+									break;
+								case 's':
+									face.SetShader( m_slimecaulk.c_str() );
+									break;
+								case 'N':
+									face.SetShader( m_nodraw.c_str() );
+									break;
+								case 'n':
+									face.SetShader( m_nodrawnonsolid.c_str() );
+									break;
+
+								default:
+									--m_caulkedCount;
+									break;
+								}
+
+								++faces;
+							}
+						}
+					}
+					++m_brushIndex;
+				}
+				return true;
+			}
+		};
+		CaulkBrushesWalker caulkBrushesWalker( map );
+		GlobalUndoSystem().start();
+		Map_Traverse_Selected( GlobalSceneGraph().root(), caulkBrushesWalker );
+		StringOutputStream str( 32 );
+		str << "AutoCaulk " << caulkBrushesWalker.m_caulkedCount << " faces";
+		GlobalUndoSystem().finish( str.c_str() );
+	}
+}
+
+
+
+
 void Map_constructPreferences( PreferencesPage& page ){
 	page.appendCheckBox( "", "Load last map at startup", g_bLoadLastMap );
 }
@@ -2397,6 +2637,7 @@ void Map_Construct(){
 	GlobalCommands_insert( "RegionSetBrush", FreeCaller<RegionBrush>() );
 	//GlobalCommands_insert( "RegionSetSelection", FreeCaller<RegionSelected>(), Accelerator( 'R', (GdkModifierType)( GDK_SHIFT_MASK | GDK_CONTROL_MASK ) ) );
 	GlobalToggles_insert( "RegionSetSelection", FreeCaller<RegionSelected>(), ToggleItem::AddCallbackCaller( g_region_item ), Accelerator( 'R', (GdkModifierType)( GDK_SHIFT_MASK | GDK_CONTROL_MASK ) ) );
+	GlobalCommands_insert( "AutoCaulkSelected", FreeCaller<map_autocaulk_selected>(), Accelerator( GDK_F4 ) );
 
 	GlobalPreferenceSystem().registerPreference( "LastMap", CopiedStringImportStringCaller( g_strLastMap ), CopiedStringExportStringCaller( g_strLastMap ) );
 	GlobalPreferenceSystem().registerPreference( "LoadLastMap", BoolImportStringCaller( g_bLoadLastMap ), BoolExportStringCaller( g_bLoadLastMap ) );

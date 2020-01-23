@@ -114,7 +114,7 @@ CFLAGS_COMMON = -MMD -W -Wall -Wcast-align -Wcast-qual -Wno-unused-parameter -fn
 CPPFLAGS_COMMON =
 LDFLAGS_COMMON =
 LIBS_COMMON =
-CXXFLAGS_COMMON = -Wno-non-virtual-dtor -Wreorder -fno-exceptions -fno-rtti
+CXXFLAGS_COMMON = -std=c++11 -Wreorder -fno-exceptions -fno-rtti
 
 ifeq ($(BUILD),debug)
 ifeq ($(findstring $(CFLAGS),-g),)
@@ -219,7 +219,7 @@ ifeq ($(OS),Win32)
 	# workaround: OpenGL library for Win32 is called opengl32.dll
 	LIBS_GL = -lopengl32
 	# workaround: no -ldl on Win32
-	LIBS_DL = 
+	LIBS_DL =
 else
 
 ifeq ($(OS),Darwin)
@@ -435,6 +435,7 @@ binaries-radiant-core: \
 binaries-tools: \
 	binaries-tools-quake2 \
 	binaries-tools-quake3 \
+	binaries-mbspc \
 
 .PHONY: binaries-tools-quake2
 binaries-tools-quake2: \
@@ -471,6 +472,11 @@ binaries-q3data: \
 binaries-q3map2: \
 	$(INSTALLDIR)/q3map2.$(EXE) \
 	$(INSTALLDIR)/q3map2 \
+
+.PHONY: binaries-mbspc
+binaries-mbspc: \
+	$(INSTALLDIR)/mbspc.$(EXE) \
+	$(INSTALLDIR)/mbspc \
 
 
 .PHONY: clean
@@ -532,6 +538,7 @@ $(INSTALLDIR)/q3map2.$(EXE): \
 	tools/quake3/common/unzip.o \
 	tools/quake3/common/vfs.o \
 	tools/quake3/common/miniz.o \
+	tools/quake3/q3map2/autopk3.o \
 	tools/quake3/q3map2/brush.o \
 	tools/quake3/q3map2/brush_primit.o \
 	tools/quake3/q3map2/bspfile_abstract.o \
@@ -539,6 +546,7 @@ $(INSTALLDIR)/q3map2.$(EXE): \
 	tools/quake3/q3map2/bspfile_rbsp.o \
 	tools/quake3/q3map2/bsp.o \
 	tools/quake3/q3map2/convert_ase.o \
+	tools/quake3/q3map2/convert_bsp.o \
 	tools/quake3/q3map2/convert_obj.o \
 	tools/quake3/q3map2/convert_map.o \
 	tools/quake3/q3map2/decals.o \
@@ -555,6 +563,7 @@ $(INSTALLDIR)/q3map2.$(EXE): \
 	tools/quake3/q3map2/light_ydnar.o \
 	tools/quake3/q3map2/main.o \
 	tools/quake3/q3map2/map.o \
+	tools/quake3/q3map2/minimap.o \
 	tools/quake3/q3map2/mesh.o \
 	tools/quake3/q3map2/model.o \
 	tools/quake3/q3map2/patch.o \
@@ -721,7 +730,6 @@ $(INSTALLDIR)/radiant.$(EXE): \
 	radiant/selection.o \
 	radiant/select.o \
 	radiant/server.o \
-	radiant/shaders.o \
 	radiant/sockets.o \
 	radiant/stacktrace.o \
 	radiant/surfacedialog.o \
@@ -743,6 +751,7 @@ $(INSTALLDIR)/radiant.$(EXE): \
 	libl_net.$(A) \
 	libmathlib.$(A) \
 	libprofile.$(A) \
+	libquickhull.$(A) \
 	libxmllib.$(A) \
 	$(if $(findstring $(OS),Win32),icons/radiant.o,) \
 
@@ -792,6 +801,10 @@ libxmllib.$(A): \
 	libs/xml/xmlparser.o \
 	libs/xml/xmltextags.o \
 	libs/xml/xmlwriter.o \
+
+libquickhull.$(A): CPPFLAGS_EXTRA := -Ilibs
+libquickhull.$(A): \
+	libs/quickhull/QuickHull.o \
 
 $(INSTALLDIR)/modules/archivezip.$(DLL): LIBS_EXTRA := $(LIBS_ZLIB)
 $(INSTALLDIR)/modules/archivezip.$(DLL): CPPFLAGS_EXTRA := $(CPPFLAGS_ZLIB) -Ilibs -Iinclude
@@ -1098,6 +1111,68 @@ $(INSTALLDIR)/heretic2/h2data.$(EXE): \
 	libl_net.$(A) \
 	$(if $(findstring $(OS),Win32),icons/h2data.o,) \
 
+$(INSTALLDIR)/mbspc.$(EXE): CPPFLAGS_EXTRA := -Wstrict-prototypes -DNDEBUG -DBSPC -DBSPCINCLUDE
+$(INSTALLDIR)/mbspc.$(EXE): \
+	tools/mbspc/botlib/be_aas_bspq3.o \
+	tools/mbspc/botlib/be_aas_cluster.o \
+	tools/mbspc/botlib/be_aas_move.o \
+	tools/mbspc/botlib/be_aas_optimize.o \
+	tools/mbspc/botlib/be_aas_reach.o \
+	tools/mbspc/botlib/be_aas_sample.o \
+	tools/mbspc/botlib/l_libvar.o \
+	tools/mbspc/botlib/l_precomp.o \
+	tools/mbspc/botlib/l_script.o \
+	tools/mbspc/botlib/l_struct.o \
+	tools/mbspc/mbspc/aas_areamerging.o \
+	tools/mbspc/mbspc/aas_cfg.o \
+	tools/mbspc/mbspc/aas_create.o \
+	tools/mbspc/mbspc/aas_edgemelting.o \
+	tools/mbspc/mbspc/aas_facemerging.o \
+	tools/mbspc/mbspc/aas_file.o \
+	tools/mbspc/mbspc/aas_gsubdiv.o \
+	tools/mbspc/mbspc/aas_map.o \
+	tools/mbspc/mbspc/aas_prunenodes.o \
+	tools/mbspc/mbspc/aas_store.o \
+	tools/mbspc/mbspc/be_aas_bspc.o \
+	tools/mbspc/mbspc/brushbsp.o \
+	tools/mbspc/mbspc/bspc.o \
+	tools/mbspc/mbspc/csg.o \
+	tools/mbspc/mbspc/faces.o \
+	tools/mbspc/mbspc/glfile.o \
+	tools/mbspc/mbspc/l_bsp_ent.o \
+	tools/mbspc/mbspc/l_bsp_hl.o \
+	tools/mbspc/mbspc/l_bsp_q1.o \
+	tools/mbspc/mbspc/l_bsp_q2.o \
+	tools/mbspc/mbspc/l_bsp_q3.o \
+	tools/mbspc/mbspc/l_bsp_sin.o \
+	tools/mbspc/mbspc/l_cmd.o \
+	tools/mbspc/mbspc/l_log.o \
+	tools/mbspc/mbspc/l_math.o \
+	tools/mbspc/mbspc/l_mem.o \
+	tools/mbspc/mbspc/l_poly.o \
+	tools/mbspc/mbspc/l_qfiles.o \
+	tools/mbspc/mbspc/l_threads.o \
+	tools/mbspc/mbspc/l_utils.o \
+	tools/mbspc/mbspc/leakfile.o \
+	tools/mbspc/mbspc/map.o \
+	tools/mbspc/mbspc/map_hl.o \
+	tools/mbspc/mbspc/map_q1.o \
+	tools/mbspc/mbspc/map_q2.o \
+	tools/mbspc/mbspc/map_q3.o \
+	tools/mbspc/mbspc/map_sin.o \
+	tools/mbspc/mbspc/nodraw.o \
+	tools/mbspc/mbspc/portals.o \
+	tools/mbspc/mbspc/prtfile.o \
+	tools/mbspc/mbspc/textures.o \
+	tools/mbspc/mbspc/tree.o \
+	tools/mbspc/mbspc/writebsp.o \
+	tools/mbspc/qcommon/cm_load.o \
+	tools/mbspc/qcommon/cm_patch.o \
+	tools/mbspc/qcommon/cm_test.o \
+	tools/mbspc/qcommon/cm_trace.o \
+	tools/mbspc/qcommon/md4.o \
+	tools/mbspc/qcommon/unzip.o \
+
 .PHONY: install-data
 install-data: binaries
 	$(MKDIR) $(INSTALLDIR)/games
@@ -1114,7 +1189,7 @@ install-data: binaries
 ifeq ($(OS),Win32)
 install-dll: binaries
 ifeq ($(INSTALL_DLLS),yes)
-	MKDIR="$(MKDIR)" CP="$(CP)" CAT="$(CAT)" GTKDIR="$(GTKDIR)" WHICHDLL="$(WHICHDLL)" INSTALLDIR="$(INSTALLDIR)" $(SH) $(DLLINSTALL) 
+	MKDIR="$(MKDIR)" CP="$(CP)" CAT="$(CAT)" GTKDIR="$(GTKDIR)" WHICHDLL="$(WHICHDLL)" INSTALLDIR="$(INSTALLDIR)" $(SH) $(DLLINSTALL)
 endif
 else
 install-dll: binaries

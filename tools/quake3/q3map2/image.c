@@ -234,24 +234,18 @@ static void LoadPNGBuffer( byte *buffer, int size, byte **pixels, int *width, in
  */
 
 static void ImageInit( void ){
-	int i;
-
-
 	if ( numImages <= 0 ) {
 		/* clear images (fixme: this could theoretically leak) */
 		memset( images, 0, sizeof( images ) );
 
 		/* generate *bogus image */
-		images[ 0 ].name = safe_malloc( strlen( DEFAULT_IMAGE ) + 1 );
-		strcpy( images[ 0 ].name, DEFAULT_IMAGE );
-		images[ 0 ].filename = safe_malloc( strlen( DEFAULT_IMAGE ) + 1 );
-		strcpy( images[ 0 ].filename, DEFAULT_IMAGE );
+		images[ 0 ].name = copystring( DEFAULT_IMAGE );
+		images[ 0 ].filename = copystring( DEFAULT_IMAGE );
 		images[ 0 ].width = 64;
 		images[ 0 ].height = 64;
 		images[ 0 ].refCount = 1;
 		images[ 0 ].pixels = safe_malloc( 64 * 64 * 4 );
-		for ( i = 0; i < ( 64 * 64 * 4 ); i++ )
-			images[ 0 ].pixels[ i ] = 255;
+		memset( images[ 0 ].pixels, 255, 64 * 64 * 4 );
 	}
 }
 
@@ -273,13 +267,9 @@ void ImageFree( image_t *image ){
 
 	/* free? */
 	if ( image->refCount <= 0 ) {
-		if ( image->name != NULL ) {
-			free( image->name );
-		}
+		free( image->name );
 		image->name = NULL;
-		if ( image->filename != NULL ) {
-			free( image->filename );
-		}
+		free( image->filename );
 		image->filename = NULL;
 		free( image->pixels );
 		image->width = 0;
@@ -375,8 +365,7 @@ image_t *ImageLoad( const char *filename ){
 	}
 
 	/* set it up */
-	image->name = safe_malloc( strlen( name ) + 1 );
-	strcpy( image->name, name );
+	image->name = copystring( name );
 
 	/* attempt to load tga */
 	StripExtension( name );
@@ -447,8 +436,7 @@ image_t *ImageLoad( const char *filename ){
 	}
 
 	/* set filename */
-	image->filename = safe_malloc( strlen( name ) + 1 );
-	strcpy( image->filename, name );
+	image->filename = copystring( name );
 
 	/* set count */
 	image->refCount = 1;

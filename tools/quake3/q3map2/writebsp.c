@@ -261,7 +261,7 @@ int EmitDrawNode_r( node_t *node ){
 void SetModelNumbers( void ){
 	int i;
 	int models;
-	char value[10];
+	char value[16];
 
 	models = 1;
 	for ( i = 1 ; i < numEntities ; i++ ) {
@@ -488,6 +488,9 @@ void EmitBrushes( brush_t *brushes, int *firstBrush, int *numBrushes ){
 			/* emit shader */
 			if ( b->sides[ j ].shaderInfo ) {
 				cp->shaderNum = EmitShader( b->sides[ j ].shaderInfo->shader, &b->sides[ j ].shaderInfo->contentFlags, &b->sides[ j ].shaderInfo->surfaceFlags );
+			}
+			else if( b->sides[ j ].bevel ) { /* emit surfaceFlags for bevels to get correct physics at walkable brush edges and vertices */
+				cp->shaderNum = EmitShader( NULL, NULL, &b->sides[ j ].surfaceFlags );
 			}
 			else{
 				cp->shaderNum = EmitShader( NULL, NULL, NULL );

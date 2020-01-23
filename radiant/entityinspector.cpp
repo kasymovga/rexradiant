@@ -126,7 +126,7 @@ virtual void update() = 0;
 virtual void release() = 0;
 };
 
-class BooleanAttribute : public EntityAttribute
+class BooleanAttribute final : public EntityAttribute
 {
 CopiedString m_key;
 GtkCheckButton* m_check;
@@ -191,6 +191,7 @@ StringAttribute( const char* key ) :
 	m_entry = entry;
 	m_nonModal.connect( m_entry );
 }
+virtual ~StringAttribute() = default;
 GtkWidget* getWidget() const {
 	return GTK_WIDGET( m_entry );
 }
@@ -236,7 +237,7 @@ TextureAttribute( const char* key ) : StringAttribute( key ){
 };
 
 
-class ColorAttribute : public EntityAttribute
+class ColorAttribute final : public EntityAttribute
 {
 CopiedString m_key;
 BrowsedPathEntry m_entry;
@@ -280,7 +281,7 @@ typedef MemberCaller1<ColorAttribute, const BrowsedPathEntry::SetPathCallback&, 
 };
 
 
-class ModelAttribute : public EntityAttribute
+class ModelAttribute final : public EntityAttribute
 {
 CopiedString m_key;
 BrowsedPathEntry m_entry;
@@ -329,7 +330,7 @@ const char* browse_sound( GtkWidget* parent ){
 	if ( !file_readable( buffer.c_str() ) ) {
 		// just go to fsmain
 		buffer.clear();
-		buffer << g_qeglobals.m_userGamePath.c_str() << "/";
+		buffer << g_qeglobals.m_userGamePath.c_str();
 	}
 
 	const char* filename = file_dialog( parent, TRUE, "Open Wav File", buffer.c_str(), "sound" );
@@ -343,7 +344,7 @@ const char* browse_sound( GtkWidget* parent ){
 	return filename;
 }
 
-class SoundAttribute : public EntityAttribute
+class SoundAttribute final : public EntityAttribute
 {
 CopiedString m_key;
 BrowsedPathEntry m_entry;
@@ -408,7 +409,7 @@ public:
 	}
 };
 
-class AngleAttribute : public EntityAttribute
+class AngleAttribute final : public EntityAttribute
 {
 CopiedString m_key;
 GtkEntry* m_entry;
@@ -468,7 +469,7 @@ typedef const char* String;
 const String buttons[] = { "up", "down", "yaw" };
 }
 
-class DirectionAttribute : public EntityAttribute
+class DirectionAttribute final : public EntityAttribute
 {
 CopiedString m_key;
 GtkEntry* m_entry;
@@ -572,7 +573,7 @@ AnglesEntry() : m_roll( 0 ), m_pitch( 0 ), m_yaw( 0 ){
 }
 };
 
-class AnglesAttribute : public EntityAttribute
+class AnglesAttribute final : public EntityAttribute
 {
 CopiedString m_key;
 AnglesEntry m_angles;
@@ -670,7 +671,7 @@ Vector3Entry() : m_x( 0 ), m_y( 0 ), m_z( 0 ){
 }
 };
 
-class Vector3Attribute : public EntityAttribute
+class Vector3Attribute final : public EntityAttribute
 {
 CopiedString m_key;
 Vector3Entry m_vector3;
@@ -770,7 +771,7 @@ void setActive( GtkComboBox* combo, int value ){
 }
 };
 
-class ListAttribute : public EntityAttribute
+class ListAttribute final : public EntityAttribute
 {
 CopiedString m_key;
 GtkComboBox* m_combo;
@@ -825,9 +826,9 @@ namespace
 GtkWidget* g_entity_split0 = 0;
 GtkWidget* g_entity_split1 = 0;
 GtkWidget* g_entity_split2 = 0;
-int g_entitysplit0_position;
-int g_entitysplit1_position;
-int g_entitysplit2_position;
+int g_entitysplit0_position = 255;
+int g_entitysplit1_position = 231;
+int g_entitysplit2_position = 57;
 
 bool g_entityInspector_windowConstructed = false;
 
@@ -993,6 +994,16 @@ void SetComment( EntityClass* eclass ){
 	}
 }
 
+void EntityAttribute_setTooltip( GtkWidget* widget, const char* name, const char* description ){
+	StringOutputStream stream( 256 );
+	if( string_not_empty( name ) )
+		stream << "<b>      " << name << "</b>   ";
+	if( string_not_empty( description ) )
+		stream << "\n" << description;
+	if( !stream.empty() )
+		gtk_widget_set_tooltip_markup( widget, stream.c_str() );
+}
+
 void SurfaceFlags_setEntityClass( EntityClass* eclass ){
 	if ( eclass == g_current_flags ) {
 		return;
@@ -1043,6 +1054,10 @@ void SurfaceFlags_setEntityClass( EntityClass* eclass ){
 			gtk_widget_unref( widget );
 
 			gtk_label_set_text( GTK_LABEL( GTK_BIN( widget )->child ), str.c_str() );
+
+			if( const EntityClassAttribute* attribute = eclass->flagAttributes[i] ){
+				EntityAttribute_setTooltip( widget, attribute->m_name.c_str(), attribute->m_description.c_str() );
+			}
 		}
 	}
 }
@@ -1068,8 +1083,10 @@ void EntityClassList_selectEntityClass( EntityClass* eclass ){
 	}
 }
 
-void EntityInspector_appendAttribute( const char* name, EntityAttribute& attribute ){
-	GtkTable* row = DialogRow_new( name, attribute.getWidget() );
+void EntityInspector_appendAttribute( const EntityClassAttributePair& attributePair, EntityAttribute& attribute ){
+	const char* keyname = attributePair.first.c_str(); //EntityClassAttributePair_getName( attributePair );
+	GtkTable* row = DialogRow_new( keyname, attribute.getWidget() );
+	EntityAttribute_setTooltip( GTK_WIDGET( row ), attributePair.second.m_name.c_str(), attributePair.second.m_description.c_str() );
 	DialogVBox_packRow( g_attributeBox, GTK_WIDGET( row ) );
 }
 
@@ -1139,7 +1156,7 @@ void EntityInspector_setEntityClass( EntityClass *eclass ){
 			EntityAttribute* attribute = GlobalEntityAttributeFactory::instance().create( ( *i ).second.m_type.c_str(), ( *i ).first.c_str() );
 			if ( attribute != 0 ) {
 				g_entityAttributes.push_back( attribute );
-				EntityInspector_appendAttribute( EntityClassAttributePair_getName( *i ), *g_entityAttributes.back() );
+				EntityInspector_appendAttribute( *i, *g_entityAttributes.back() );
 			}
 		}
 	}

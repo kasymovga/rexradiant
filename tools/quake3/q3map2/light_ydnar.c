@@ -55,8 +55,6 @@ void ColorToBytes( const float *color, byte *colorBytes, float scale ){
 	if ( scale <= 0.0f ) {
 		scale = 1.0f;
 	}
-	/* globally */
-	scale *= lightmapBrightness;
 
 	/* make a local copy */
 	VectorScale( color, scale, sample );
@@ -77,15 +75,9 @@ void ColorToBytes( const float *color, byte *colorBytes, float scale ){
 
 	if ( lightmapExposure == 0 ) {
 		/* clamp with color normalization */
-		max = sample[ 0 ];
-		if ( sample[ 1 ] > max ) {
-			max = sample[ 1 ];
-		}
-		if ( sample[ 2 ] > max ) {
-			max = sample[ 2 ];
-		}
-		if ( max > 255.0f ) {
-			VectorScale( sample, ( 255.0f / max ), sample );
+		max = VectorMax( sample );
+		if ( max > maxLight ) {
+			VectorScale( sample, ( maxLight / max ), sample );
 		}
 	}
 	else
@@ -93,13 +85,7 @@ void ColorToBytes( const float *color, byte *colorBytes, float scale ){
 		inv = 1.f / lightmapExposure;
 		//Exposure
 
-		max = sample[ 0 ];
-		if ( sample[ 1 ] > max ) {
-			max = sample[ 1 ];
-		}
-		if ( sample[ 2 ] > max ) {
-			max = sample[ 2 ];
-		}
+		max = VectorMax( sample );
 
 		dif = ( 1 -  exp( -max * inv ) )  *  255;
 
@@ -129,12 +115,10 @@ void ColorToBytes( const float *color, byte *colorBytes, float scale ){
 				sample[i] = 0;
 			}
 		}
-		if ( ( sample[0] > 255 ) || ( sample[1] > 255 ) || ( sample[2] > 255 ) ) {
-			max = sample[0] > sample[1] ? sample[0] : sample[1];
-			max = max > sample[2] ? max : sample[2];
-			sample[0] = sample[0] * 255 / max;
-			sample[1] = sample[1] * 255 / max;
-			sample[2] = sample[2] * 255 / max;
+		/* clamp with color normalization */
+		max = VectorMax( sample );
+		if ( max > 255.0f ) {
+			VectorScale( sample, ( 255.0f / max ), sample );
 		}
 	}
 
@@ -169,7 +153,7 @@ void ColorToBytes( const float *color, byte *colorBytes, float scale ){
 #define EQUAL_NORMAL_EPSILON    0.01
 
 void SmoothNormals( void ){
-	int i, j, k, f, cs, numVerts, numVotes, fOld, start;
+	int i, j, k, f, numVerts, numVotes, fOld, start;
 	float shadeAngle, defaultShadeAngle, maxShadeAngle, dot, testAngle;
 	bspDrawSurface_t    *ds;
 	shaderInfo_t        *si;
@@ -181,13 +165,10 @@ void SmoothNormals( void ){
 
 
 	/* allocate shade angle table */
-	shadeAngles = safe_malloc( numBSPDrawVerts * sizeof( float ) );
-	memset( shadeAngles, 0, numBSPDrawVerts * sizeof( float ) );
+	shadeAngles = safe_calloc( numBSPDrawVerts * sizeof( float ) );
 
 	/* allocate smoothed table */
-	cs = ( numBSPDrawVerts / 8 ) + 1;
-	smoothed = safe_malloc( cs );
-	memset( smoothed, 0, cs );
+	smoothed = safe_calloc( ( numBSPDrawVerts / 8 ) + 1 );
 
 	/* set default shade angle */
 	defaultShadeAngle = DEG2RAD( shadeAngleDegrees );
@@ -460,7 +441,6 @@ static int MapSingleLuxel( rawLightmap_t *lm, surfaceInfo_t *info, bspDrawVert_t
 	vec4_t sideplane, hostplane;
 	vec3_t origintwo;
 	int j, next;
-	float e;
 	float           *nudge;
 	static float nudges[][ 2 ] =
 	{
@@ -585,15 +565,11 @@ static int MapSingleLuxel( rawLightmap_t *lm, surfaceInfo_t *info, bspDrawVert_t
 				PlaneFromPoints( sideplane,cverts[i],cverts[ next ], temp );
 
 				//planetest sample point
-				e = DotProduct( origin,sideplane );
-				e = e - sideplane[3];
-				if ( e > 0 ) {
+				const float e = DotProduct( origin, sideplane ) - sideplane[3];
+				if ( e > -LUXEL_EPSILON ) {
 					//we're bad.
-					//VectorClear(origin);
 					//Move the sample point back inside triangle bounds
-					origin[0] -= sideplane[0] * ( e + 1 );
-					origin[1] -= sideplane[1] * ( e + 1 );
-					origin[2] -= sideplane[2] * ( e + 1 );
+					VectorMA( origin, ( -e - 1 ), sideplane, origin );
 #ifdef DEBUG_27_1
 					VectorClear( origin );
 #endif
@@ -642,9 +618,7 @@ static int MapSingleLuxel( rawLightmap_t *lm, surfaceInfo_t *info, bspDrawVert_t
 
 	VectorCopy( origin,origintwo );
 	if ( lightmapExtraVisClusterNudge ) {
-		origintwo[0] += vecs[2][0];
-		origintwo[1] += vecs[2][1];
-		origintwo[2] += vecs[2][2];
+		VectorAdd( origintwo, vecs[2], origintwo );
 	}
 
 	/* get cluster */
@@ -2430,8 +2404,7 @@ void IlluminateRawLightmap( int rawLightmapNum ){
 			if ( lm->superLuxels[ lightmapNum ] == NULL ) {
 				/* allocate sampling lightmap storage */
 				size = lm->sw * lm->sh * SUPER_LUXEL_SIZE * sizeof( float );
-				lm->superLuxels[ lightmapNum ] = safe_malloc( size );
-				memset( lm->superLuxels[ lightmapNum ], 0, size );
+				lm->superLuxels[ lightmapNum ] = safe_calloc( size );
 			}
 
 			/* set style */
@@ -3709,7 +3682,7 @@ void SetupEnvelopes( qboolean forGrid, qboolean fastFlag ){
 				else{
 					light->flags &= ~LIGHT_FAST_TEMP;
 				}
-				if ( fastpoint && ( light->flags != EMIT_AREA ) ) {
+				if ( fastpoint && ( light->type != EMIT_AREA ) ) {
 					light->flags |= LIGHT_FAST_TEMP;
 				}
 				if ( light->si && light->si->noFast ) {
@@ -3890,9 +3863,7 @@ void SetupEnvelopes( qboolean forGrid, qboolean fastFlag ){
 				/* delete the light */
 				numCulledLights++;
 				*owner = light->next;
-				if ( light->w != NULL ) {
-					free( light->w );
-				}
+				free( light->w );
 				free( light );
 				continue;
 			}
@@ -4076,9 +4047,7 @@ void CreateTraceLightsForBounds( vec3_t mins, vec3_t maxs, vec3_t normal, int nu
 
 
 void FreeTraceLights( trace_t *trace ){
-	if ( trace->lights != NULL ) {
-		free( trace->lights );
-	}
+	free( trace->lights );
 }
 
 

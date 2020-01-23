@@ -277,14 +277,10 @@ void ClearSurface( mapDrawSurface_t *ds ){
 	ds->planar = qfalse;
 	ds->planeNum = -1;
 	ds->numVerts = 0;
-	if ( ds->verts != NULL ) {
-		free( ds->verts );
-	}
+	free( ds->verts );
 	ds->verts = NULL;
 	ds->numIndexes = 0;
-	if ( ds->indexes != NULL ) {
-		free( ds->indexes );
-	}
+	free( ds->indexes );
 	ds->indexes = NULL;
 	numClearedSurfaces++;
 }
@@ -957,8 +953,7 @@ mapDrawSurface_t *DrawSurfaceForSide( entity_t *e, brush_t *b, side_t *s, windin
 	ds->sampleSize = b->lightmapSampleSize;
 	ds->lightmapScale = b->lightmapScale;
 	ds->numVerts = w->numpoints;
-	ds->verts = safe_malloc( ds->numVerts * sizeof( *ds->verts ) );
-	memset( ds->verts, 0, ds->numVerts * sizeof( *ds->verts ) );
+	ds->verts = safe_calloc( ds->numVerts * sizeof( *ds->verts ) );
 
 	/* compute s/t coordinates from brush primitive texture matrix (compute axis base) */
 	ComputeAxisBase( mapplanes[ s->planenum ].normal, texX, texY );
@@ -1631,6 +1626,8 @@ qboolean SideInBrush( side_t *side, brush_t *b ){
 		if ( s == SIDE_FRONT || s == SIDE_CROSS ) {
 			return qfalse;
 		}
+		if( s == SIDE_ON && b->sides[ i ].culled && DotProduct( ( mapplanes[ side->planenum ].normal ), ( plane->normal ) ) > 0 ) /* don't cull by freshly culled with matching plane */
+			return qfalse;
 	}
 
 	/* don't cull autosprite or polygonoffset surfaces */
@@ -1757,7 +1754,7 @@ void CullSides( entity_t *e ){
 					{
 						if ( VectorCompare( w1->p[ 0 ], w2->p[ k ] ) ) {
 							first = k;
-							k = numPoints;
+							break;
 						}
 					}
 					if ( first == -1 ) {
@@ -1827,6 +1824,8 @@ void CullSides( entity_t *e ){
 						side2->culled = qtrue;
 						g_numCoinFaces++;
 					}
+
+					// TODO ? this culls only one of face-to-face windings; SideInBrush culls both tho; is this needed at all or should be improved?
 				}
 			}
 		}
@@ -3021,8 +3020,7 @@ static void MakeDebugPortalSurfs_r( node_t *node, shaderInfo_t *si ){
 			VectorCopy( p->plane.normal, ds->lightmapVecs[ 2 ] );
 			ds->fogNum = -1;
 			ds->numVerts = w->numpoints;
-			ds->verts = safe_malloc( ds->numVerts * sizeof( *ds->verts ) );
-			memset( ds->verts, 0, ds->numVerts * sizeof( *ds->verts ) );
+			ds->verts = safe_calloc( ds->numVerts * sizeof( *ds->verts ) );
 
 			/* walk the winding */
 			for ( i = 0; i < ds->numVerts; i++ )
@@ -3113,11 +3111,9 @@ void MakeFogHullSurfs( entity_t *e, tree_t *tree, char *shader ){
 	ds->shaderInfo = si;
 	ds->fogNum = -1;
 	ds->numVerts = 8;
-	ds->verts = safe_malloc( ds->numVerts * sizeof( *ds->verts ) );
-	memset( ds->verts, 0, ds->numVerts * sizeof( *ds->verts ) );
+	ds->verts = safe_calloc( ds->numVerts * sizeof( *ds->verts ) );
 	ds->numIndexes = 36;
-	ds->indexes = safe_malloc( ds->numIndexes * sizeof( *ds->indexes ) );
-	memset( ds->indexes, 0, ds->numIndexes * sizeof( *ds->indexes ) );
+	ds->indexes = safe_calloc( ds->numIndexes * sizeof( *ds->indexes ) );
 
 	/* set verts */
 	VectorSet( ds->verts[ 0 ].xyz, fogMins[ 0 ], fogMins[ 1 ], fogMins[ 2 ] );

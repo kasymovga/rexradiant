@@ -130,7 +130,7 @@ void LokiInitPaths( char *argv0 ){
 	path = getenv( "PATH" );
 
 	/* do some path divining */
-	Q_strncpyz( temp, argv0, sizeof( temp ) );
+	strcpyQ( temp, argv0, sizeof( temp ) );
 	if ( strrchr( temp, '/' ) ) {
 		argv0 = strrchr( argv0, '/' ) + 1;
 	}
@@ -171,20 +171,17 @@ void LokiInitPaths( char *argv0 ){
 
 			/* found home dir candidate */
 			if ( *path == '~' ) {
-				Q_strncpyz( temp, home, sizeof( temp ) );
+				strcpyQ( temp, home, sizeof( temp ) );
 				path++;
 			}
 
 
 			/* concatenate */
 			if ( last > ( path + 1 ) ) {
-				// +1 hack: Q_strncat calls Q_strncpyz that expects a len including '\0'
-				// so that extraneous char will be rewritten by '\0', so it's ok.
-				// Also, in this case this extraneous char is always ':' or '\0', so it's ok.
-				Q_strncat( temp, sizeof( temp ), path, ( last - path + 1) );
-				Q_strcat( temp, sizeof( temp ), "/" );
+				strncatQ( temp, path, sizeof( temp ), ( last - path ) );
+				strcatQ( temp, "/", sizeof( temp ) );
 			}
-			Q_strcat( temp, sizeof( temp ), argv0 );
+			strcatQ( temp, argv0, sizeof( temp ) );
 
 			/* verify the path */
 			if ( access( temp, X_OK ) == 0 ) {
@@ -204,23 +201,6 @@ void LokiInitPaths( char *argv0 ){
 		*( strrchr( installPath, '/' ) ) = '\0';
 	}
 	#endif
-}
-
-
-
-/*
-   CleanPath() - ydnar
-   cleans a dos path \ -> /
- */
-
-void CleanPath( char *path ){
-	while ( *path )
-	{
-		if ( *path == '\\' ) {
-			*path = '/';
-		}
-		path++;
-	}
 }
 
 
@@ -280,10 +260,10 @@ void AddBasePath( char *path ){
 	}
 
 	/* add it to the list */
-	basePaths[ numBasePaths ] = safe_malloc( strlen( path ) + 1 );
-	strcpy( basePaths[ numBasePaths ], path );
-	CleanPath( basePaths[ numBasePaths ] );
-	if ( EnginePath[0] == '\0' ) strcpy( EnginePath, basePaths[ numBasePaths ] );
+	basePaths[ numBasePaths ] = copystring( path );
+	FixDOSName( basePaths[ numBasePaths ] );
+	if ( EnginePath[0] == '\0' )
+		strcpy( EnginePath, basePaths[ numBasePaths ] );
 	numBasePaths++;
 }
 
@@ -337,9 +317,8 @@ void AddHomeBasePath( char *path ){
 		basePaths[ i + 1 ] = basePaths[ i ];
 
 	/* add it to the list */
-	basePaths[ 0 ] = safe_malloc( strlen( temp ) + 1 );
-	strcpy( basePaths[ 0 ], temp );
-	CleanPath( basePaths[ 0 ] );
+	basePaths[ 0 ] = copystring( temp );
+	FixDOSName( basePaths[ 0 ] );
 	numBasePaths++;
 }
 
@@ -359,9 +338,8 @@ void AddGamePath( char *path ){
 	}
 
 	/* add it to the list */
-	gamePaths[ numGamePaths ] = safe_malloc( strlen( path ) + 1 );
-	strcpy( gamePaths[ numGamePaths ], path );
-	CleanPath( gamePaths[ numGamePaths ] );
+	gamePaths[ numGamePaths ] = copystring( path );
+	FixDOSName( gamePaths[ numGamePaths ] );
 	numGamePaths++;
 
 	/* don't add it if it's already there */
@@ -390,9 +368,8 @@ void AddPakPath( char *path ){
 	}
 
 	/* add it to the list */
-	pakPaths[ numPakPaths ] = safe_malloc( strlen( path ) + 1 );
-	strcpy( pakPaths[ numPakPaths ], path );
-	CleanPath( pakPaths[ numPakPaths ] );
+	pakPaths[ numPakPaths ] = copystring( path );
+	FixDOSName( pakPaths[ numPakPaths ] );
 	numPakPaths++;
 }
 
@@ -432,7 +409,7 @@ void InitPaths( int *argc, char **argv ){
 
 		/* -game */
 		if ( strcmp( argv[ i ], "-game" ) == 0 ) {
-			if ( ++i >= *argc ) {
+			if ( ++i >= *argc || !argv[ i ] ) {
 				Error( "Out of arguments: No game specified after %s", argv[ i - 1 ] );
 			}
 			argv[ i - 1 ] = NULL;
@@ -445,7 +422,7 @@ void InitPaths( int *argc, char **argv ){
 
 		/* -fs_forbiddenpath */
 		else if ( strcmp( argv[ i ], "-fs_forbiddenpath" ) == 0 ) {
-			if ( ++i >= *argc ) {
+			if ( ++i >= *argc || !argv[ i ] ) {
 				Error( "Out of arguments: No path specified after %s.", argv[ i - 1 ] );
 			}
 			argv[ i - 1 ] = NULL;
@@ -459,7 +436,7 @@ void InitPaths( int *argc, char **argv ){
 
 		/* -fs_basepath */
 		else if ( strcmp( argv[ i ], "-fs_basepath" ) == 0 ) {
-			if ( ++i >= *argc ) {
+			if ( ++i >= *argc || !argv[ i ] ) {
 				Error( "Out of arguments: No path specified after %s.", argv[ i - 1 ] );
 			}
 			argv[ i - 1 ] = NULL;
@@ -469,7 +446,7 @@ void InitPaths( int *argc, char **argv ){
 
 		/* -fs_game */
 		else if ( strcmp( argv[ i ], "-fs_game" ) == 0 ) {
-			if ( ++i >= *argc ) {
+			if ( ++i >= *argc || !argv[ i ] ) {
 				Error( "Out of arguments: No path specified after %s.", argv[ i - 1 ] );
 			}
 			argv[ i - 1 ] = NULL;
@@ -479,7 +456,7 @@ void InitPaths( int *argc, char **argv ){
 
 		/* -fs_home */
 		else if ( strcmp( argv[ i ], "-fs_home" ) == 0 ) {
-			if ( ++i >= *argc ) {
+			if ( ++i >= *argc || !argv[ i ] ) {
 				Error( "Out of arguments: No path specified after %s.", argv[ i - 1 ] );
 			}
 			argv[ i - 1 ] = NULL;
@@ -489,7 +466,7 @@ void InitPaths( int *argc, char **argv ){
 
 		/* -fs_homebase */
 		else if ( strcmp( argv[ i ], "-fs_homebase" ) == 0 ) {
-			if ( ++i >= *argc ) {
+			if ( ++i >= *argc || !argv[ i ] ) {
 				Error( "Out of arguments: No path specified after %s.", argv[ i - 1 ] );
 			}
 			argv[ i - 1 ] = NULL;
@@ -499,7 +476,7 @@ void InitPaths( int *argc, char **argv ){
 
 		/* -fs_homepath - sets both of them */
 		else if ( strcmp( argv[ i ], "-fs_homepath" ) == 0 ) {
-			if ( ++i >= *argc ) {
+			if ( ++i >= *argc || !argv[ i ] ) {
 				Error( "Out of arguments: No path specified after %s.", argv[ i - 1 ] );
 			}
 			argv[ i - 1 ] = NULL;
@@ -510,7 +487,7 @@ void InitPaths( int *argc, char **argv ){
 
 		/* -fs_pakpath */
 		else if ( strcmp( argv[ i ], "-fs_pakpath" ) == 0 ) {
-			if ( ++i >= *argc ) {
+			if ( ++i >= *argc || !argv[ i ] ) {
 				Error( "Out of arguments: No path specified after %s.", argv[ i - 1 ] );
 			}
 			argv[ i - 1 ] = NULL;
@@ -542,7 +519,7 @@ void InitPaths( int *argc, char **argv ){
 		{
 			/* extract the arg */
 			strcpy( temp, argv[ i ] );
-			CleanPath( temp );
+			FixDOSName( temp );
 			len = strlen( temp );
 			Sys_FPrintf( SYS_VRB, "Searching for \"%s\" in \"%s\" (%d)...\n", game->magic, temp, i );
 

@@ -83,6 +83,8 @@
 #include "vfs.h"
 #include "png.h"
 #include "md4.h"
+
+#include <stddef.h>
 #include <stdlib.h>
 
 
@@ -97,16 +99,6 @@
 	#define MAC_STATIC          static
 #else
 	#define MAC_STATIC
-#endif
-
-#if 1
-	#ifdef WIN32
-		#define Q_stricmp           stricmp
-		#define Q_strncasecmp       strnicmp
-	#else
-		#define Q_stricmp           strcasecmp
-		#define Q_strncasecmp       strncasecmp
-	#endif
 #endif
 
 /* macro version */
@@ -568,7 +560,7 @@ typedef struct game_s
 	float lightmapGamma;                                /* default lightmap gamma */
 	qboolean lightmapsRGB;                              /* default lightmap sRGB mode */
 	qboolean texturesRGB;                               /* default texture sRGB mode */
-	qboolean colorsRGB;                             /* default color sRGB mode */
+	qboolean colorsRGB;                                 /* default color sRGB mode */
 	float lightmapExposure;                             /* default lightmap exposure */
 	float lightmapCompensate;                           /* default lightmap compensate value */
 	float gridScale;                                    /* vortex: default lightgrid scale (affects both directional and ambient spectres) */
@@ -591,6 +583,7 @@ typedef struct game_s
 	qboolean lumpSwap;                                  /* cod-style len/ofs order */
 	bspFunc load, write;                                /* load/write function pointers */
 	surfaceParm_t surfaceParms[ 128 ];                  /* surfaceparm array */
+	int brushBevelsSurfaceFlagsMask;                    /* apply only these surfaceflags to bevels to reduce extra bsp shaders amount; applying them to get correct physics at walkable brush edges and vertices */
 }
 game_t;
 
@@ -740,7 +733,7 @@ typedef struct shaderInfo_s
 	qb_t indexed;                                       /* ydnar: attempt to use indexmap (terrain alphamap style) */
 	qb_t forceMeta;                                     /* ydnar: force metasurface path */
 	qb_t noClip;                                        /* ydnar: don't clip into bsp, preserve original face winding */
-	qb_t noFast;                                        /* ydnar: supress fast lighting for surfaces with this shader */
+	qb_t noFast;                                        /* ydnar: suppress fast lighting for surfaces with this shader */
 	qb_t invert;                                        /* ydnar: reverse facing */
 	qb_t nonplanar;                                     /* ydnar: for nonplanar meta surface merging */
 	qb_t tcGen;                                         /* ydnar: has explicit texcoord generation */
@@ -765,7 +758,7 @@ typedef struct shaderInfo_s
 	qb_t forceSunlight;                                 /* force sun light at this surface even tho we might not calculate shadows in vertex lighting */
 	qb_t notjunc;                                       /* don't use this surface for tjunction fixing */
 	qb_t fogParms;                                      /* ydnar: has fogparms */
-	qb_t noFog;                                         /* ydnar: supress fogging */
+	qb_t noFog;                                         /* ydnar: suppress fogging */
 	qb_t clipModel;                                     /* ydnar: solid model hack */
 	qb_t noVertexLight;                                 /* ydnar: leave vertex color alone */
 	qb_t noDirty;                                       /* jal: do not apply the dirty pass to this surface */
@@ -867,7 +860,7 @@ typedef struct side_s
 	int compileFlags;                       /* from shaderInfo */
 	int value;                              /* from shaderInfo */
 
-	qboolean visible;                       /* choose visble planes first */
+	qboolean visible;                       /* choose visible planes first */
 	qboolean bevel;                         /* don't ever use for bsp splitting, and don't bother making windings for it */
 	qboolean culled;                        /* ydnar: face culling */
 }
@@ -926,7 +919,7 @@ typedef struct brush_s
 	vec3_t mins, maxs;
 	int numsides;
 
-	side_t sides[ 6 ];                      /* variably sized */
+	side_t sides[];                         /* variably sized */
 }
 brush_t;
 
@@ -1005,6 +998,9 @@ typedef enum
 }
 surfaceType_t;
 
+#ifndef MAIN_C
+extern
+#endif
 char            *surfaceTypes[ NUM_SURFACE_TYPES ]
 #ifndef MAIN_C
 ;
@@ -1514,15 +1510,9 @@ surfaceInfo_t;
 
    ------------------------------------------------------------------------------- */
 
-/* main.c */
-vec_t                       Random( void );
-char                        *Q_strncpyz( char *dst, const char *src, size_t len );
-char                        *Q_strcat( char *dst, size_t dlen, const char *src );
-char                        *Q_strncat( char *dst, size_t dlen, const char *src, size_t slen );
-int                         BSPInfo( int count, char **fileNames );
-int                         ScaleBSPMain( int argc, char **argv );
-int                         ShiftBSPMain( int argc, char **argv );
-int                         ConvertMain( int argc, char **argv );
+static inline vec_t Random( void ){ /* returns a pseudorandom number between 0 and 1 */
+	return (vec_t) rand() / RAND_MAX;
+}
 
 /* help.c */
 void                        HelpMain(const char* arg);
@@ -1535,6 +1525,17 @@ void                        InitPaths( int *argc, char **argv );
 /* bsp.c */
 int                         BSPMain( int argc, char **argv );
 
+
+/* minimap.c */
+int                         MiniMapBSPMain( int argc, char **argv );
+
+/* convert_bsp.c */
+int                         FixAAS( int argc, char **argv );
+int                         AnalyzeBSP( int argc, char **argv );
+int                         BSPInfo( int count, char **fileNames );
+int                         ScaleBSPMain( int argc, char **argv );
+int                         ShiftBSPMain( int argc, char **argv );
+int                         ConvertBSPMain( int argc, char **argv );
 
 /* convert_map.c */
 int                         ConvertBSPToMap( char *bspName );
@@ -1554,7 +1555,7 @@ int                         CountBrushList( brush_t *brushes );
 brush_t                     *AllocBrush( int numsides );
 void                        FreeBrush( brush_t *brushes );
 void                        FreeBrushList( brush_t *brushes );
-brush_t                     *CopyBrush( brush_t *brush );
+brush_t                     *CopyBrush( const brush_t *brush );
 qboolean                    BoundBrush( brush_t *brush );
 qboolean                    CreateBrushWindings( brush_t *brush );
 brush_t                     *BrushFromBounds( vec3_t mins, vec3_t maxs );
@@ -1952,11 +1953,11 @@ Q_EXTERN game_t games[]
 	{
 								#include "game_quake3.h"
 	,
-								#include "game_quakelive.h" /* most be after game_quake3.h as they share defines! */
+								#include "game_quakelive.h" /* must be after game_quake3.h as they share defines! */
 	,
-								#include "game_nexuiz.h" /* most be after game_quake3.h as they share defines! */
+								#include "game_nexuiz.h" /* must be after game_quake3.h as they share defines! */
 	,
-								#include "game_xonotic.h" /* most be after game_quake3.h as they share defines! */
+								#include "game_xonotic.h" /* must be after game_quake3.h as they share defines! */
 	,
 								#include "game_tremulous.h" /*LinuxManMikeC: must be after game_quake3.h, depends on #define's set in it */
 	,
@@ -1966,7 +1967,7 @@ Q_EXTERN game_t games[]
 	,
 								#include "game_wolf.h"
 	,
-								#include "game_wolfet.h" /* most be after game_wolf.h as they share defines! */
+								#include "game_wolfet.h" /* must be after game_wolf.h as they share defines! */
 	,
 								#include "game_etut.h"
 	,
@@ -1974,9 +1975,9 @@ Q_EXTERN game_t games[]
 	,
 								#include "game_sof2.h"
 	,
-								#include "game_jk2.h"   /* most be after game_sof2.h as they share defines! */
+								#include "game_jk2.h"   /* must be after game_sof2.h as they share defines! */
 	,
-								#include "game_ja.h"    /* most be after game_jk2.h as they share defines! */
+								#include "game_ja.h"    /* must be after game_jk2.h as they share defines! */
 	,
 								#include "game_qfusion.h"   /* qfusion game */
 	,
@@ -2019,7 +2020,6 @@ Q_EXTERN float jitters[ MAX_JITTERS ];
 Q_EXTERN qboolean doingBSP Q_ASSIGN( qfalse );
 
 /* commandline arguments */
-Q_EXTERN qboolean verbose;
 Q_EXTERN qboolean verboseEntities Q_ASSIGN( qfalse );
 Q_EXTERN qboolean force Q_ASSIGN( qfalse );
 Q_EXTERN qboolean infoMode Q_ASSIGN( qfalse );
@@ -2063,6 +2063,7 @@ Q_EXTERN float clipDepthGlobal Q_ASSIGN( 2.0f );
 Q_EXTERN qboolean lightmapTriangleCheck Q_ASSIGN( qfalse );
 Q_EXTERN qboolean lightmapExtraVisClusterNudge Q_ASSIGN( qfalse );
 Q_EXTERN qboolean lightmapFill Q_ASSIGN( qfalse );
+Q_EXTERN qboolean lightmapPink Q_ASSIGN( qfalse );
 Q_EXTERN int metaAdequateScore Q_ASSIGN( -1 );
 Q_EXTERN int metaGoodScore Q_ASSIGN( -1 );
 Q_EXTERN float metaMaxBBoxDistance Q_ASSIGN( -1 );
@@ -2130,7 +2131,6 @@ Q_EXTERN fog_t mapFogs[ MAX_MAP_FOGS ];
 
 Q_EXTERN entity_t           *mapEnt;
 Q_EXTERN brush_t            *buildBrush;
-Q_EXTERN int numActiveBrushes;
 Q_EXTERN brushType_t g_brushType;
 
 Q_EXTERN int numStrippedLights Q_ASSIGN( 0 );
@@ -2210,11 +2210,6 @@ Q_EXTERN vportal_t          *faces;
 Q_EXTERN leaf_t             *faceleafs;
 
 Q_EXTERN int numfaces;
-
-Q_EXTERN int c_portaltest, c_portalpass, c_portalcheck;
-Q_EXTERN int c_portalskip, c_leafskip;
-Q_EXTERN int c_vistest, c_mighttest;
-Q_EXTERN int c_chains;
 
 Q_EXTERN byte               *vismap, *vismap_p, *vismap_end;
 
@@ -2385,24 +2380,17 @@ Q_EXTERN int totalTraces;
 
 Q_EXTERN FILE               *dumpFile;
 
-Q_EXTERN int c_visible, c_occluded;
-Q_EXTERN int c_subsampled;                  /* ydnar */
-
 Q_EXTERN int defaultLightSubdivide Q_ASSIGN( 999 );
 
 Q_EXTERN vec3_t ambientColor;
 Q_EXTERN vec3_t minLight, minVertexLight, minGridLight;
+Q_EXTERN float maxLight Q_ASSIGN( 255.f );
 
 Q_EXTERN int                *entitySurface;
 Q_EXTERN vec3_t             *surfaceOrigin;
 
 Q_EXTERN vec3_t sunDirection;
 Q_EXTERN vec3_t sunLight;
-
-/* tracing */
-Q_EXTERN int c_totalTrace;
-Q_EXTERN int c_cullTrace, c_testTrace;
-Q_EXTERN int c_testFacets;
 
 /* ydnar: light optimization */
 Q_EXTERN float subdivideThreshold Q_ASSIGN( DEFAULT_SUBDIVIDE_THRESHOLD );
@@ -2587,6 +2575,19 @@ Q_EXTERN bspAdvertisement_t bspAds[ MAX_MAP_ADVERTISEMENTS ];
 	while ( 0 )
 
 #define AUTOEXPAND_BY_REALLOC_BSP( suffix, def ) AUTOEXPAND_BY_REALLOC( bsp ## suffix, numBSP ## suffix, allocatedBSP ## suffix, def )
+
+#define AUTOEXPAND_BY_REALLOC_ADD( ptr, used, allocated, add ) \
+	do \
+	{ \
+		if ( used >= allocated )	\
+		{ \
+			allocated += add; \
+			ptr = realloc( ptr, sizeof( *ptr ) * allocated ); \
+			if ( !ptr ) { \
+				Error( # ptr " out of memory" ); } \
+		} \
+	} \
+	while ( 0 )
 
 #define Image_LinearFloatFromsRGBFloat( c ) ( ( ( c ) <= 0.04045f ) ? ( c ) * ( 1.0f / 12.92f ) : (float)pow( ( ( c ) + 0.055f ) * ( 1.0f / 1.055f ), 2.4f ) )
 #define Image_sRGBFloatFromLinearFloat( c ) ( ( ( c ) < 0.0031308f ) ? ( c ) * 12.92f : 1.055f * (float)pow( ( c ), 1.0f / 2.4f ) - 0.055f )

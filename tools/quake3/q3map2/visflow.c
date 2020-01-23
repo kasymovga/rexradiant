@@ -71,13 +71,6 @@ int CountBits( byte *bits, int numbits ){
 	return c;
 }
 
-int c_fullskip;
-int c_portalskip, c_leafskip;
-int c_vistest, c_mighttest;
-
-int c_chop, c_nochop;
-
-int active;
 
 void CheckStack( leaf_t *leaf, threaddata_t *thread ){
 	pstack_t    *p, *p2;
@@ -510,8 +503,6 @@ void RecursiveLeafFlow( int leafnum, threaddata_t *thread, pstack_t *prevstack )
 		VectorSubtract( vec3_origin, p->plane.normal, backplane.normal );
 		backplane.dist = -p->plane.dist;
 
-//		c_portalcheck++;
-
 		stack.portal = p;
 		stack.next = NULL;
 		stack.freewindings[0] = 1;
@@ -900,8 +891,6 @@ void RecursivePassagePortalFlow( vportal_t *portal, threaddata_t *thread, pstack
 		stack.portalplane = p->plane;
 		VectorSubtract( vec3_origin, p->plane.normal, backplane.normal );
 		backplane.dist = -p->plane.dist;
-
-//		c_portalcheck++;
 
 		stack.portal = p;
 		stack.next = NULL;
@@ -1364,8 +1353,7 @@ void CreatePassages( int portalnum ){
 			continue;
 		}
 
-		passage = (passage_t *) safe_malloc( sizeof( passage_t ) + portalbytes );
-		memset( passage, 0, sizeof( passage_t ) + portalbytes );
+		passage = safe_calloc( sizeof( passage_t ) + portalbytes );
 		numseperators = AddSeperators( portal->winding, target->winding, qfalse, seperators, MAX_SEPERATORS * 2 );
 		numseperators += AddSeperators( target->winding, portal->winding, qtrue, &seperators[numseperators], MAX_SEPERATORS * 2 - numseperators );
 
@@ -1424,7 +1412,7 @@ void CreatePassages( int portalnum ){
 			/* ydnar: prefer correctness to stack overflow  */
 			//% memcpy( &in, p->winding, (int)((fixedWinding_t *)0)->points[p->winding->numpoints] );
 			if ( p->winding->numpoints <= MAX_POINTS_ON_FIXED_WINDING ) {
-				memcpy( &in, p->winding, (size_t) &( ( (fixedWinding_t*) 0 )->points[ p->winding->numpoints ] ) );
+				memcpy( &in, p->winding, offsetof( fixedWinding_t, points[p->winding->numpoints] ) );
 			}
 			else{
 				memcpy( &in, p->winding, sizeof( fixedWinding_t ) );
@@ -1528,7 +1516,6 @@ void PassageMemory( void ){
    ===============================================================================
  */
 
-int c_flood, c_vis;
 
 
 /*
@@ -1585,14 +1572,9 @@ void BasePortalVis( int portalnum ){
 		return;
 	}
 
-	p->portalfront = safe_malloc( portalbytes );
-	memset( p->portalfront, 0, portalbytes );
-
-	p->portalflood = safe_malloc( portalbytes );
-	memset( p->portalflood, 0, portalbytes );
-
-	p->portalvis = safe_malloc( portalbytes );
-	memset( p->portalvis, 0, portalbytes );
+	p->portalfront = safe_calloc( portalbytes );
+	p->portalflood = safe_calloc( portalbytes );
+	p->portalvis = safe_calloc( portalbytes );
 
 	for ( j = 0, tp = portals ; j < numportals * 2 ; j++, tp++ )
 	{
@@ -1676,7 +1658,6 @@ void BasePortalVis( int portalnum ){
 
 	p->nummightsee = CountBits( p->portalflood, numportals * 2 );
 //	Sys_Printf ("portal %i: %i mightsee\n", portalnum, p->nummightsee);
-	c_flood += p->nummightsee;
 }
 
 
@@ -1762,5 +1743,4 @@ void BetterPortalVis( int portalnum ){
 
 	// build leaf vis information
 	p->nummightsee = CountBits( p->portalvis, numportals * 2 );
-	c_vis += p->nummightsee;
 }

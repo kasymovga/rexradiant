@@ -42,38 +42,18 @@
 extern qboolean FixWinding( winding_t *w );
 
 
-int c_active_portals;
-int c_peak_portals;
-int c_boundary;
-int c_boundary_sides;
-
 /*
    ===========
    AllocPortal
    ===========
  */
 portal_t *AllocPortal( void ){
-	portal_t    *p;
-
-	if ( numthreads == 1 ) {
-		c_active_portals++;
-	}
-	if ( c_active_portals > c_peak_portals ) {
-		c_peak_portals = c_active_portals;
-	}
-
-	p = safe_malloc( sizeof( portal_t ) );
-	memset( p, 0, sizeof( portal_t ) );
-
-	return p;
+	return safe_calloc( sizeof( portal_t ) );
 }
 
 void FreePortal( portal_t *p ){
 	if ( p->winding ) {
 		FreeWinding( p->winding );
-	}
-	if ( numthreads == 1 ) {
-		c_active_portals--;
 	}
 	free( p );
 }
@@ -97,7 +77,7 @@ qboolean PortalPassable( portal_t *p ){
 		Error( "Portal_EntityFlood: not a leaf" );
 	}
 
-	/* ydnar: added antiportal to supress portal generation for visibility blocking */
+	/* ydnar: added antiportal to suppress portal generation for visibility blocking */
 	if ( p->compileFlags & C_ANTIPORTAL ) {
 		return qfalse;
 	}
@@ -687,12 +667,12 @@ int FloodEntities( tree_t *tree ){
 
 		/* get origin */
 		GetVectorForKey( e, "origin", origin );
-
+#if 0 //allow maps with only point entity@( 0, 0, 0 ); assuming that entities, containing no primitives are point ones
 		/* as a special case, allow origin-less entities */
 		if ( VectorCompare( origin, vec3_origin ) ) {
 			continue;
 		}
-
+#endif
 		/* also allow bmodel entities outside, as they could be on a moving path that will go into the map */
 		if ( e->brushes != NULL || e->patches != NULL ) {
 			continue;
@@ -747,7 +727,7 @@ int FloodEntities( tree_t *tree ){
 			inside = qtrue;
 		}
 		if ( !r ) {
-			Sys_FPrintf( SYS_WRN, "Entity %i, Brush %i: Entity in solid\n", e->mapEntityNum, 0 );
+			Sys_FPrintf( SYS_WRN, "Entity %i (%s): Entity in solid\n", e->mapEntityNum, ValueForKey( e, "classname" ) );
 		}
 		else if ( tree->outside_node.occupied ) {
 			if ( !tripped || tree->outside_node.occupied < tripcount ) {

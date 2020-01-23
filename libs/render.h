@@ -287,6 +287,7 @@ struct Colour4b
 };
 
 const Colour4b colour_vertex( 0, 255, 0, 255 );
+const Colour4b colour_occluded( 74, 150, 75, 255 );
 const Colour4b colour_selected( 0, 0, 255, 255 );
 
 inline bool operator<( const Colour4b& self, const Colour4b& other ){
@@ -768,6 +769,26 @@ inline bool operator!=( const PointVertex& self, const PointVertex& other ){
 	return !operator==( self, other );
 }
 
+struct DepthTestedPointVertex
+{
+	Colour4b colour;
+	Vertex3f vertex;
+	GLuint query = 0;
+
+	DepthTestedPointVertex(){
+	}
+	~DepthTestedPointVertex(){
+		if( query != 0 )
+			glDeleteQueries( 1, &query );
+	}
+	DepthTestedPointVertex( Vertex3f _vertex )
+		: colour( Colour4b( 255, 255, 255, 255 ) ), vertex( _vertex ){
+	}
+	DepthTestedPointVertex( Vertex3f _vertex, Colour4b _colour )
+		: colour( _colour ), vertex( _vertex ){
+	}
+};
+
 /// \brief Standard vertex type for lit/textured meshes.
 struct ArbitraryMeshVertex
 {
@@ -821,21 +842,23 @@ inline ArbitraryMeshVertex arbitrarymeshvertex_quantised( const ArbitraryMeshVer
 
 
 /// \brief Sets up the OpenGL colour and vertex arrays for \p array.
-inline void pointvertex_gl_array( const PointVertex* array ){
-	glColorPointer( 4, GL_UNSIGNED_BYTE, sizeof( PointVertex ), &array->colour );
-	glVertexPointer( 3, GL_FLOAT, sizeof( PointVertex ), &array->vertex );
+template<typename PointVertex_t>
+inline void pointvertex_gl_array( const PointVertex_t* array ){
+	glColorPointer( 4, GL_UNSIGNED_BYTE, sizeof( PointVertex_t ), &array->colour );
+	glVertexPointer( 3, GL_FLOAT, sizeof( PointVertex_t ), &array->vertex );
 }
 
+template<typename PointVertex_t>
 class RenderablePointArray : public OpenGLRenderable
 {
-const Array<PointVertex>& m_array;
+const Array<PointVertex_t>& m_array;
 const GLenum m_mode;
 public:
-RenderablePointArray( const Array<PointVertex>& array, GLenum mode )
+RenderablePointArray( const Array<PointVertex_t>& array, GLenum mode )
 	: m_array( array ), m_mode( mode ){
 }
 void render( RenderStateFlags state ) const {
-#define NV_DRIVER_BUG 1
+#define NV_DRIVER_BUG 0
 #if NV_DRIVER_BUG
 	glColorPointer( 4, GL_UNSIGNED_BYTE, 0, 0 );
 	glVertexPointer( 3, GL_FLOAT, 0, 0 );
@@ -925,6 +948,42 @@ void render( RenderStateFlags state ) const {
 	}
 	glEnd();
 #endif
+}
+};
+
+class RenderableDepthTestedPointArray : public OpenGLRenderable
+{
+Array<DepthTestedPointVertex>& m_array;
+const GLenum m_mode;
+public:
+RenderableDepthTestedPointArray( Array<DepthTestedPointVertex>& array, GLenum mode )
+	: m_array( array ), m_mode( mode ){
+}
+void render( RenderStateFlags state ) const {
+	if( state & RENDER_COLOURWRITE ){ // render depending on visibility
+		for( auto& p : m_array ){
+			GLuint sampleCount;
+			glGetQueryObjectuiv( p.query, GL_QUERY_RESULT, &sampleCount );
+			if ( sampleCount == 0 ){
+				p.colour = colour_occluded;
+			}
+			else{
+				p.colour = colour_vertex;
+			}
+		}
+		pointvertex_gl_array( m_array.data() );
+		glDrawArrays( m_mode, 0, GLsizei( m_array.size() ) );
+	}
+	else{ // test visibility
+		for( auto& p : m_array ){
+			if( p.query == 0 )
+				glGenQueries( 1, &p.query );
+			glBeginQuery( GL_SAMPLES_PASSED, p.query );
+			glVertexPointer( 3, GL_FLOAT, 0, &p.vertex );
+			glDrawArrays( m_mode, 0, 1 );
+			glEndQuery( GL_SAMPLES_PASSED );
+		}
+	}
 }
 };
 
@@ -1196,6 +1255,69 @@ inline void ArbitraryMeshTriangle_sumTangents( ArbitraryMeshVertex& a, Arbitrary
 	reinterpret_cast<Vector3&>( b.bitangent ) += t;
 	reinterpret_cast<Vector3&>( c.bitangent ) += t;
 }
+
+
+class RenderTextLabel : public OpenGLRenderable
+{
+	unsigned int width;
+	unsigned int height;
+public:
+	GLuint tex = 0;
+	unsigned int subTex = 0;
+	Vector2 screenPos;
+	~RenderTextLabel(){
+		texFree();
+	}
+	void texAlloc( const char* text, const Vector3& color01 ){
+		glGenTextures( 1, &tex );
+		if( tex > 0 ){
+			const BasicVector3<unsigned char> colour = color01 * 255.f;
+			GlobalOpenGL().m_font->renderString( text, tex, colour.data(), width, height );
+		}
+	}
+	void texFree(){
+		if( tex > 0 ){
+			glDeleteTextures( 1, &tex );
+			tex = 0;
+		}
+	}
+	void render( RenderStateFlags state ) const {
+		if( tex > 0 ){
+			glBindTexture( GL_TEXTURE_2D, tex );
+			//Here we draw the texturemaped quads.
+			//The bitmap that we got from FreeType was not
+			//oriented quite like we would like it to be,
+			//so we need to link the texture to the quad
+			//so that the result will be properly aligned.
+#if 0
+			const float verts[4][2] = { { screenPos.x(), screenPos.y() },
+										{ screenPos.x(), screenPos.y() + height + .01f },
+										{ screenPos.x() + width + .01f, screenPos.y() + height + .01f },
+										{ screenPos.x() + width + .01f, screenPos.y() } };
+			const float coords[4][2] = { { subTex / 3.f, 1 },
+										{ subTex / 3.f, 0 },
+										{ ( subTex + 1 ) / 3.f, 0 },
+										{ ( subTex + 1 ) / 3.f, 1 } };
+			glVertexPointer( 2, GL_FLOAT, 0, verts );
+			glTexCoordPointer( 2, GL_FLOAT, 0, coords );
+			glDrawArrays( GL_QUADS, 0, 4 );
+#else // this is faster :0
+			glBegin( GL_QUADS );
+			glTexCoord2f( subTex / 3.f, 1 );
+			glVertex2f( screenPos.x(), screenPos.y() );
+			glTexCoord2f( subTex / 3.f, 0 );
+			glVertex2f( screenPos.x(), screenPos.y() + height + .01f );
+			glTexCoord2f( ( subTex + 1 ) / 3.f, 0 );
+			glVertex2f( screenPos.x() + width + .01f, screenPos.y() + height + .01f );
+			glTexCoord2f( ( subTex + 1 ) / 3.f, 1 );
+			glVertex2f( screenPos.x() + width + .01f, screenPos.y() );
+			glEnd();
+#endif
+		}
+	}
+};
+
+
 
 namespace {
 ///////////////////////////////////////////////////////////////////////////////

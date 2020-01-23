@@ -123,6 +123,13 @@ CamWnd* GetCamWnd(){
 	return m_pCamWnd;
 }
 
+template<typename Functor>
+void forEachXYWnd( const Functor& functor ){
+	for( XYWnd* xywnd : { GetXYWnd(), GetXZWnd(), GetYZWnd() } )
+		if( xywnd )
+			functor( xywnd );
+}
+
 EViewStyle CurrentStyle(){
 	return m_nCurrentStyle;
 }
@@ -199,6 +206,8 @@ const char* GameToolsPath_get();
 
 void Radiant_Initialise();
 void Radiant_Shutdown();
+
+void Radiant_Restart();
 
 void SaveMapAs();
 

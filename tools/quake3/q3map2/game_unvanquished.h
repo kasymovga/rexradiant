@@ -89,7 +89,7 @@ game_t struct
 	1.0f,                   /* minimap sharpener */
 	0.0f,                   /* minimap border */
 	qtrue,                  /* minimap keep aspect */
-	MINIMAP_MODE_BLACK,     /* minimap mode */
+	MINIMAP_MODE_WHITE,     /* minimap mode */
 	"../minimaps/%s.tga",   /* minimap name format */
 	"IBSP",                 /* bsp file prefix */
 	46,                     /* bsp file version */
@@ -165,7 +165,9 @@ game_t struct
 
 		/* null */
 		{ NULL,	                0,                      0,                         0,                               0,                          0,                              0 }
-	}
+	},
+
+	Q_SURF_BEVELSMASK
 }
 
 /* end marker */

@@ -66,9 +66,14 @@
 #define SAFE_MALLOC
 #ifdef SAFE_MALLOC
 void *safe_malloc( size_t size );
-void *safe_malloc_info( size_t size, char* info );
+void *safe_malloc_info( size_t size, const char* info );
+void *safe_calloc( size_t size );
+void *safe_calloc_info( size_t size, const char* info );
 #else
-#define safe_malloc( a ) malloc( a )
+#define safe_malloc( size ) malloc( size )
+#define safe_malloc_info( size, info ) malloc( size )
+#define safe_calloc( size ) calloc( 1, size )
+#define safe_calloc_info( size, info ) calloc( 1, size )
 #endif /* SAFE_MALLOC */
 
 // set these before calling CheckParm
@@ -76,8 +81,18 @@ extern int myargc;
 extern char **myargv;
 
 char *strlower( char *in );
-int Q_strncasecmp( const char *s1, const char *s2, int n );
-int Q_stricmp( const char *s1, const char *s2 );
+#ifdef WIN32
+	#define Q_stricmp           stricmp
+	#define Q_strncasecmp       strnicmp
+#else
+	#define Q_stricmp           strcasecmp
+	#define Q_strncasecmp       strncasecmp
+#endif
+/* strlcpy, strlcat versions */
+size_t strcpyQ( char* dest, const char* src, const size_t dest_size );
+size_t strcatQ( char* dest, const char* src, const size_t dest_size );
+size_t strncatQ( char* dest, const char* src, const size_t dest_size, const size_t src_len );
+
 void Q_getwd( char *out );
 
 int Q_filelength( FILE *f );
@@ -120,8 +135,14 @@ void    DefaultPath( char *path, const char *basepath );
 void    StripFilename( char *path );
 void    StripExtension( char *path );
 
-void    ExtractFilePath( const char *path, char *dest );
-void    ExtractFileBase( const char *path, char *dest );
+static inline void FixDOSName( char *src ){
+	for ( ; *src; ++src )
+		if ( *src == '\\' )
+			*src = '/';
+}
+
+void    ExtractFilePath( const char *path, char *dest );		// file directory with trailing slash
+void    ExtractFileBase( const char *path, char *dest );		// file name w/o extension
 void    ExtractFileExtension( const char *path, char *dest );
 
 int     ParseNum( const char *str );
@@ -139,7 +160,7 @@ char *COM_Parse( char *data );
 extern char com_token[1024];
 extern qboolean com_eof;
 
-char *copystring( const char *s );
+char *copystring( const char *src );	// version of strdup() with safe_malloc()
 
 
 void CRC_Init( unsigned short *crcvalue );

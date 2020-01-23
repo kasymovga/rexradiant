@@ -214,7 +214,6 @@ void InsertModel( const char *name, int skin, int frame, m4x4_t transform, remap
 	int i, j, s, k, numSurfaces;
 	m4x4_t identity, nTransform;
 	picoModel_t         *model;
-	picoShader_t        *shader;
 	picoSurface_t       *surface;
 	shaderInfo_t        *si;
 	mapDrawSurface_t    *ds;
@@ -224,7 +223,7 @@ void InsertModel( const char *name, int skin, int frame, m4x4_t transform, remap
 	picoVec_t           *xyz, *normal, *st;
 	byte                *color;
 	picoIndex_t         *indexes;
-	remap_t             *rm, *glob;
+	remap_t             *rm, *rmto, *glob;
 	skinfile_t          *sf, *sf2;
 	char skinfilename[ MAX_QPATH ];
 	char                *skinfilecontent;
@@ -351,12 +350,8 @@ void InsertModel( const char *name, int skin, int frame, m4x4_t transform, remap
 		}
 
 		/* get shader name */
-		shader = PicoGetSurfaceShader( surface );
-		if ( shader == NULL ) {
+		if ( !( picoShaderName = PicoGetShaderName( PicoGetSurfaceShader( surface ) ) ) ) {
 			picoShaderName = "";
-		}
-		else{
-			picoShaderName = PicoGetShaderName( shader );
 		}
 
 		/* handle .skin file */
@@ -377,22 +372,28 @@ void InsertModel( const char *name, int skin, int frame, m4x4_t transform, remap
 		}
 
 		/* handle shader remapping */
-		glob = NULL;
+		glob = rmto = NULL;
 		for ( rm = remap; rm != NULL; rm = rm->next )
 		{
 			if ( rm->from[ 0 ] == '*' && rm->from[ 1 ] == '\0' ) {
 				glob = rm;
 			}
-			else if ( !Q_stricmp( picoShaderName, rm->from ) ) {
-				Sys_FPrintf( SYS_VRB, "Remapping %s to %s\n", picoShaderName, rm->to );
-				picoShaderName = rm->to;
-				glob = NULL;
-				break;
+			else{
+				const size_t shaderLen = strlen( picoShaderName );
+				const size_t suffixLen = strlen( rm->from );
+				if( shaderLen >= suffixLen && !Q_strncasecmp( picoShaderName + shaderLen - suffixLen, rm->from, suffixLen ) ){
+					rmto = rm;
+					if( shaderLen == suffixLen ) // exact match priority
+						break;
+				}
 			}
 		}
-
-		if ( glob != NULL ) {
-			Sys_FPrintf( SYS_VRB, "Globbing %s to %s\n", picoShaderName, glob->to );
+		if( rmto ){
+			Sys_FPrintf( SYS_VRB, "Remapping '%s' to '%s'\n", picoShaderName, rmto->to );
+			picoShaderName = rmto->to;
+		}
+		else if ( glob ) {
+			Sys_FPrintf( SYS_VRB, "Globbing '%s' to '%s'\n", picoShaderName, glob->to );
 			picoShaderName = glob->to;
 		}
 
@@ -448,12 +449,10 @@ void InsertModel( const char *name, int skin, int frame, m4x4_t transform, remap
 
 		/* set particulars */
 		ds->numVerts = PicoGetSurfaceNumVertexes( surface );
-		ds->verts = safe_malloc( ds->numVerts * sizeof( ds->verts[ 0 ] ) );
-		memset( ds->verts, 0, ds->numVerts * sizeof( ds->verts[ 0 ] ) );
+		ds->verts = safe_calloc( ds->numVerts * sizeof( ds->verts[ 0 ] ) );
 
 		ds->numIndexes = PicoGetSurfaceNumIndexes( surface );
-		ds->indexes = safe_malloc( ds->numIndexes * sizeof( ds->indexes[ 0 ] ) );
-		memset( ds->indexes, 0, ds->numIndexes * sizeof( ds->indexes[ 0 ] ) );
+		ds->indexes = safe_calloc( ds->numIndexes * sizeof( ds->indexes[ 0 ] ) );
 
 		/* copy vertexes */
 		for ( i = 0; i < ds->numVerts; i++ )
@@ -716,6 +715,21 @@ void InsertModel( const char *name, int skin, int frame, m4x4_t transform, remap
 						//Sys_Printf( "pts pln (%6.7f %6.7f %6.7f %6.7f)\n", plane[0], plane[1], plane[2], plane[3] );
 					}
 
+					/* sanity check */
+					{
+						vec3_t d1, d2, normaL;
+						VectorSubtract( points[1], points[0], d1 );
+						VectorSubtract( points[2], points[0], d2 );
+						CrossProduct( d2, d1, normaL );
+						/* https://en.wikipedia.org/wiki/Cross_product#Geometric_meaning
+						   cross( a, b ).length = a.length b.length sin( angle ) */
+						const double lengthsSquared = ( d1[0] * d1[0] + d1[1] * d1[1] + d1[2] * d1[2] ) * ( d2[0] * d2[0] + d2[1] * d2[1] + d2[2] * d2[2] );
+						if ( lengthsSquared == 0 || fabs( ( normaL[0] * normaL[0] + normaL[1] * normaL[1] + normaL[2] * normaL[2] ) / lengthsSquared ) < 1e-8 ) {
+							Sys_Warning( "triangle (%6.0f %6.0f %6.0f) (%6.0f %6.0f %6.0f) (%6.0f %6.0f %6.0f) of %s was not autoclipped: points on line\n", points[0][0], points[0][1], points[0][2], points[1][0], points[1][1], points[1][2], points[2][0], points[2][1], points[2][2], name );
+							continue;
+						}
+					}
+
 
 					if ( spf == 4352 ){	//PYRAMIDAL_CLIP+AXIAL_BACKPLANE
 
@@ -797,6 +811,7 @@ void InsertModel( const char *name, int skin, int frame, m4x4_t transform, remap
 						/* set up brush sides */
 						buildBrush->numsides = 4;
 						buildBrush->sides[ 0 ].shaderInfo = si;
+						buildBrush->sides[ 0 ].surfaceFlags = si->surfaceFlags;
 						for ( j = 1; j < buildBrush->numsides; j++ ) {
 							if ( debugClip ) {
 								buildBrush->sides[ 0 ].shaderInfo = ShaderInfoForShader( "debugclip2" );
@@ -945,6 +960,7 @@ void InsertModel( const char *name, int skin, int frame, m4x4_t transform, remap
 						/* set up brush sides */
 						buildBrush->numsides = 5;
 						buildBrush->sides[ 0 ].shaderInfo = si;
+						buildBrush->sides[ 0 ].surfaceFlags = si->surfaceFlags;
 						for ( j = 1; j < buildBrush->numsides; j++ ) {
 							if ( debugClip ) {
 								buildBrush->sides[ 0 ].shaderInfo = ShaderInfoForShader( "debugclip2" );
@@ -1003,6 +1019,7 @@ void InsertModel( const char *name, int skin, int frame, m4x4_t transform, remap
 						/* set up brush sides */
 						buildBrush->numsides = 5;
 						buildBrush->sides[ 0 ].shaderInfo = si;
+						buildBrush->sides[ 0 ].surfaceFlags = si->surfaceFlags;
 						for ( j = 1; j < buildBrush->numsides; j++ ) {
 							if ( debugClip ) {
 								buildBrush->sides[ 0 ].shaderInfo = ShaderInfoForShader( "debugclip2" );
@@ -1091,6 +1108,7 @@ void InsertModel( const char *name, int skin, int frame, m4x4_t transform, remap
 						/* set up brush sides */
 						buildBrush->numsides = 5;
 						buildBrush->sides[ 0 ].shaderInfo = si;
+						buildBrush->sides[ 0 ].surfaceFlags = si->surfaceFlags;
 						for ( j = 1; j < buildBrush->numsides; j++ ) {
 							if ( debugClip ) {
 								buildBrush->sides[ 0 ].shaderInfo = ShaderInfoForShader( "debugclip2" );
@@ -1158,6 +1176,7 @@ void InsertModel( const char *name, int skin, int frame, m4x4_t transform, remap
 						/* set up brush sides */
 						buildBrush->numsides = 5;
 						buildBrush->sides[ 0 ].shaderInfo = si;
+						buildBrush->sides[ 0 ].surfaceFlags = si->surfaceFlags;
 						for ( j = 1; j < buildBrush->numsides; j++ ) {
 							if ( debugClip ) {
 								buildBrush->sides[ 0 ].shaderInfo = ShaderInfoForShader( "debugclip2" );
@@ -1222,6 +1241,7 @@ void InsertModel( const char *name, int skin, int frame, m4x4_t transform, remap
 							/* set up brush sides */
 							buildBrush->numsides = 4;
 							buildBrush->sides[ 0 ].shaderInfo = si;
+							buildBrush->sides[ 0 ].surfaceFlags = si->surfaceFlags;
 							for ( j = 1; j < buildBrush->numsides; j++ ) {
 								if ( debugClip ) {
 									buildBrush->sides[ 0 ].shaderInfo = ShaderInfoForShader( "debugclip2" );
@@ -1289,6 +1309,7 @@ void InsertModel( const char *name, int skin, int frame, m4x4_t transform, remap
 						/* set up brush sides */
 						buildBrush->numsides = 5;
 						buildBrush->sides[ 0 ].shaderInfo = si;
+						buildBrush->sides[ 0 ].surfaceFlags = si->surfaceFlags;
 						for ( j = 1; j < buildBrush->numsides; j++ ) {
 							if ( debugClip ) {
 								buildBrush->sides[ 0 ].shaderInfo = ShaderInfoForShader( "debugclip2" );
@@ -1491,7 +1512,22 @@ void AddTriangleModels( entity_t *e ){
 				/* split the string */
 				split = strchr( remap->from, ';' );
 				if ( split == NULL ) {
-					Sys_Warning( "Shader _remap key found in misc_model without a ; character\n" );
+					Sys_Warning( "Shader _remap key found in misc_model without a ; character: '%s'\n", remap->from );
+				}
+				else if( split == remap->from ){
+					Sys_Warning( "_remap FROM is empty in '%s'\n", remap->from );
+					split = NULL;
+				}
+				else if( *( split + 1 ) == '\0' ){
+					Sys_Warning( "_remap TO is empty in '%s'\n", remap->from );
+					split = NULL;
+				}
+				else if( strlen( split + 1 ) >= sizeof( remap->to ) ){
+					Sys_Warning( "_remap TO is too long in '%s'\n", remap->from );
+					split = NULL;
+				}
+
+				if ( split == NULL ) {
 					free( remap );
 					remap = remap2;
 					continue;

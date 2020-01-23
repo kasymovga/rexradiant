@@ -86,7 +86,6 @@
 #include "patchdialog.h"
 #include "groupdialog.h"
 #include "preferences.h"
-#include "shaders.h"
 #include "commands.h"
 
 void TextureBrowser_queueDraw( TextureBrowser& textureBrowser );
@@ -1020,7 +1019,7 @@ void TextureBrowser_trackingDelta( int x, int y, unsigned int state, void* data 
 		const int scale = ( state & GDK_SHIFT_MASK )? 4 : 1;
 		const int originy = TextureBrowser_getOriginY( textureBrowser ) + y * scale;
 		TextureBrowser_setOriginY( textureBrowser, originy );
-		textureBrowser.m_move_amount += y;
+		textureBrowser.m_move_amount += std::abs( y );
 	}
 }
 
@@ -1052,7 +1051,7 @@ void TextureBrowser_Selection_MouseUp( TextureBrowser& textureBrowser, guint32 f
 				globalWarningStream() << shader->getName() << " is not a shader, it's a texture.\n";
 			}
 			else{
-				ViewShader( shader->getShaderFileName(), shader->getName(), ( flags & GDK_CONTROL_MASK ) != 0 );
+				DoShaderView( shader->getShaderFileName(), shader->getName(), ( flags & GDK_CONTROL_MASK ) != 0 );
 			}
 		}
 	}
@@ -1075,6 +1074,7 @@ void TextureBrowser_Selection_MouseUp( TextureBrowser& textureBrowser, guint32 f
    ============
  */
 void Texture_Draw( TextureBrowser& textureBrowser ){
+	const int fontHeight = TextureBrowser_fontHeight( textureBrowser );
 	int originy = TextureBrowser_getOriginY( textureBrowser );
 
 	glClearColor( textureBrowser.color_textureback[0],
@@ -1092,7 +1092,7 @@ void Texture_Draw( TextureBrowser& textureBrowser ){
 	}
 	if ( g_TextureBrowser_enableAlpha ) {
 		glEnable( GL_BLEND );
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
 	}
 	else {
 		glDisable( GL_BLEND );
@@ -1102,8 +1102,6 @@ void Texture_Draw( TextureBrowser& textureBrowser ){
 	glEnable( GL_TEXTURE_2D );
 
 	glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
-
-	int last_y = 0, last_height = 0;
 
 	TextureLayout layout;
 	Texture_StartPos( layout );
@@ -1125,135 +1123,102 @@ void Texture_Draw( TextureBrowser& textureBrowser ){
 		int nWidth, nHeight;
 		textureBrowser.getTextureWH( q, nWidth, nHeight );
 
-		if ( y != last_y ) {
-			last_y = y;
-			last_height = 0;
-		}
-		last_height = std::max( nHeight, last_height );
-
 		// Is this texture visible?
-		if ( ( y - nHeight - TextureBrowser_fontHeight( textureBrowser ) < originy )
+		if ( ( y - nHeight - fontHeight < originy )
 			 && ( y > originy - textureBrowser.height ) ) {
-			// borders rules:
-			// if it's the current texture, draw a thick red line, else:
-			// shaders have a white border, simple textures don't
-			// if !texture_showinuse: (some textures displayed may not be in use)
-			// draw an additional square around with 0.5 1 0.5 color
 			glLineWidth( 1 );
-			const float xf = (float)x;
-			const float yf = (float)( y - TextureBrowser_fontHeight( textureBrowser ) );
+			glDisable( GL_TEXTURE_2D );
+			const float xf = x;
+			const float yf = y - fontHeight;
 			float xfMax = xf + 1.5 + nWidth;
 			float xfMin = xf - 1.5;
 			float yfMax = yf + 1.5;
 			float yfMin = yf - nHeight - 1.5;
+			#define TEXBRO_RENDER_BORDER \
+				glBegin( GL_LINE_LOOP ); \
+				glVertex2f( xfMin, yfMax ); \
+				glVertex2f( xfMin, yfMin ); \
+				glVertex2f( xfMax, yfMin ); \
+				glVertex2f( xfMax, yfMax ); \
+				glEnd();
 
 			//selected texture
 			if ( shader_equal( TextureBrowser_GetSelectedShader( textureBrowser ), shader->getName() ) ) {
 				glLineWidth( 2 );
 				if ( textureBrowser.m_rmbSelected ) {
-					glColor3f( 0,0,1 );
+					glColor3f( 0, 0, 1 );
 				}
 				else {
-					glColor3f( 1,0,0 );
+					glColor3f( 1, 0, 0 );
 				}
 				xfMax += .5;
 				xfMin -= .5;
 				yfMax += .5;
 				yfMin -= .5;
-				glDisable( GL_TEXTURE_2D );
-				glBegin( GL_LINE_LOOP );
-				glVertex2f( xfMin ,yfMax );
-				glVertex2f( xfMin ,yfMin );
-				glVertex2f( xfMax ,yfMin );
-				glVertex2f( xfMax ,yfMax );
-				glEnd();
-				glEnable( GL_TEXTURE_2D );
+				TEXBRO_RENDER_BORDER
 			}
 			// highlight in-use textures
 			else if ( !textureBrowser.m_hideUnused && shader->IsInUse() ) {
-				glColor3f( 0.5,1,0.5 );
-				glDisable( GL_TEXTURE_2D );
-				glBegin( GL_LINE_LOOP );
-				glVertex2f( xfMin ,yfMax );
-				glVertex2f( xfMin ,yfMin );
-				glVertex2f( xfMax ,yfMin );
-				glVertex2f( xfMax ,yfMax );
-				glEnd();
-				glEnable( GL_TEXTURE_2D );
+				glColor3f( 0.5, 1, 0.5 );
+				TEXBRO_RENDER_BORDER
 			}
 			// shader white border:
 			else if ( !shader->IsDefault() ) {
 				glColor3f( 1, 1, 1 );
-				glDisable( GL_TEXTURE_2D );
-				glBegin( GL_LINE_LOOP );
-				glVertex2f( xfMin ,yfMax );
-				glVertex2f( xfMin ,yfMin );
-				glVertex2f( xfMax ,yfMin );
-				glVertex2f( xfMax ,yfMax );
-				glEnd();
-				glEnable( GL_TEXTURE_2D );
+				TEXBRO_RENDER_BORDER
 			}
 
 			// shader stipple:
 			if ( !shader->IsDefault() ) {
 				glEnable( GL_LINE_STIPPLE );
 				glLineStipple( 1, 0xF000 );
-				glDisable( GL_TEXTURE_2D );
-				glBegin( GL_LINE_LOOP );
 				glColor3f( 0, 0, 0 );
-				glVertex2f( xfMin ,yfMax );
-				glVertex2f( xfMin ,yfMin );
-				glVertex2f( xfMax ,yfMin );
-				glVertex2f( xfMax ,yfMax );
-				glEnd();
+				TEXBRO_RENDER_BORDER
 				glDisable( GL_LINE_STIPPLE );
-				glEnable( GL_TEXTURE_2D );
 			}
 
 			// draw checkerboard for transparent textures
  			if ( g_TextureBrowser_enableAlpha )
 			{
-				glDisable( GL_TEXTURE_2D );
 				glBegin( GL_QUADS );
-				int font_height = TextureBrowser_fontHeight( textureBrowser );
 				for ( int i = 0; i < nHeight; i += 8 )
 					for ( int j = 0; j < nWidth; j += 8 )
 					{
-						unsigned char color = (i + j) / 8 % 2 ? 0x66 : 0x99;
+						const unsigned char color = ( i + j ) / 8 % 2 ? 0x66 : 0x99;
 						glColor3ub( color, color, color );
-						int left = j;
-						int right = std::min(j+8, nWidth);
-						int top = i;
-						int bottom = std::min(i+8, nHeight);
-						glVertex2i(x + right, y - nHeight - font_height + top);
-						glVertex2i(x + left,  y - nHeight - font_height + top);
-						glVertex2i(x + left,  y - nHeight - font_height + bottom);
-						glVertex2i(x + right, y - nHeight - font_height + bottom);
+						const int left = j;
+						const int right = std::min( j + 8, nWidth );
+						const int top = i;
+						const int bottom = std::min( i + 8, nHeight );
+						glVertex2i( x + right, y - nHeight - fontHeight + top );
+						glVertex2i( x + left,  y - nHeight - fontHeight + top );
+						glVertex2i( x + left,  y - nHeight - fontHeight + bottom );
+						glVertex2i( x + right, y - nHeight - fontHeight + bottom );
 					}
 				glEnd();
-				glEnable( GL_TEXTURE_2D );
 			}
 
 			// Draw the texture
+			glEnable( GL_TEXTURE_2D );
 			glBindTexture( GL_TEXTURE_2D, q->texture_number );
 			GlobalOpenGL_debugAssertNoErrors();
-			glColor3f( 1,1,1 );
+			glColor3f( 1, 1, 1 );
 			glBegin( GL_QUADS );
-			glTexCoord2i( 0,0 );
-			glVertex2i( x,y - TextureBrowser_fontHeight( textureBrowser ) );
-			glTexCoord2i( 1,0 );
-			glVertex2i( x + nWidth,y - TextureBrowser_fontHeight( textureBrowser ) );
-			glTexCoord2i( 1,1 );
-			glVertex2i( x + nWidth,y - TextureBrowser_fontHeight( textureBrowser ) - nHeight );
-			glTexCoord2i( 0,1 );
-			glVertex2i( x,y - TextureBrowser_fontHeight( textureBrowser ) - nHeight );
+			glTexCoord2i( 0, 0 );
+			glVertex2i( x, y - fontHeight );
+			glTexCoord2i( 1, 0 );
+			glVertex2i( x + nWidth, y - fontHeight );
+			glTexCoord2i( 1, 1 );
+			glVertex2i( x + nWidth, y - fontHeight - nHeight );
+			glTexCoord2i( 0, 1 );
+			glVertex2i( x, y - fontHeight - nHeight );
 			glEnd();
 
 			// draw the texture name
 			glDisable( GL_TEXTURE_2D );
-			glColor3f( 1,1,1 );
+//			glColor3f( 1, 1, 1 ); //already set
 
-			glRasterPos2i( x, y - TextureBrowser_fontHeight( textureBrowser ) + 3 );//+5
+			glRasterPos2i( x, y - fontHeight + 3 );//+5
 
 			// don't draw the directory name
 			const char* name = shader->getName();
@@ -1262,12 +1227,8 @@ void Texture_Draw( TextureBrowser& textureBrowser ){
 				name--;
 
 			GlobalOpenGL().drawString( name );
-			glEnable( GL_TEXTURE_2D );
 		}
-
-		//int totalHeight = abs(y) + last_height + TextureBrowser_fontHeight(textureBrowser) + 4;
 	}
-
 
 	// reset the current texture
 	glBindTexture( GL_TEXTURE_2D, 0 );
@@ -1433,7 +1394,7 @@ gboolean TextureBrowser_button_release( GtkWidget* widget, GdkEventButton* event
 	if ( event->type == GDK_BUTTON_RELEASE ) {
 		if ( event->button == 3 ) {
 			TextureBrowser_Tracking_MouseUp( *textureBrowser );
-			if ( GlobalTextureBrowser().m_tags && std::abs( textureBrowser->m_move_amount ) < 16 ) {
+			if ( GlobalTextureBrowser().m_tags && textureBrowser->m_move_amount < 16 ) {
 				textureBrowser->m_rmbSelected = true;
 				TextureBrowser_Selection_MouseDown( *textureBrowser, event->state, textureBrowser->m_move_start.x(), textureBrowser->m_move_start.y(), false );
 
@@ -2235,7 +2196,11 @@ GtkWidget* TextureBrowser_constructWindow( GtkWindow* toplevel ){
 		widget_set_visible( g_TextureBrowser.m_texture_scroll, g_TextureBrowser.m_showTextureScrollbar );
 	}
 	{ // gl_widget
+#if NV_DRIVER_GAMMA_BUG
+		g_TextureBrowser.m_gl_widget = glwidget_new( TRUE );
+#else
 		g_TextureBrowser.m_gl_widget = glwidget_new( FALSE );
+#endif
 		gtk_widget_ref( g_TextureBrowser.m_gl_widget );
 
 		gtk_widget_set_events( g_TextureBrowser.m_gl_widget, GDK_DESTROY | GDK_EXPOSURE_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK | GDK_POINTER_MOTION_MASK | GDK_SCROLL_MASK );
