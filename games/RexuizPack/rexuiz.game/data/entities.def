@@ -1025,6 +1025,18 @@ FLOATING: the item will float in air, instead of aligning to the floor by fallin
 model="models/weapons/g_zapper.md3"
 */
 
+/*QUAKED monster_arachna_spawn (1 1 0) (-16 -16 -24) (16 16 32) AUTORESPAWN FREEHUNT
+Bat monster spawn
+-------- KEYS --------
+cnt: monster count
+targetname: target name
+target: monster target
+respawntime: monster respawntime
+-------- SPAWNFLAGS --------
+AUTORESPAWN: Auto respawn
+FREEHUNT: Free hunt
+*/
+
 /*QUAKED monster_bat_spawn (1 1 0) (-32 -32 -32) (32 32 32) AUTORESPAWN FREEHUNT
 Bat monster spawn
 -------- KEYS --------
@@ -1492,4 +1504,28 @@ model="models/turrets/radiant/reactor.md3"
 
 /*QUAKED turret_targettrigger (.5 .5 .5) ?
 Used to feed turrets capable of it with remote target info. currently only turret_hk supports this.
+*/
+
+/*QUAKED misc_spikeshooter (1 .75 .5) (-8 -8 -8) (8 8 8)
+-------- KEYS --------
+angles: shoot direction
+*/
+
+/*QUAKED misc_lightning (.5 .75 1) (-8 -8 -8) (8 8 8)
+-------- KEYS --------
+target: lightning end position
+*/
+
+/*QUAKED misc_tree (.25 .25 0) (-16 -16 -0) (16 16 128)
+-------- KEYS --------
+*/
+
+/*QUAKED misc_barrel_explosive (.5 .5 .5) (-16 -16 -24) (16 16 24)
+-------- KEYS --------
+*/
+
+/*QUAKED misc_follow (.5 .5 .5) (-16 -16 -24) (16 16 24) ATTACH ORIGIN
+-------- KEYS --------
+target: source
+killtarget: destination
 */
