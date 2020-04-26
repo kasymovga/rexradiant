@@ -1529,3 +1529,29 @@ target: lightning end position
 target: source
 killtarget: destination
 */
+
+/*QUAKED func_pointparticles (.5 .5 .5) (-16 -16 -16) (16 16 16)
+-------- KEYS --------
+model: model
+atten: sound attenuation
+noise: sound
+count: amount of particles
+impulse: interval
+mdl: name of particle effect
+*/
+
+/*QUAKED func_sparks (.75 .75 .25) (-16 -16 -16) (16 16 16)
+-------- KEYS --------
+*/
+
+/*QUAKED vehicle_spiderbot (.5 .5 0) (-75 -75 5) (75 75 105)
+-------- KEYS --------
+*/
+
+/*QUAKED vehicle_aircraft (.5 .5 0) (-75 -75 5) (75 75 105)
+-------- KEYS --------
+*/
+
+/*QUAKED vehicle_car (.5 .5 0) (-90 -90 5) (90 90 105)
+-------- KEYS --------
+*/
