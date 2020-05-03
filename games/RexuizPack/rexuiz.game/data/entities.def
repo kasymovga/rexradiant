@@ -1555,3 +1555,19 @@ mdl: name of particle effect
 /*QUAKED vehicle_car (.5 .5 0) (-90 -90 5) (90 90 105)
 -------- KEYS --------
 */
+
+/*QUAKED target_items (0 .5 .0) (-16 -16 -16) (16 16 16) AND_MIN OR_MAX ANDNOT_MIN
+-------- KEYS --------
+netname: list of weapons and powerups
+strength_finished: time of strength powerup
+speed_finished: time of speed powerup
+invisibility_finished: time of invisibility powerup
+invincible_finished: time of invincible powerup
+ammo_nails: amount of bullets
+ammo_cells: amount of cells
+ammo_rockets: amount of rockets
+ammo_shells: amount of shells
+ammo_fuel: amount of jetpack fuel
+health: amount of health
+armorvalue: amount of armor
+*/
