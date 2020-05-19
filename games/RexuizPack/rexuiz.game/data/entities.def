@@ -379,7 +379,7 @@ respawntime: time till it respawns (default: 15)
 -------- SPAWNFLAGS --------
 FLOATING: the item will float in air, instead of aligning to the floor by falling
 -------- MODEL FOR RADIANT ONLY - DO NOT SET THIS AS A KEY --------
-model="models/items/a_bullets.mdl"
+model="models/items/a_bullets.md3"
 */
 
 /*QUAKED item_cells (.3 .3 1) (-30 -30 0) (30 30 32) FLOATING
