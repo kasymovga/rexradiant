@@ -934,7 +934,7 @@ respawntime: time till it respawns (default: 15)
 -------- SPAWNFLAGS --------
 FLOATING: the item will float in air, instead of aligning to the floor by falling
 -------- MODEL FOR RADIANT ONLY - DO NOT SET THIS AS A KEY --------
-model="models/weapons/g_hook.md3"
+model="models/weapons/g_hookgun.md3"
 */
 
 /*QUAKED weapon_laser (1 0 .5) (-30 -30 0) (30 30 32) FLOATING
@@ -1000,7 +1000,7 @@ respawntime: time till it respawns (default: 15)
 -------- SPAWNFLAGS --------
 FLOATING: the item will float in air, instead of aligning to the floor by falling
 -------- MODEL FOR RADIANT ONLY - DO NOT SET THIS AS A KEY --------
-model="models/weapons/g_supershotgun.md3"
+model="models/weapons/g_shotgun.md3"
 */
 
 /*QUAKED weapon_uzi (1 0 .5) (-30 -30 0) (30 30 32) FLOATING
@@ -1570,4 +1570,19 @@ ammo_shells: amount of shells
 ammo_fuel: amount of jetpack fuel
 health: amount of health
 armorvalue: amount of armor
+*/
+
+/*QUAKED trigger_secret (.5 .5 .5) ?
+Secret place
+-------- KEYS --------
+-------- SPAWNFLAGS --------
+*/
+
+/*QUAKED item_jetpack (.4 .4 .4) (-30 -30 0) (30 30 32) FLOATING
+Large Armor (default 100 armor points)
+-------- KEYS --------
+-------- SPAWNFLAGS --------
+FLOATING: the item will float in air, instead of aligning to the floor by falling
+-------- MODEL FOR RADIANT ONLY - DO NOT SET THIS AS A KEY --------
+model="models/items/g_jetpack.md3"
 */
