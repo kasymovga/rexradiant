@@ -3378,7 +3378,7 @@ void StoreSurfaceLightmaps( qboolean fastAllocate ){
 		}
 
 		/* surfaces with styled lightmaps and a style marker get a custom generated shader (fixme: make this work with external lightmaps) */
-		if ( olm != NULL && lm != NULL && lm->styles[ 1 ] != LS_NONE && game->load != LoadRBSPFile && strcmp(game->arg, "nexuiz")) { //%	info->si->styleMarker > 0 )
+		if ( olm != NULL && lm != NULL && lm->styles[ 1 ] != LS_NONE && game->load != LoadRBSPFile && strcmp(game->arg, "nexuiz") && strcmp(game->arg, "rexuiz")) { //%	info->si->styleMarker > 0 )
 			qboolean dfEqual;
 			char key[ 32 ], styleStage[ 512 ], styleStages[ 4096 ], rgbGen[ 128 ], alphaGen[ 128 ];
 
