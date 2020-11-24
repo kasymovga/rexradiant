@@ -40,15 +40,7 @@
 
 #include <set>
 
-#include <gtk/gtkmain.h>
-#include <gtk/gtkbox.h>
-#include <gtk/gtkentry.h>
-#include <gtk/gtklabel.h>
-#include <gtk/gtktable.h>
-#include <gtk/gtktreemodel.h>
-#include <gtk/gtktreeview.h>
-#include <gtk/gtkliststore.h>
-#include <gtk/gtkcellrenderertext.h>
+#include <gtk/gtk.h>
 
 #include "scenelib.h"
 #include "transformlib.h"
@@ -86,6 +78,7 @@
 #include "brushmodule.h"
 #include "brush.h"
 #include "patch.h"
+#include "grid.h"
 
 class NameObserver
 {
@@ -398,11 +391,6 @@ void Map_SetWorldspawn( Map& map, scene::Node* node ){
 }
 
 
-// TTimo
-// need that in a variable, will have to tweak depending on the game
-float g_MaxWorldCoord = 64 * 1024;
-float g_MinWorldCoord = -64 * 1024;
-
 void AddRegionBrushes( void );
 void RemoveRegionBrushes( void );
 
@@ -413,6 +401,7 @@ void RemoveRegionBrushes( void );
    free all map elements, reinitialize the structures that depend on them
    ================
  */
+#include "modelwindow.h"
 void Map_Free(){
 	Map_RegionOff();
 	Select_ShowAllHidden();
@@ -422,6 +411,8 @@ void Map_Free(){
 	g_map.m_resource->detach( g_map );
 	GlobalReferenceCache().release( g_map.m_name.c_str() );
 	g_map.m_resource = 0;
+
+	ModelBrowser_flushReferences();
 
 	FlushReferences();
 
@@ -719,7 +710,7 @@ void Map_ImportSelected( TextInputStream& in, const MapFormat& format ){
 	EBrushType brush_type = GlobalBrushCreator().getFormat();
 	format.readGraph( node, in, GlobalEntityCreator() );
 	if ( brush_type != GlobalBrushCreator().getFormat() ) {
-		Node_getTraversable( *node.get_pointer() )->traverse( Convert_Brushes( BrushType_getTexdefType( GlobalBrushCreator().getFormat() ), BrushType_getTexdefType( brush_type ) ) );
+		Node_getTraversable( node )->traverse( Convert_Brushes( BrushType_getTexdefType( GlobalBrushCreator().getFormat() ), BrushType_getTexdefType( brush_type ) ) );
 		GlobalBrushCreator().toggleFormat( brush_type );
 	}
 	Map_gatherNamespaced( node );
@@ -1027,7 +1018,7 @@ void DoMapInfo(){
 
 					GtkAccelGroup *accel_group = gtk_accel_group_new();
 					gtk_window_add_accel_group( window, accel_group );
-					gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel_group, GDK_Escape, (GdkModifierType)0, GTK_ACCEL_VISIBLE );
+					gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel_group, GDK_KEY_Escape, (GdkModifierType)0, GTK_ACCEL_VISIBLE );
 				}
 			}
 		}
@@ -1223,9 +1214,7 @@ AnyInstanceSelected( bool& selected ) : m_selected( selected ){
 	m_selected = false;
 }
 void visit( scene::Instance& instance ) const {
-	Selectable* selectable = Instance_getSelectable( instance );
-	if ( selectable != 0
-		 && selectable->isSelected() ) {
+	if ( Instance_isSelected( instance ) ) {
 		m_selected = true;
 	}
 }
@@ -1474,8 +1463,12 @@ bool g_region_active = false;
 BoolExportCaller g_region_caller( g_region_active );
 ToggleItem g_region_item( g_region_caller );
 
-Vector3 g_region_mins( g_MinWorldCoord, g_MinWorldCoord, g_MinWorldCoord );
-Vector3 g_region_maxs( g_MaxWorldCoord, g_MaxWorldCoord, g_MaxWorldCoord );
+Vector3 g_region_mins;
+Vector3 g_region_maxs;
+void Region_defaultMinMax(){
+	g_region_maxs[0] = g_region_maxs[1] = g_region_maxs[2] = GetMaxGridCoord();
+	g_region_mins[0] = g_region_mins[1] = g_region_mins[2] = -GetMaxGridCoord();
+}
 
 scene::Node* region_sides[6];
 scene::Node* region_startpoint = 0;
@@ -1590,8 +1583,7 @@ void Map_RegionOff(){
 	g_region_active = false;
 	g_region_item.update();
 
-	g_region_maxs[0] = g_region_maxs[1] = g_region_maxs[2] = g_MaxWorldCoord - 64;
-	g_region_mins[0] = g_region_mins[1] = g_region_mins[2] = g_MinWorldCoord + 64;
+	Region_defaultMinMax();
 
 	Scene_Exclude_All( false );
 }
@@ -1820,8 +1812,7 @@ bool pre( const scene::Path& path, scene::Instance& instance ) const {
 }
 void post( const scene::Path& path, scene::Instance& instance ) const {
 	if ( Node_isPrimitive( path.top() ) ){
-		Selectable* selectable = Instance_getSelectable( instance );
-		if ( selectable && selectable->isSelected() ){
+		if ( Instance_isSelected( instance ) ){
 			NodeSmartReference node( path.top().get() );
 			scene::Traversable* parent_traversable = Node_getTraversable( path.parent() );
 			parent_traversable->erase( node );
@@ -1857,9 +1848,7 @@ bool pre( const scene::Path& path, scene::Instance& instance ) const {
 	if ( ++m_depth != 1 && path.top().get().isRoot() ) {
 		return false;
 	}
-	Selectable* selectable = Instance_getSelectable( instance );
-	if ( selectable != 0
-		 && selectable->isSelected()
+	if ( Instance_isSelected( instance )
 		 && Node_isPrimitive( path.top() ) ) {
 		++m_count;
 	}
@@ -1983,15 +1972,18 @@ const char* getMapsPath(){
 }
 
 const char* map_open( const char* title ){
-	return file_dialog( GTK_WIDGET( MainFrame_getWindow() ), TRUE, title, getMapsPath(), MapFormat::Name(), true, false, false );
+	const char* path = Map_Unnamed( g_map )? getMapsPath() : g_map.m_name.c_str();
+	return file_dialog( GTK_WIDGET( MainFrame_getWindow() ), true, title, path, MapFormat::Name(), true, false, false );
 }
 
 const char* map_import( const char* title ){
-	return file_dialog( GTK_WIDGET( MainFrame_getWindow() ), TRUE, title, getMapsPath(), MapFormat::Name(), false, true, false );
+	const char* path = Map_Unnamed( g_map )? getMapsPath() : g_map.m_name.c_str();
+	return file_dialog( GTK_WIDGET( MainFrame_getWindow() ), true, title, path, MapFormat::Name(), false, true, false );
 }
 
 const char* map_save( const char* title ){
-	return file_dialog( GTK_WIDGET( MainFrame_getWindow() ), FALSE, title, getMapsPath(), MapFormat::Name(), false, false, true );
+	const char* path = Map_Unnamed( g_map )? getMapsPath() : g_map.m_name.c_str();
+	return file_dialog( GTK_WIDGET( MainFrame_getWindow() ), false, title, path, MapFormat::Name(), false, false, true );
 }
 
 void OpenMap(){
@@ -2287,12 +2279,12 @@ void DoFind(){
 				GtkButton* button = create_dialog_button( "Find", G_CALLBACK( dialog_button_ok ), &dialog );
 				gtk_box_pack_start( GTK_BOX( hbox ), GTK_WIDGET( button ), FALSE, FALSE, 0 );
 				widget_make_default( GTK_WIDGET( button ) );
-				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel, GDK_Return, (GdkModifierType)0, (GtkAccelFlags)0 );
+				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel, GDK_KEY_Return, (GdkModifierType)0, (GtkAccelFlags)0 );
 			}
 			{
 				GtkButton* button = create_dialog_button( "Close", G_CALLBACK( dialog_button_cancel ), &dialog );
 				gtk_box_pack_start( GTK_BOX( hbox ), GTK_WIDGET( button ), FALSE, FALSE, 0 );
-				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel, GDK_Escape, (GdkModifierType)0, (GtkAccelFlags)0 );
+				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel, GDK_KEY_Escape, (GdkModifierType)0, (GtkAccelFlags)0 );
 			}
 		}
 	}
@@ -2637,7 +2629,7 @@ void Map_Construct(){
 	GlobalCommands_insert( "RegionSetBrush", FreeCaller<RegionBrush>() );
 	//GlobalCommands_insert( "RegionSetSelection", FreeCaller<RegionSelected>(), Accelerator( 'R', (GdkModifierType)( GDK_SHIFT_MASK | GDK_CONTROL_MASK ) ) );
 	GlobalToggles_insert( "RegionSetSelection", FreeCaller<RegionSelected>(), ToggleItem::AddCallbackCaller( g_region_item ), Accelerator( 'R', (GdkModifierType)( GDK_SHIFT_MASK | GDK_CONTROL_MASK ) ) );
-	GlobalCommands_insert( "AutoCaulkSelected", FreeCaller<map_autocaulk_selected>(), Accelerator( GDK_F4 ) );
+	GlobalCommands_insert( "AutoCaulkSelected", FreeCaller<map_autocaulk_selected>(), Accelerator( GDK_KEY_F4 ) );
 
 	GlobalPreferenceSystem().registerPreference( "LastMap", CopiedStringImportStringCaller( g_strLastMap ), CopiedStringExportStringCaller( g_strLastMap ) );
 	GlobalPreferenceSystem().registerPreference( "LoadLastMap", BoolImportStringCaller( g_bLoadLastMap ), BoolExportStringCaller( g_bLoadLastMap ) );

@@ -272,7 +272,7 @@ static void ConvertShader( FILE *f, bspShader_t *shader, int shaderNum ){
 	else{
 		sprintf( filename, "%s.tga", si->shader );
 	}
-	for ( c = filename; *c != '\0'; c++ )
+	for ( c = filename; *c; c++ )
 		if ( *c == '/' ) {
 			*c = '\\';
 		}
@@ -342,8 +342,6 @@ int ConvertBSPToASE( char *bspName ){
 	bspShader_t     *shader;
 	bspModel_t      *model;
 	entity_t        *e;
-	vec3_t origin;
-	const char      *key;
 	char name[ 1024 ], base[ 1024 ], dirname[ 1024 ];
 	int lmIndices[ numBSPShaders ];
 
@@ -355,8 +353,7 @@ int ConvertBSPToASE( char *bspName ){
 	strcpy( dirname, bspName );
 	StripExtension( dirname );
 	strcpy( name, bspName );
-	StripExtension( name );
-	strcat( name, ".ase" );
+	path_set_extension( name, ".ase" );
 	Sys_Printf( "writing %s\n", name );
 
 	ExtractFileBase( bspName, base );
@@ -410,7 +407,7 @@ int ConvertBSPToASE( char *bspName ){
 		}
 		else
 		{
-			key = ValueForKey( e, "model" );
+			const char *key = ValueForKey( e, "model" );
 			if ( key[ 0 ] != '*' ) {
 				continue;
 			}
@@ -419,13 +416,8 @@ int ConvertBSPToASE( char *bspName ){
 		model = &bspModels[ modelNum ];
 
 		/* get entity origin */
-		key = ValueForKey( e, "origin" );
-		if ( key[ 0 ] == '\0' ) {
-			VectorClear( origin );
-		}
-		else{
-			GetVectorForKey( e, "origin", origin );
-		}
+		vec3_t origin;
+		GetVectorForKey( e, "origin", origin );
 
 		/* convert model */
 		ConvertModel( f, model, modelNum, origin, lmIndices );

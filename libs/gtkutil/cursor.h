@@ -23,16 +23,10 @@
 #define INCLUDED_GTKUTIL_CURSOR_H
 
 #include <glib.h>
-#include <gdk/gdkevents.h>
-#include <gtk/gtkwidget.h>
-#include <gtk/gtkwindow.h>
-#include <gtk/gtkmain.h>
+#include <gtk/gtk.h>
+#include <gdk/gdk.h>
 
 #include "debugging/debugging.h"
-
-typedef struct _GdkCursor GdkCursor;
-typedef struct _GtkWidget GtkWidget;
-typedef struct _GtkWindow GtkWindow;
 
 #if 0
 GdkCursor* create_blank_cursor();
@@ -87,15 +81,16 @@ MotionDeltaFunction m_function;
 void* m_data;
 
 static gboolean deferred_motion( gpointer data ){
-	reinterpret_cast<DeferredMotionDelta*>( data )->m_function(
-		reinterpret_cast<DeferredMotionDelta*>( data )->m_delta_x,
-		reinterpret_cast<DeferredMotionDelta*>( data )->m_delta_y,
-		reinterpret_cast<DeferredMotionDelta*>( data )->m_state,
-		reinterpret_cast<DeferredMotionDelta*>( data )->m_data
+	DeferredMotionDelta* self = reinterpret_cast<DeferredMotionDelta*>( data );
+	self->m_function(
+		self->m_delta_x,
+		self->m_delta_y,
+		self->m_state,
+		self->m_data
 		);
-	reinterpret_cast<DeferredMotionDelta*>( data )->m_motion_handler = 0;
-	reinterpret_cast<DeferredMotionDelta*>( data )->m_delta_x = 0;
-	reinterpret_cast<DeferredMotionDelta*>( data )->m_delta_y = 0;
+	self->m_motion_handler = 0;
+	self->m_delta_x = 0;
+	self->m_delta_y = 0;
 	return FALSE;
 }
 public:
@@ -121,7 +116,8 @@ class FreezePointer
 {
 unsigned int handle_motion;
 int recorded_x, recorded_y, last_x, last_y, center_x, center_y;
-GtkWidget* m_weedjet;
+GtkWindow* m_window;
+GtkWidget* m_widget;
 typedef void ( *MotionDeltaFunction )( int x, int y, unsigned int state, void* data );
 MotionDeltaFunction m_function;
 void* m_data;
@@ -163,7 +159,7 @@ static gboolean motion_delta( GtkWidget *widget, GdkEventMotion *event, FreezePo
 }
 
 void freeze_pointer( GtkWindow* window, GtkWidget* widget, MotionDeltaFunction function, void* data ){
-	ASSERT_MESSAGE( m_function == 0, "can't freeze pointer" );
+	ASSERT_MESSAGE( m_function == 0, "can't freeze pointer: already frozen" );
 
 	const GdkEventMask mask = static_cast<GdkEventMask>( GDK_POINTER_MOTION_MASK
 														 | GDK_POINTER_MOTION_HINT_MASK
@@ -178,27 +174,31 @@ void freeze_pointer( GtkWindow* window, GtkWidget* widget, MotionDeltaFunction f
 	GdkCursor* cursor = gdk_cursor_new( GDK_BLANK_CURSOR );
 	//GdkCursor* cursor = create_blank_cursor();
 	//GdkGrabStatus status =
-	/*	fixes cursor runaways during srsly quick drags in camera
-	drags with pressed buttons have no problem at all w/o this	*/
-	gdk_pointer_grab( GTK_WIDGET( window )->window, TRUE, mask, 0, cursor, GDK_CURRENT_TIME );
-	//gdk_window_set_cursor ( GTK_WIDGET( window )->window, cursor );
-	/*	is needed to fix activating neighbour widgets, that happens, if using upper one	*/
+	/* fixes cursor runaways during srsly quick drags in camera
+	drags with pressed buttons have no problem at all w/o this */
+	gdk_pointer_grab( gtk_widget_get_window( GTK_WIDGET( window ) ), TRUE, mask, 0, cursor, GDK_CURRENT_TIME );
+	//gdk_window_set_cursor ( gtk_widget_get_window( GTK_WIDGET( window ) ), cursor );
+	/* is needed to fix activating neighbor widgets, that happens, if using upper one */
 	gtk_grab_add( widget );
-	m_weedjet = widget;
 
 	gdk_cursor_unref( cursor );
 
 	Sys_GetCursorPos( window, &recorded_x, &recorded_y );
 
-	/*	using center for tracking for max safety	*/
-	gdk_window_get_origin( widget->window, &center_x, &center_y );
-	center_y += widget->allocation.height / 2;
-	center_x += widget->allocation.width / 2;
+	/* using center for tracking for max safety */
+	gdk_window_get_origin( gtk_widget_get_window( widget ), &center_x, &center_y );
+	GtkAllocation allocation;
+	gtk_widget_get_allocation( widget, &allocation );
+	center_y += allocation.height / 2;
+	center_x += allocation.width / 2;
 
 	Sys_SetCursorPos( window, center_x, center_y );
 
 	last_x = center_x;
 	last_y = center_y;
+
+	m_widget = widget;
+	m_window = window;
 
 	m_function = function;
 	m_data = data;
@@ -206,23 +206,68 @@ void freeze_pointer( GtkWindow* window, GtkWidget* widget, MotionDeltaFunction f
 	handle_motion = g_signal_connect( G_OBJECT( window ), "motion_notify_event", G_CALLBACK( motion_delta ), this );
 }
 
-void unfreeze_pointer( GtkWindow* window, bool centerize ){
-	g_signal_handler_disconnect( G_OBJECT( window ), handle_motion );
+void unfreeze_pointer( bool centerize ){
+	ASSERT_MESSAGE( m_function != 0, "can't unfreeze pointer: is not frozen" );
+
+	g_signal_handler_disconnect( G_OBJECT( m_window ), handle_motion );
 
 	m_function = 0;
 	m_data = 0;
 
 	if( centerize ){
-		Sys_SetCursorPos( window, center_x, center_y );
+		Sys_SetCursorPos( m_window, center_x, center_y );
 	}
 	else{
-		Sys_SetCursorPos( window, recorded_x, recorded_y );
+		Sys_SetCursorPos( m_window, recorded_x, recorded_y );
 	}
-//	gdk_window_set_cursor( GTK_WIDGET( window )->window, 0 );
+//	gdk_window_set_cursor( gtk_widget_get_window( GTK_WIDGET( m_window ) ), 0 );
 	gdk_pointer_ungrab( GDK_CURRENT_TIME );
-	if( m_weedjet )
-		gtk_grab_remove( m_weedjet );
+
+	gtk_grab_remove( m_widget );
 }
 };
+
+
+
+
+
+class DeferredAdjustment
+{
+gdouble m_value;
+guint m_handler;
+typedef void ( *ValueChangedFunction )( void* data, gdouble value );
+ValueChangedFunction m_function;
+void* m_data;
+
+static gboolean deferred_value_changed( gpointer data ){
+	DeferredAdjustment* self = reinterpret_cast<DeferredAdjustment*>( data );
+	self->m_function(
+		self->m_data,
+		self->m_value
+		);
+	self->m_handler = 0;
+	self->m_value = 0;
+	return FALSE;
+}
+public:
+DeferredAdjustment( ValueChangedFunction function, void* data ) : m_value( 0 ), m_handler( 0 ), m_function( function ), m_data( data ){
+}
+void flush(){
+	if ( m_handler != 0 ) {
+		g_source_remove( m_handler );
+		deferred_value_changed( this );
+	}
+}
+void value_changed( gdouble value ){
+	m_value = value;
+	if ( m_handler == 0 ) {
+		m_handler = g_idle_add( deferred_value_changed, this );
+	}
+}
+static void adjustment_value_changed( GtkAdjustment *adjustment, DeferredAdjustment* self ){
+	self->value_changed( gtk_adjustment_get_value( adjustment ) );
+}
+};
+
 
 #endif

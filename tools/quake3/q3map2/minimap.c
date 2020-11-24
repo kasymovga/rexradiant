@@ -51,9 +51,9 @@ minimap_t;
 
 static minimap_t minimap;
 
-qboolean BrushIntersectionWithLine( bspBrush_t *brush, vec3_t start, vec3_t dir, float *t_in, float *t_out ){
+bool BrushIntersectionWithLine( bspBrush_t *brush, vec3_t start, vec3_t dir, float *t_in, float *t_out ){
 	int i;
-	qboolean in = qfalse, out = qfalse;
+	bool in = false, out = false;
 	bspBrushSide_t *sides = &bspBrushSides[brush->firstSide];
 
 	for ( i = 0; i < brush->numSides; ++i )
@@ -63,7 +63,7 @@ qboolean BrushIntersectionWithLine( bspBrush_t *brush, vec3_t start, vec3_t dir,
 		float dn = DotProduct( dir, p->normal );
 		if ( dn == 0 ) {
 			if ( sn > p->dist ) {
-				return qfalse; // outside!
+				return false; // outside!
 			}
 		}
 		else
@@ -72,10 +72,10 @@ qboolean BrushIntersectionWithLine( bspBrush_t *brush, vec3_t start, vec3_t dir,
 			if ( dn < 0 ) {
 				if ( !in || t > *t_in ) {
 					*t_in = t;
-					in = qtrue;
+					in = true;
 					// as t_in can only increase, and t_out can only decrease, early out
 					if ( out && *t_in >= *t_out ) {
-						return qfalse;
+						return false;
 					}
 				}
 			}
@@ -83,10 +83,10 @@ qboolean BrushIntersectionWithLine( bspBrush_t *brush, vec3_t start, vec3_t dir,
 			{
 				if ( !out || t < *t_out ) {
 					*t_out = t;
-					out = qtrue;
+					out = true;
 					// as t_in can only increase, and t_out can only decrease, early out
 					if ( in && *t_in >= *t_out ) {
-						return qfalse;
+						return false;
 					}
 				}
 			}
@@ -220,15 +220,15 @@ static void MiniMapNoSupersampling( int y ){
 
 static void MiniMapSharpen( int y ){
 	int x;
-	qboolean up = ( y > 0 );
-	qboolean down = ( y < minimap.height - 1 );
+	const bool up = ( y > 0 );
+	const bool down = ( y < minimap.height - 1 );
 	float *p = &minimap.data1f[y * minimap.width];
 	float *q = &minimap.sharpendata1f[y * minimap.width];
 
 	for ( x = 0; x < minimap.width; ++x )
 	{
-		qboolean left = ( x > 0 );
-		qboolean right = ( x < minimap.width - 1 );
+		const bool left = ( x > 0 );
+		const bool right = ( x < minimap.width - 1 );
 		float val = p[0] * minimap.sharpen_centermult;
 
 		if ( left && up ) {
@@ -282,7 +282,7 @@ static void MiniMapBrightnessContrast( int y ){
 	}
 }
 
-void MiniMapMakeMinsMaxs( vec3_t mins_in, vec3_t maxs_in, float border, qboolean keepaspect ){
+void MiniMapMakeMinsMaxs( vec3_t mins_in, vec3_t maxs_in, float border, bool keepaspect ){
 	vec3_t mins, maxs, extend;
 	VectorCopy( mins_in, mins );
 	VectorCopy( maxs_in, maxs );
@@ -331,7 +331,7 @@ void MiniMapSetupBrushes( void ){
 	// not all may be nodraw
 }
 
-qboolean MiniMapEvaluateSampleOffsets( int *bestj, int *bestk, float *bestval ){
+bool MiniMapEvaluateSampleOffsets( int *bestj, int *bestk, float *bestval ){
 	float val, dx, dy;
 	int j, k;
 
@@ -436,19 +436,19 @@ void MiniMapMakeSampleOffsets(){
 
 void MergeRelativePath( char *out, const char *absolute, const char *relative ){
 	const char *endpos = absolute + strlen( absolute );
-	while ( endpos != absolute && ( endpos[-1] == '/' || endpos[-1] == '\\' ) )
+	while ( endpos != absolute && path_separator( endpos[-1] ) )
 		--endpos;
-	while ( relative[0] == '.' && relative[1] == '.' && ( relative[2] == '/' || relative[2] == '\\' ) )
+	while ( strEqualPrefix( relative, "../" ) || strEqualPrefix( relative, "..\\" ) )
 	{
 		relative += 3;
 		while ( endpos != absolute )
 		{
 			--endpos;
-			if ( *endpos == '/' || *endpos == '\\' ) {
+			if ( path_separator( *endpos ) ) {
 				break;
 			}
 		}
-		while ( endpos != absolute && ( endpos[-1] == '/' || endpos[-1] == '\\' ) )
+		while ( endpos != absolute && path_separator( endpos[-1] ) )
 			--endpos;
 	}
 	memcpy( out, absolute, endpos - absolute );
@@ -461,7 +461,7 @@ int MiniMapBSPMain( int argc, char **argv ){
 	char basename[1024];
 	char path[1024];
 	char relativeMinimapFilename[1024];
-	qboolean autolevel;
+	bool autolevel;
 	float minimapSharpen;
 	float border;
 	byte *data4b, *p;
@@ -470,18 +470,17 @@ int MiniMapBSPMain( int argc, char **argv ){
 	int i;
 	miniMapMode_t mode;
 	vec3_t mins, maxs;
-	qboolean keepaspect;
+	bool keepaspect;
 
 	/* arg checking */
 	if ( argc < 2 ) {
-		Sys_Printf( "Usage: q3map [-v] -minimap [-size n] [-sharpen f] [-samples n | -random n] [-o filename.tga] [-minmax Xmin Ymin Zmin Xmax Ymax Zmax] <mapname>\n" );
+		Sys_Printf( "Usage: q3map2 [-v] -minimap [-size n] [-sharpen f] [-samples n | -random n] [-o filename.tga] [-minmax Xmin Ymin Zmin Xmax Ymax Zmax] <mapname>\n" );
 		return 0;
 	}
 
 	/* load the BSP first */
 	strcpy( source, ExpandArg( argv[ argc - 1 ] ) );
-	StripExtension( source );
-	DefaultExtension( source, ".bsp" );
+	path_set_extension( source, ".bsp" );
 	Sys_Printf( "Loading %s\n", source );
 	//BeginMapShaderFile( source ); //do not delete q3map2_*.shader on minimap generation
 	LoadShaderInfo();
@@ -498,7 +497,7 @@ int MiniMapBSPMain( int argc, char **argv ){
 	keepaspect = game->miniMapKeepAspect;
 	mode = game->miniMapMode;
 
-	autolevel = qfalse;
+	autolevel = false;
 	minimap.samples = 1;
 	minimap.sample_offsets = NULL;
 	minimap.boost = 1.0;
@@ -508,17 +507,17 @@ int MiniMapBSPMain( int argc, char **argv ){
 	/* process arguments */
 	for ( i = 1; i < ( argc - 1 ); i++ )
 	{
-		if ( !strcmp( argv[ i ],  "-size" ) ) {
+		if ( strEqual( argv[ i ],  "-size" ) ) {
 			minimap.width = minimap.height = atoi( argv[i + 1] );
 			i++;
 			Sys_Printf( "Image size set to %i\n", minimap.width );
 		}
-		else if ( !strcmp( argv[ i ],  "-sharpen" ) ) {
+		else if ( strEqual( argv[ i ],  "-sharpen" ) ) {
 			minimapSharpen = atof( argv[i + 1] );
 			i++;
 			Sys_Printf( "Sharpening coefficient set to %f\n", minimapSharpen );
 		}
-		else if ( !strcmp( argv[ i ],  "-samples" ) ) {
+		else if ( strEqual( argv[ i ],  "-samples" ) ) {
 			minimap.samples = atoi( argv[i + 1] );
 			i++;
 			Sys_Printf( "Samples set to %i\n", minimap.samples );
@@ -526,32 +525,32 @@ int MiniMapBSPMain( int argc, char **argv ){
 			minimap.sample_offsets = malloc( 2 * sizeof( *minimap.sample_offsets ) * minimap.samples );
 			MiniMapMakeSampleOffsets();
 		}
-		else if ( !strcmp( argv[ i ],  "-random" ) ) {
+		else if ( strEqual( argv[ i ],  "-random" ) ) {
 			minimap.samples = atoi( argv[i + 1] );
 			i++;
 			Sys_Printf( "Random samples set to %i\n", minimap.samples );
 			free( minimap.sample_offsets );
 			minimap.sample_offsets = NULL;
 		}
-		else if ( !strcmp( argv[ i ],  "-border" ) ) {
+		else if ( strEqual( argv[ i ],  "-border" ) ) {
 			border = atof( argv[i + 1] );
 			i++;
 			Sys_Printf( "Border set to %f\n", border );
 		}
-		else if ( !strcmp( argv[ i ],  "-keepaspect" ) ) {
-			keepaspect = qtrue;
+		else if ( strEqual( argv[ i ],  "-keepaspect" ) ) {
+			keepaspect = true;
 			Sys_Printf( "Keeping aspect ratio by letterboxing\n", border );
 		}
-		else if ( !strcmp( argv[ i ],  "-nokeepaspect" ) ) {
-			keepaspect = qfalse;
+		else if ( strEqual( argv[ i ],  "-nokeepaspect" ) ) {
+			keepaspect = false;
 			Sys_Printf( "Not keeping aspect ratio\n", border );
 		}
-		else if ( !strcmp( argv[ i ],  "-o" ) ) {
+		else if ( strEqual( argv[ i ],  "-o" ) ) {
 			strcpy( minimapFilename, argv[i + 1] );
 			i++;
 			Sys_Printf( "Output file name set to %s\n", minimapFilename );
 		}
-		else if ( !strcmp( argv[ i ],  "-minmax" ) && i < ( argc - 7 ) ) {
+		else if ( strEqual( argv[ i ],  "-minmax" ) && i < ( argc - 7 ) ) {
 			mins[0] = atof( argv[i + 1] );
 			mins[1] = atof( argv[i + 2] );
 			mins[2] = atof( argv[i + 3] );
@@ -561,39 +560,39 @@ int MiniMapBSPMain( int argc, char **argv ){
 			i += 6;
 			Sys_Printf( "Map mins/maxs overridden\n" );
 		}
-		else if ( !strcmp( argv[ i ],  "-gray" ) ) {
+		else if ( strEqual( argv[ i ],  "-gray" ) ) {
 			mode = MINIMAP_MODE_GRAY;
 			Sys_Printf( "Writing as white-on-black image\n" );
 		}
-		else if ( !strcmp( argv[ i ],  "-black" ) ) {
+		else if ( strEqual( argv[ i ],  "-black" ) ) {
 			mode = MINIMAP_MODE_BLACK;
 			Sys_Printf( "Writing as black alpha image\n" );
 		}
-		else if ( !strcmp( argv[ i ],  "-white" ) ) {
+		else if ( strEqual( argv[ i ],  "-white" ) ) {
 			mode = MINIMAP_MODE_WHITE;
 			Sys_Printf( "Writing as white alpha image\n" );
 		}
-		else if ( !strcmp( argv[ i ],  "-boost" ) && i < ( argc - 2 ) ) {
+		else if ( strEqual( argv[ i ],  "-boost" ) && i < ( argc - 2 ) ) {
 			minimap.boost = atof( argv[i + 1] );
 			i++;
 			Sys_Printf( "Contrast boost set to %f\n", minimap.boost );
 		}
-		else if ( !strcmp( argv[ i ],  "-brightness" ) && i < ( argc - 2 ) ) {
+		else if ( strEqual( argv[ i ],  "-brightness" ) && i < ( argc - 2 ) ) {
 			minimap.brightness = atof( argv[i + 1] );
 			i++;
 			Sys_Printf( "Brightness set to %f\n", minimap.brightness );
 		}
-		else if ( !strcmp( argv[ i ],  "-contrast" ) && i < ( argc - 2 ) ) {
+		else if ( strEqual( argv[ i ],  "-contrast" ) && i < ( argc - 2 ) ) {
 			minimap.contrast = atof( argv[i + 1] );
 			i++;
 			Sys_Printf( "Contrast set to %f\n", minimap.contrast );
 		}
-		else if ( !strcmp( argv[ i ],  "-autolevel" ) ) {
-			autolevel = qtrue;
+		else if ( strEqual( argv[ i ],  "-autolevel" ) ) {
+			autolevel = true;
 			Sys_Printf( "Auto level enabled\n", border );
 		}
-		else if ( !strcmp( argv[ i ],  "-noautolevel" ) ) {
-			autolevel = qfalse;
+		else if ( strEqual( argv[ i ],  "-noautolevel" ) ) {
+			autolevel = false;
 			Sys_Printf( "Auto level disabled\n", border );
 		}
 	}
@@ -625,24 +624,24 @@ int MiniMapBSPMain( int argc, char **argv ){
 
 	if ( minimap.samples <= 1 ) {
 		Sys_Printf( "\n--- MiniMapNoSupersampling (%d) ---\n", minimap.height );
-		RunThreadsOnIndividual( minimap.height, qtrue, MiniMapNoSupersampling );
+		RunThreadsOnIndividual( minimap.height, true, MiniMapNoSupersampling );
 	}
 	else
 	{
 		if ( minimap.sample_offsets ) {
 			Sys_Printf( "\n--- MiniMapSupersampled (%d) ---\n", minimap.height );
-			RunThreadsOnIndividual( minimap.height, qtrue, MiniMapSupersampled );
+			RunThreadsOnIndividual( minimap.height, true, MiniMapSupersampled );
 		}
 		else
 		{
 			Sys_Printf( "\n--- MiniMapRandomlySupersampled (%d) ---\n", minimap.height );
-			RunThreadsOnIndividual( minimap.height, qtrue, MiniMapRandomlySupersampled );
+			RunThreadsOnIndividual( minimap.height, true, MiniMapRandomlySupersampled );
 		}
 	}
 
 	if ( minimap.boost != 1.0 ) {
 		Sys_Printf( "\n--- MiniMapContrastBoost (%d) ---\n", minimap.height );
-		RunThreadsOnIndividual( minimap.height, qtrue, MiniMapContrastBoost );
+		RunThreadsOnIndividual( minimap.height, true, MiniMapContrastBoost );
 	}
 
 	if ( autolevel ) {
@@ -686,12 +685,12 @@ int MiniMapBSPMain( int argc, char **argv ){
 
 	if ( minimap.brightness != 0 || minimap.contrast != 1 ) {
 		Sys_Printf( "\n--- MiniMapBrightnessContrast (%d) ---\n", minimap.height );
-		RunThreadsOnIndividual( minimap.height, qtrue, MiniMapBrightnessContrast );
+		RunThreadsOnIndividual( minimap.height, true, MiniMapBrightnessContrast );
 	}
 
 	if ( minimap.sharpendata1f ) {
 		Sys_Printf( "\n--- MiniMapSharpen (%d) ---\n", minimap.height );
-		RunThreadsOnIndividual( minimap.height, qtrue, MiniMapSharpen );
+		RunThreadsOnIndividual( minimap.height, true, MiniMapSharpen );
 		q = minimap.sharpendata1f;
 	}
 	else

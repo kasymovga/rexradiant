@@ -45,7 +45,7 @@ qboolean noopt;
 qboolean leaktest;
 qboolean verboseentities;
 
-char outbase[32];
+extern char outbase[32];
 
 int block_xl = -8, block_xh = 7, block_yl = -8, block_yh = 7;
 
@@ -161,7 +161,6 @@ void ProcessWorldModel( void ){
 	entity_t    *e;
 	tree_t      *tree;
 	qboolean leaked;
-	qboolean optimize;
 	xmlNodePtr polyline, leaknode;
 	char level[ 2 ];
 
@@ -200,7 +199,7 @@ void ProcessWorldModel( void ){
 		block_yh = 3;
 	}
 
-	for ( optimize = false ; optimize <= true ; optimize++ )
+	for ( int optimize = 0; optimize <= 1; optimize++ )
 	{
 		Sys_FPrintf( SYS_VRB, "--------------------------------------------\n" );
 
@@ -241,12 +240,12 @@ void ProcessWorldModel( void ){
 			Sys_FPrintf( SYS_NOXML, "******* leaked *******\n" );
 			Sys_FPrintf( SYS_NOXML, "**********************\n" );
 			polyline = LeakFile( tree );
-			leaknode = xmlNewNode( NULL, "message" );
-			xmlNodeAddContent( leaknode, "MAP LEAKED\n" );
+			leaknode = xmlNewNode( NULL, (const xmlChar*)"message" );
+			xmlNodeAddContent( leaknode, (const xmlChar*)"MAP LEAKED\n" );
 			xmlAddChild( leaknode, polyline );
 			level[0] = (int) '0' + SYS_ERR;
 			level[1] = 0;
-			xmlSetProp( leaknode, "level", (char*) &level );
+			xmlSetProp( leaknode, (const xmlChar*)"level", (const xmlChar*)level );
 			xml_SendNode( leaknode );
 			if ( leaktest ) {
 				Sys_Printf( "--- MAP LEAKED, ABORTING LEAKTEST ---\n" );

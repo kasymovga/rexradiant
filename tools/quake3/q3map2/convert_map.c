@@ -43,9 +43,6 @@
    exports a map brush
  */
 
-#define SNAP_FLOAT_TO_INT   4
-#define SNAP_INT_TO_FLOAT   ( 1.0 / SNAP_FLOAT_TO_INT )
-
 typedef vec_t vec2_t[2];
 
 static vec_t Det3x3( vec_t a00, vec_t a01, vec_t a02,
@@ -79,7 +76,7 @@ void GetBestSurfaceTriangleMatchForBrushside( side_t *buildSide, bspDrawVert_t *
 		if ( s->surfaceType != MST_PLANAR && s->surfaceType != MST_TRIANGLE_SOUP ) {
 			continue;
 		}
-		if ( strcmp( buildSide->shaderInfo->shader, bspShaders[s->shaderNum].shader ) ) {
+		if ( !strEqual( buildSide->shaderInfo->shader, bspShaders[s->shaderNum].shader ) ) {
 			continue;
 		}
 		for ( t = 0; t + 3 <= s->numIndexes; t += 3 )
@@ -159,12 +156,12 @@ exwinding:
 			;
 		}
 	}
-	//if(strncmp(buildSide->shaderInfo->shader, "textures/common/", 16))
+	//if(!striEqualPrefix(buildSide->shaderInfo->shader, "textures/common/"))
 	//	fprintf(stderr, "brushside with %s: %d matches (%f area)\n", buildSide->shaderInfo->shader, matches, best);
 }
 
 #define FRAC( x ) ( ( x ) - floor( x ) )
-static void ConvertOriginBrush( FILE *f, int num, vec3_t origin, qboolean brushPrimitives ){
+static void ConvertOriginBrush( FILE *f, int num, vec3_t origin, bool brushPrimitives ){
 	int originSize = 256;
 
 	char pattern[6][7][3] = {
@@ -224,7 +221,7 @@ static void ConvertOriginBrush( FILE *f, int num, vec3_t origin, qboolean brushP
 	fprintf( f, "\t}\n\n" );
 }
 
-static void ConvertBrushFast( FILE *f, int num, bspBrush_t *brush, vec3_t origin, qboolean brushPrimitives ){
+static void ConvertBrushFast( FILE *f, int num, bspBrush_t *brush, vec3_t origin, bool brushPrimitives ){
 	int i;
 	bspBrushSide_t  *side;
 	side_t          *buildSide;
@@ -245,11 +242,11 @@ static void ConvertBrushFast( FILE *f, int num, bspBrush_t *brush, vec3_t origin
 	}
 	buildBrush->numsides = 0;
 
-	qboolean modelclip = qfalse;
+	bool modelclip = false;
 	/* try to guess if thats model clip */
 	if ( force ){
 		int notNoShader = 0;
-		modelclip = qtrue;
+		modelclip = true;
 		for ( i = 0; i < brush->numSides; i++ )
 		{
 			/* get side */
@@ -261,11 +258,11 @@ static void ConvertBrushFast( FILE *f, int num, bspBrush_t *brush, vec3_t origin
 			}
 			shader = &bspShaders[ side->shaderNum ];
 			//"noshader" happens on modelclip and unwanted sides ( usually breaking complex brushes )
-			if( Q_stricmp( shader->shader, "noshader" ) ){
+			if( !striEqual( shader->shader, "noshader" ) ){
 				notNoShader++;
 			}
 			if( notNoShader > 1 ){
-				modelclip = qfalse;
+				modelclip = false;
 				break;
 			}
 		}
@@ -283,7 +280,7 @@ static void ConvertBrushFast( FILE *f, int num, bspBrush_t *brush, vec3_t origin
 		}
 		shader = &bspShaders[ side->shaderNum ];
 		//"noshader" happens on modelclip and unwanted sides ( usually breaking complex brushes )
-		if( !Q_stricmp( shader->shader, "default" ) || ( !Q_stricmp( shader->shader, "noshader" ) && !modelclip ) )
+		if( striEqual( shader->shader, "default" ) || ( striEqual( shader->shader, "noshader" ) && !modelclip ) )
 			continue;
 
 		/* add build side */
@@ -324,7 +321,7 @@ static void ConvertBrushFast( FILE *f, int num, bspBrush_t *brush, vec3_t origin
 		}
 
 		/* get texture name */
-		if ( !Q_strncasecmp( buildSide->shaderInfo->shader, "textures/", 9 ) ) {
+		if ( striEqualPrefix( buildSide->shaderInfo->shader, "textures/" ) ) {
 			texture = buildSide->shaderInfo->shader + 9;
 		}
 		else{
@@ -373,7 +370,7 @@ static void ConvertBrushFast( FILE *f, int num, bspBrush_t *brush, vec3_t origin
 	fprintf( f, "\t}\n\n" );
 }
 
-static void ConvertBrush( FILE *f, int num, bspBrush_t *brush, vec3_t origin, qboolean brushPrimitives ){
+static void ConvertBrush( FILE *f, int num, bspBrush_t *brush, vec3_t origin, bool brushPrimitives ){
 	int i, j;
 	bspBrushSide_t  *side;
 	side_t          *buildSide;
@@ -395,11 +392,11 @@ static void ConvertBrush( FILE *f, int num, bspBrush_t *brush, vec3_t origin, qb
 	}
 	buildBrush->numsides = 0;
 
-	qboolean modelclip = qfalse;
+	bool modelclip = false;
 	/* try to guess if thats model clip */
 	if ( force ){
 		int notNoShader = 0;
-		modelclip = qtrue;
+		modelclip = true;
 		for ( i = 0; i < brush->numSides; i++ )
 		{
 			/* get side */
@@ -411,11 +408,11 @@ static void ConvertBrush( FILE *f, int num, bspBrush_t *brush, vec3_t origin, qb
 			}
 			shader = &bspShaders[ side->shaderNum ];
 			//"noshader" happens on modelclip and unwanted sides ( usually breaking complex brushes )
-			if( Q_stricmp( shader->shader, "noshader" ) ){
+			if( !striEqual( shader->shader, "noshader" ) ){
 				notNoShader++;
 			}
 			if( notNoShader > 1 ){
-				modelclip = qfalse;
+				modelclip = false;
 				break;
 			}
 		}
@@ -433,7 +430,7 @@ static void ConvertBrush( FILE *f, int num, bspBrush_t *brush, vec3_t origin, qb
 		}
 		shader = &bspShaders[ side->shaderNum ];
 		//"noshader" happens on modelclip and unwanted sides ( usually breaking complex brushes )
-		if( !Q_stricmp( shader->shader, "default" ) || ( !Q_stricmp( shader->shader, "noshader" ) && !modelclip ) )
+		if( striEqual( shader->shader, "default" ) || ( striEqual( shader->shader, "noshader" ) && !modelclip ) )
 			continue;
 
 		/* add build side */
@@ -487,7 +484,7 @@ static void ConvertBrush( FILE *f, int num, bspBrush_t *brush, vec3_t origin, qb
 		GetBestSurfaceTriangleMatchForBrushside( buildSide, vert );
 
 		/* get texture name */
-		if ( !Q_strncasecmp( buildSide->shaderInfo->shader, "textures/", 9 ) ) {
+		if ( striEqualPrefix( buildSide->shaderInfo->shader, "textures/" ) ) {
 			texture = buildSide->shaderInfo->shader + 9;
 		}
 		else{
@@ -716,9 +713,9 @@ static void ConvertBrush( FILE *f, int num, bspBrush_t *brush, vec3_t origin, qb
 		else
 		{
 			//vec3_t vecs[ 2 ];
-			if ( strncmp( buildSide->shaderInfo->shader, "textures/common/", 16 ) ) {
-				if ( strcmp( buildSide->shaderInfo->shader, "noshader" ) ) {
-					if ( strcmp( buildSide->shaderInfo->shader, "default" ) ) {
+			if ( !striEqualPrefix( buildSide->shaderInfo->shader, "textures/common/" ) ) {
+				if ( !strEqual( buildSide->shaderInfo->shader, "noshader" ) ) {
+					if ( !strEqual( buildSide->shaderInfo->shader, "default" ) ) {
 						//fprintf( stderr, "no matching triangle for brushside using %s (hopefully nobody can see this side anyway)\n", buildSide->shaderInfo->shader );
 						texture = "common/WTF";
 					}
@@ -775,12 +772,12 @@ for ( i = 0; i < brush->numSides; i++ )
 		continue;
 	}
 	shader = &bspShaders[ side->shaderNum ];
-	if ( !Q_stricmp( shader->shader, "default" ) || !Q_stricmp( shader->shader, "noshader" ) ) {
+	if ( striEqual( shader->shader, "default" ) || striEqual( shader->shader, "noshader" ) ) {
 		continue;
 	}
 
 	/* get texture name */
-	if ( !Q_strncasecmp( shader->shader, "textures/", 9 ) ) {
+	if ( striEqualPrefix( shader->shader, "textures/" ) ) {
 		texture = shader->shader + 9;
 	}
 	else{
@@ -855,7 +852,7 @@ static void ConvertPatch( FILE *f, int num, bspDrawSurface_t *ds, vec3_t origin 
 	shader = &bspShaders[ ds->shaderNum ];
 
 	/* get texture name */
-	if ( !Q_strncasecmp( shader->shader, "textures/", 9 ) ) {
+	if ( striEqualPrefix( shader->shader, "textures/" ) ) {
 		texture = shader->shader + 9;
 	}
 	else{
@@ -907,7 +904,7 @@ static void ConvertPatch( FILE *f, int num, bspDrawSurface_t *ds, vec3_t origin 
    exports a bsp model to a map file
  */
 
-static void ConvertModel( FILE *f, bspModel_t *model, int modelNum, vec3_t origin, qboolean brushPrimitives ){
+static void ConvertModel( FILE *f, bspModel_t *model, int modelNum, vec3_t origin, bool brushPrimitives ){
 	int i, num;
 	bspBrush_t          *brush;
 	bspDrawSurface_t    *ds;
@@ -969,7 +966,7 @@ static void ConvertModel( FILE *f, bspModel_t *model, int modelNum, vec3_t origi
    exports entity key/value pairs to a map file
  */
 
-static void ConvertEPairs( FILE *f, entity_t *e, qboolean skip_origin ){
+static void ConvertEPairs( FILE *f, entity_t *e, bool skip_origin ){
 	epair_t *ep;
 
 
@@ -977,17 +974,17 @@ static void ConvertEPairs( FILE *f, entity_t *e, qboolean skip_origin ){
 	for ( ep = e->epairs; ep != NULL; ep = ep->next )
 	{
 		/* ignore empty keys/values */
-		if ( ep->key[ 0 ] == '\0' || ep->value[ 0 ] == '\0' ) {
+		if ( strEmpty( ep->key ) || strEmpty( ep->value ) ) {
 			continue;
 		}
 
 		/* ignore model keys with * prefixed values */
-		if ( !Q_stricmp( ep->key, "model" ) && ep->value[ 0 ] == '*' ) {
+		if ( striEqual( ep->key, "model" ) && ep->value[ 0 ] == '*' ) {
 			continue;
 		}
 
 		/* ignore origin keys if skip_origin is set */
-		if ( skip_origin && !Q_stricmp( ep->key, "origin" ) ) {
+		if ( skip_origin && striEqual( ep->key, "origin" ) ) {
 			continue;
 		}
 
@@ -1003,14 +1000,13 @@ static void ConvertEPairs( FILE *f, entity_t *e, qboolean skip_origin ){
    exports an quake map file from the bsp
  */
 
-int ConvertBSPToMap_Ext( char *bspName, qboolean brushPrimitives ){
+int ConvertBSPToMap_Ext( char *bspName, bool brushPrimitives ){
 	int i, modelNum;
 	FILE            *f;
 	bspModel_t      *model;
 	entity_t        *e;
-	vec3_t origin;
 	const char      *value;
-	char name[ 1024 ], base[ 1024 ];
+	char name[ 1024 ];
 
 
 	/* note it */
@@ -1018,12 +1014,8 @@ int ConvertBSPToMap_Ext( char *bspName, qboolean brushPrimitives ){
 
 	/* create the bsp filename from the bsp name */
 	strcpy( name, bspName );
-	StripExtension( name );
-	strcat( name, "_converted.map" );
+	path_set_extension( name, "_converted.map" );
 	Sys_Printf( "writing %s\n", name );
-
-	ExtractFileBase( bspName, base );
-	strcat( base, ".bsp" );
 
 	/* open it */
 	f = fopen( name, "wb" );
@@ -1069,13 +1061,8 @@ int ConvertBSPToMap_Ext( char *bspName, qboolean brushPrimitives ){
 			model = &bspModels[ modelNum ];
 
 			/* get entity origin */
-			value = ValueForKey( e, "origin" );
-			if ( value[ 0 ] == '\0' ) {
-				VectorClear( origin );
-			}
-			else{
-				GetVectorForKey( e, "origin", origin );
-			}
+			vec3_t origin;
+			GetVectorForKey( e, "origin", origin );
 
 			/* convert model */
 			ConvertModel( f, model, modelNum, origin, brushPrimitives );
@@ -1093,9 +1080,9 @@ int ConvertBSPToMap_Ext( char *bspName, qboolean brushPrimitives ){
 }
 
 int ConvertBSPToMap( char *bspName ){
-	return ConvertBSPToMap_Ext( bspName, qfalse );
+	return ConvertBSPToMap_Ext( bspName, false );
 }
 
 int ConvertBSPToMap_BP( char *bspName ){
-	return ConvertBSPToMap_Ext( bspName, qtrue );
+	return ConvertBSPToMap_Ext( bspName, true );
 }

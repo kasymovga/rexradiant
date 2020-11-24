@@ -45,23 +45,7 @@
 #include "iselection.h"
 
 #include <gdk/gdkkeysyms.h>
-#include <gtk/gtkmain.h>
-#include <gtk/gtkentry.h>
-#include <gtk/gtkhbox.h>
-#include <gtk/gtkvbox.h>
-#include <gtk/gtkframe.h>
-#include <gtk/gtklabel.h>
-#include <gtk/gtktable.h>
-#include <gtk/gtkbutton.h>
-#include <gtk/gtkcombobox.h>
-#include <gtk/gtkscrolledwindow.h>
-#include <gtk/gtktextview.h>
-#include <gtk/gtktextbuffer.h>
-#include <gtk/gtktreeview.h>
-#include <gtk/gtkcellrenderertext.h>
-#include <gtk/gtktreeselection.h>
-#include <gtk/gtkliststore.h>
-#include <gtk/gtkspinbutton.h>
+#include <gtk/gtk.h>
 
 #include "os/path.h"
 #include "math/aabb.h"
@@ -171,23 +155,18 @@ inline void path_copy_clean( char* destination, const char* source ){
 
 struct GameCombo
 {
-	GtkComboBox* game_select;
+	GtkComboBoxText* game_select;
 	GtkEntry* fsgame_entry;
 };
 
 gboolean OnSelchangeComboWhatgame( GtkWidget *widget, GameCombo* combo ){
-	const char *gamename;
-	{
-		GtkTreeIter iter;
-		gtk_combo_box_get_active_iter( combo->game_select, &iter );
-		gtk_tree_model_get( gtk_combo_box_get_model( combo->game_select ), &iter, 0, (gpointer*)&gamename, -1 );
+	if( gchar* gamename = gtk_combo_box_text_get_active_text( combo->game_select ) ){
+		gamecombo_t gamecombo = gamecombo_for_gamename( gamename );
+
+		gtk_entry_set_text( combo->fsgame_entry, gamecombo.fs_game );
+		gtk_widget_set_sensitive( GTK_WIDGET( combo->fsgame_entry ), gamecombo.sensitive );
+		g_free( gamename );
 	}
-
-	gamecombo_t gamecombo = gamecombo_for_gamename( gamename );
-
-	gtk_entry_set_text( combo->fsgame_entry, gamecombo.fs_game );
-	gtk_widget_set_sensitive( GTK_WIDGET( combo->fsgame_entry ), gamecombo.sensitive );
-
 	return FALSE;
 }
 
@@ -256,20 +235,20 @@ GtkWindow* ProjectSettingsDialog_construct( ProjectSettingsDialog& dialog, Modal
 					gtk_misc_set_alignment( GTK_MISC( label ), 1, 0.5 );
 				}
 				{
-					dialog.game_combo.game_select = GTK_COMBO_BOX( gtk_combo_box_new_text() );
+					GtkComboBoxText* combo = dialog.game_combo.game_select = GTK_COMBO_BOX_TEXT( gtk_combo_box_text_new() );
 
-					gtk_combo_box_append_text( dialog.game_combo.game_select, globalGameComboConfiguration().basegame );
+					gtk_combo_box_text_append_text( combo, globalGameComboConfiguration().basegame );
 					if ( globalGameComboConfiguration().known[0] != '\0' ) {
-						gtk_combo_box_append_text( dialog.game_combo.game_select, globalGameComboConfiguration().known );
+						gtk_combo_box_text_append_text( combo, globalGameComboConfiguration().known );
 					}
-					gtk_combo_box_append_text( dialog.game_combo.game_select, globalGameComboConfiguration().custom );
+					gtk_combo_box_text_append_text( combo, globalGameComboConfiguration().custom );
 
-					gtk_widget_show( GTK_WIDGET( dialog.game_combo.game_select ) );
-					gtk_table_attach( table2, GTK_WIDGET( dialog.game_combo.game_select ), 1, 2, 0, 1,
+					gtk_widget_show( GTK_WIDGET( combo ) );
+					gtk_table_attach( table2, GTK_WIDGET( combo ), 1, 2, 0, 1,
 									  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
 									  (GtkAttachOptions) ( 0 ), 0, 0 );
 
-					g_signal_connect( G_OBJECT( dialog.game_combo.game_select ), "changed", G_CALLBACK( OnSelchangeComboWhatgame ), &dialog.game_combo );
+					g_signal_connect( G_OBJECT( combo ), "changed", G_CALLBACK( OnSelchangeComboWhatgame ), &dialog.game_combo );
 				}
 
 				{
@@ -298,16 +277,16 @@ GtkWindow* ProjectSettingsDialog_construct( ProjectSettingsDialog& dialog, Modal
 									  (GtkAttachOptions) ( 0 ), 0, 0 );
 					gtk_misc_set_alignment( GTK_MISC( label ), 1, 0.5 );
 
-					GtkComboBox* combo = GTK_COMBO_BOX( gtk_combo_box_new_text() );
-					gtk_combo_box_append_text( combo, globalMappingMode().sp_mapping_mode );
-					gtk_combo_box_append_text( combo, globalMappingMode().mp_mapping_mode );
+					GtkComboBoxText* combo = GTK_COMBO_BOX_TEXT( gtk_combo_box_text_new() );
+					gtk_combo_box_text_append_text( combo, globalMappingMode().sp_mapping_mode );
+					gtk_combo_box_text_append_text( combo, globalMappingMode().mp_mapping_mode );
 
 					gtk_widget_show( GTK_WIDGET( combo ) );
 					gtk_table_attach( table2, GTK_WIDGET( combo ), 1, 2, 3, 4,
 									  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
 									  (GtkAttachOptions) ( 0 ), 0, 0 );
 
-					dialog.gamemode_combo = combo;
+					dialog.gamemode_combo = GTK_COMBO_BOX( combo );
 				}
 			}
 		}
@@ -317,7 +296,7 @@ GtkWindow* ProjectSettingsDialog_construct( ProjectSettingsDialog& dialog, Modal
 	const char* dir = gamename_get();
 	gamecombo_t gamecombo = gamecombo_for_dir( dir );
 
-	gtk_combo_box_set_active( dialog.game_combo.game_select, gamecombo.game );
+	gtk_combo_box_set_active( GTK_COMBO_BOX( dialog.game_combo.game_select ), gamecombo.game );
 	gtk_entry_set_text( dialog.game_combo.fsgame_entry, gamecombo.fs_game );
 	gtk_widget_set_sensitive( GTK_WIDGET( dialog.game_combo.fsgame_entry ), gamecombo.sensitive );
 
@@ -448,12 +427,12 @@ void DoSides( int type, int axis ){
 				GtkButton* button = create_dialog_button( "OK", G_CALLBACK( dialog_button_ok ), &dialog );
 				gtk_box_pack_start( GTK_BOX( vbox ), GTK_WIDGET( button ), FALSE, FALSE, 0 );
 				widget_make_default( GTK_WIDGET( button ) );
-				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel, GDK_Return, (GdkModifierType)0, (GtkAccelFlags)0 );
+				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel, GDK_KEY_Return, (GdkModifierType)0, (GtkAccelFlags)0 );
 			}
 			{
 				GtkButton* button = create_dialog_button( "Cancel", G_CALLBACK( dialog_button_cancel ), &dialog );
 				gtk_box_pack_start( GTK_BOX( vbox ), GTK_WIDGET( button ), FALSE, FALSE, 0 );
-				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel, GDK_Escape, (GdkModifierType)0, (GtkAccelFlags)0 );
+				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel, GDK_KEY_Escape, (GdkModifierType)0, (GtkAccelFlags)0 );
 			}
 		}
 	}
@@ -709,12 +688,12 @@ EMessageBoxReturn DoTextureLayout( float *fx, float *fy ){
 				GtkButton* button = create_modal_dialog_button( "OK", ok_button );
 				gtk_box_pack_start( GTK_BOX( vbox ), GTK_WIDGET( button ), FALSE, FALSE, 0 );
 				widget_make_default( GTK_WIDGET( button ) );
-				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel, GDK_Return, (GdkModifierType)0, (GtkAccelFlags)0 );
+				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel, GDK_KEY_Return, (GdkModifierType)0, (GtkAccelFlags)0 );
 			}
 			{
 				GtkButton* button = create_modal_dialog_button( "Cancel", cancel_button );
 				gtk_box_pack_start( GTK_BOX( vbox ), GTK_WIDGET( button ), FALSE, FALSE, 0 );
-				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel, GDK_Escape, (GdkModifierType)0, (GtkAccelFlags)0 );
+				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel, GDK_KEY_Escape, (GdkModifierType)0, (GtkAccelFlags)0 );
 			}
 		}
 	}
@@ -788,14 +767,14 @@ class TextEditor
 		gtk_box_pack_end( GTK_BOX( hbox ), m_button, FALSE, FALSE, 0 );
 		g_signal_connect( G_OBJECT( m_button ), "clicked",
 						G_CALLBACK( editor_close ), this );
-		gtk_widget_set_usize( m_button, 60, -2 );
+		gtk_widget_set_size_request( m_button, 60, -1 );
 
 		m_button = gtk_button_new_with_label( "Save" );
 		gtk_widget_show( m_button );
 		gtk_box_pack_end( GTK_BOX( hbox ), m_button, FALSE, FALSE, 0 );
 		g_signal_connect( G_OBJECT( m_button ), "clicked",
 						G_CALLBACK( editor_save ), this );
-		gtk_widget_set_usize( m_button, 60, -2 );
+		gtk_widget_set_size_request( m_button, 60, -1 );
 	}
 	static void editor_close( GtkWidget *widget, TextEditor* self ){
 		gtk_widget_hide( self->m_window );
@@ -869,7 +848,6 @@ static TextEditor g_textEditor;
 
 // =============================================================================
 // Light Intensity dialog
-#include <gtk/gtkcheckbutton.h>
 
 bool g_dontDoLightIntensityDlg = false;
 
@@ -927,12 +905,12 @@ EMessageBoxReturn DoLightIntensityDlg( int *intensity ){
 				GtkButton* button = create_modal_dialog_button( "OK", ok_button );
 				gtk_box_pack_start( GTK_BOX( vbox ), GTK_WIDGET( button ), FALSE, FALSE, 0 );
 				widget_make_default( GTK_WIDGET( button ) );
-				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel_group, GDK_Return, (GdkModifierType)0, GTK_ACCEL_VISIBLE );
+				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel_group, GDK_KEY_Return, (GdkModifierType)0, GTK_ACCEL_VISIBLE );
 			}
 			{
 				GtkButton* button = create_modal_dialog_button( "Cancel", cancel_button );
 				gtk_box_pack_start( GTK_BOX( vbox ), GTK_WIDGET( button ), FALSE, FALSE, 0 );
-				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel_group, GDK_Escape, (GdkModifierType)0, GTK_ACCEL_VISIBLE );
+				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel_group, GDK_KEY_Escape, (GdkModifierType)0, GTK_ACCEL_VISIBLE );
 			}
 		}
 	}
@@ -995,12 +973,12 @@ EMessageBoxReturn DoShaderTagDlg( CopiedString* tag, const char* title ){
 				GtkButton* button = create_modal_dialog_button( "OK", ok_button );
 				gtk_box_pack_start( GTK_BOX( vbox ), GTK_WIDGET( button ), FALSE, FALSE, 0 );
 				widget_make_default( GTK_WIDGET( button ) );
-				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel_group, GDK_Return, (GdkModifierType)0, GTK_ACCEL_VISIBLE );
+				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel_group, GDK_KEY_Return, (GdkModifierType)0, GTK_ACCEL_VISIBLE );
 			}
 			{
 				GtkButton* button = create_modal_dialog_button( "Cancel", cancel_button );
 				gtk_box_pack_start( GTK_BOX( vbox ), GTK_WIDGET( button ), FALSE, FALSE, 0 );
-				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel_group, GDK_Escape, (GdkModifierType)0, GTK_ACCEL_VISIBLE );
+				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel_group, GDK_KEY_Escape, (GdkModifierType)0, GTK_ACCEL_VISIBLE );
 			}
 		}
 	}
@@ -1054,7 +1032,7 @@ EMessageBoxReturn DoShaderInfoDlg( const char* name, const char* filename, const
 				GtkButton* button = create_modal_dialog_button( "OK", ok_button );
 				gtk_box_pack_start( GTK_BOX( vbox ), GTK_WIDGET( button ), FALSE, FALSE, 0 );
 				widget_make_default( GTK_WIDGET( button ) );
-				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel_group, GDK_Return, (GdkModifierType)0, GTK_ACCEL_VISIBLE );
+				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel_group, GDK_KEY_Return, (GdkModifierType)0, GTK_ACCEL_VISIBLE );
 			}
 		}
 	}
@@ -1091,7 +1069,7 @@ void DoShaderView( const char *shaderFileName, const char *shaderName, bool exte
 	else if( external_editor && pathIsDir ){
 		if( g_TextEditor_editorCommand.empty() ){
 #ifdef WIN32
-			ShellExecute( (HWND)GDK_WINDOW_HWND( GTK_WIDGET( MainFrame_getWindow() )->window ), 0, pathFull.c_str(), 0, 0, SW_SHOWNORMAL );
+			ShellExecute( (HWND)GDK_WINDOW_HWND( gtk_widget_get_window( GTK_WIDGET( MainFrame_getWindow() ) ) ), 0, pathFull.c_str(), 0, 0, SW_SHOWNORMAL );
 #else
 			globalWarningStream() << "Failed to open '" << pathFull.c_str() << "'\nSet Shader Editor Command in preferences\n";
 #endif

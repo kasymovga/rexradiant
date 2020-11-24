@@ -174,10 +174,10 @@ static void ConvertShaderToMTL( FILE *f, bspShader_t *shader, int shaderNum ){
 	}
 
 	/* blender hates this, so let's not do it
-	   for( c = filename; *c != '\0'; c++ )
-	    if( *c == '/' )
-	   *c = '\\';
-	 */
+	for( c = filename; *c; c++ )
+		if( *c == '/' )
+			*c = '\\';
+	*/
 
 	/* print shader info */
 	fprintf( f, "newmtl %s\r\n", shader->shader );
@@ -237,40 +237,40 @@ void Convert_ReferenceLightmaps( const char* base, int* lmIndices ){
 	while ( 1 )
 	{
 		/* test for end of file */
-		if ( !GetToken( qtrue ) )
+		if ( !GetToken( true ) )
 			break;
 
 		char shadername[256];
 		strcpy( shadername, token );
 
 		/* handle { } section */
-		if ( !GetToken( qtrue ) )
+		if ( !GetToken( true ) )
 			break;
-		if ( strcmp( token, "{" ) )
+		if ( !strEqual( token, "{" ) )
 				Error( "ParseShaderFile: %s, line %d: { not found!\nFound instead: %s\nFile location be: %s",
 					shaderfile, scriptline, token, g_strLoadedFileLocation );
 		while ( 1 )
 		{
 			/* get the next token */
-			if ( !GetToken( qtrue ) )
+			if ( !GetToken( true ) )
 				break;
-			if ( !strcmp( token, "}" ) )
+			if ( strEqual( token, "}" ) )
 				break;
 			/* parse stage directives */
-			if ( !strcmp( token, "{" ) ) {
+			if ( strEqual( token, "{" ) ) {
 				while ( 1 )
 				{
-					if ( !GetToken( qtrue ) )
+					if ( !GetToken( true ) )
 						break;
-					if ( !strcmp( token, "}" ) )
+					if ( strEqual( token, "}" ) )
 						break;
-					if ( !strcmp( token, "{" ) )
+					if ( strEqual( token, "{" ) )
 						Sys_FPrintf( SYS_WRN, "WARNING9: %s : line %d : opening brace inside shader stage\n", shaderfile, scriptline );
 
 					/* digest any images */
-					if ( !Q_stricmp( token, "map" ) ) {
+					if ( striEqual( token, "map" ) ) {
 						/* get an image */
-						GetToken( qfalse );
+						GetToken( false );
 						if ( *token != '*' && *token != '$' ) {
 							// map maps/bake_test_1/lm_0004.tga
 							int lmindex;
@@ -278,7 +278,7 @@ void Convert_ReferenceLightmaps( const char* base, int* lmIndices ){
 							if( sscanf( token + strlen( token ) - ( strlen( EXTERNAL_LIGHTMAP ) + 1 ), "/" EXTERNAL_LIGHTMAP "%n", &lmindex, &okcount )
 													&& okcount == ( strlen( EXTERNAL_LIGHTMAP ) + 1 ) ){
 								for ( int i = 0; i < numBSPShaders; ++i ){ // find bspShaders[i]<->lmindex pair
-									if( !strcmp( bspShaders[i].shader, shadername ) ){
+									if( strEqual( bspShaders[i].shader, shadername ) ){
 										lmIndices[i] = lmindex;
 										break;
 									}
@@ -306,7 +306,6 @@ int ConvertBSPToOBJ( char *bspName ){
 	bspShader_t     *shader;
 	bspModel_t      *model;
 	entity_t        *e;
-	vec3_t origin;
 	const char      *key;
 	char name[ 1024 ], base[ 1024 ], mtlname[ 1024 ], dirname[ 1024 ];
 	int lmIndices[ numBSPShaders ];
@@ -319,12 +318,10 @@ int ConvertBSPToOBJ( char *bspName ){
 	strcpy( dirname, bspName );
 	StripExtension( dirname );
 	strcpy( name, bspName );
-	StripExtension( name );
-	strcat( name, ".obj" );
+	path_set_extension( name, ".obj" );
 	Sys_Printf( "writing %s\n", name );
 	strcpy( mtlname, bspName );
-	StripExtension( mtlname );
-	strcat( mtlname, ".mtl" );
+	path_set_extension( mtlname, ".mtl" );
 	Sys_Printf( "writing %s\n", mtlname );
 
 	ExtractFileBase( bspName, base );
@@ -377,13 +374,8 @@ int ConvertBSPToOBJ( char *bspName ){
 		model = &bspModels[ modelNum ];
 
 		/* get entity origin */
-		key = ValueForKey( e, "origin" );
-		if ( key[ 0 ] == '\0' ) {
-			VectorClear( origin );
-		}
-		else{
-			GetVectorForKey( e, "origin", origin );
-		}
+		vec3_t origin;
+		GetVectorForKey( e, "origin", origin );
 
 		/* convert model */
 		ConvertModelToOBJ( f, model, modelNum, origin, lmIndices );

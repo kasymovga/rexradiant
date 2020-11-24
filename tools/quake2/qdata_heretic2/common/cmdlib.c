@@ -36,10 +36,6 @@
 #include <unistd.h>
 #endif
 
-#ifdef NeXT
-#include <libc.h>
-#endif
-
 #define BASEDIRNAME "h"
 #define PATHSEPERATOR   '/'
 
@@ -83,15 +79,6 @@ void *SafeMalloc( size_t n, char *desc ){
 	memset( p, 0, n );
 	return p;
 }
-
-#if defined ( __linux__ ) || defined ( __APPLE__ )
-void strlwr( char *conv_str ){
-	int i;
-
-	for ( i = 0; i < strlen( conv_str ); i++ )
-		conv_str[i] = tolower( conv_str[i] );
-}
-#endif
 
 
 // set these before calling CheckParm
@@ -191,8 +178,6 @@ void SetQdirFromPath( const char *path ){
 	len = strlen( BASEDIRNAME );
 	for ( c = path + strlen( path ) - 1 ; c != path ; c-- )
 	{
-		int i;
-
 		if ( !Q_strncasecmp( c, BASEDIRNAME, len ) ) {
 			//
 			//strncpy (qdir, path, c+len+2-path);
@@ -208,7 +193,7 @@ void SetQdirFromPath( const char *path ){
 			}
 			strncpy( qdir, path, c + len + count - path );
 			Sys_Printf( "qdir: %s\n", qdir );
-			for ( i = 0; i < strlen( qdir ); i++ )
+			for ( size_t i = 0; i < strlen( qdir ); i++ )
 			{
 				if ( qdir[i] == '\\' ) {
 					qdir[i] = '/';
@@ -221,7 +206,7 @@ void SetQdirFromPath( const char *path ){
 				if ( *c == '/' || *c == '\\' ) {
 					strncpy( gamedir, path, c + 1 - path );
 
-					for ( i = 0; i < strlen( gamedir ); i++ )
+					for ( size_t i = 0; i < strlen( gamedir ); i++ )
 					{
 						if ( gamedir[i] == '\\' ) {
 							gamedir[i] = '/';
@@ -264,7 +249,7 @@ char *ExpandArg( const char *path ){
 
 char *ExpandPath( const char *path ){
 	static char full[1024];
-	if ( !qdir ) {
+	if ( !qdir[0] ) {
 		Error( "ExpandPath called without qdir set" );
 	}
 	if ( path[0] == '/' || path[0] == '\\' || path[1] == ':' ) {
@@ -277,7 +262,7 @@ char *ExpandPath( const char *path ){
 
 char *ExpandGamePath( const char *path ){
 	static char full[1024];
-	if ( !qdir ) {
+	if ( !qdir[0] ) {
 		Error( "ExpandGamePath called without qdir set" );
 	}
 	if ( path[0] == '/' || path[0] == '\\' || path[1] == ':' ) {
@@ -504,34 +489,6 @@ int Q_stricmp( const char *s1, const char *s2 ){
 
 int Q_strcasecmp( const char *s1, const char *s2 ){
 	return Q_strncasecmp( s1, s2, 99999 );
-}
-
-// NOTE TTimo when switching to Multithread DLL (Release/Debug) in the config
-//   started getting warnings about that function, prolly a duplicate with the runtime function
-//   maybe we still need to have it in linux builds
-/*
-   char *strupr (char *start)
-   {
-    char	*in;
-    in = start;
-    while (*in)
-    {
-   *in = toupper(*in);
-        in++;
-    }
-    return start;
-   }
- */
-
-char *strlower( char *start ){
-	char    *in;
-	in = start;
-	while ( *in )
-	{
-		*in = tolower( *in );
-		in++;
-	}
-	return start;
 }
 
 

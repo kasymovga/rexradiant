@@ -56,7 +56,7 @@ GtkWidget* lookup_widget( GtkWidget* widget, const gchar* widget_name ) {
 		if( GTK_IS_MENU( widget ) )
 			parent = gtk_menu_get_attach_widget( GTK_MENU( widget ) );
 		else
-			parent = widget->parent;
+			parent = gtk_widget_get_parent( widget );
 		if( !parent )
 			parent = (GtkWidget*)g_object_get_data( G_OBJECT( widget ), "GladeParentKey" );
 		if( parent == NULL )
@@ -107,7 +107,7 @@ void on_main_ok_button_clicked( GtkButton* button, gpointer user_data ) {
 
 #define GLADE_HOOKUP_OBJECT( component, widget, name ) \
   g_object_set_data_full( G_OBJECT( component ), name, \
-    gtk_widget_ref( widget ), (GDestroyNotify)gtk_widget_unref )
+   g_object_ref( (gpointer)widget ), (GDestroyNotify)g_object_unref )
 
 #define GLADE_HOOKUP_OBJECT_NO_REF( component, widget, name ) \
   g_object_set_data( G_OBJECT( component ), name, widget )
@@ -128,7 +128,6 @@ GtkWidget* create_rc_window() {
 	GtkWidget* hbox8;
 	GtkWidget* vbox9;
 	GtkWidget* main_use_default_font_radio;
-	GSList* main_use_default_font_radio_group = NULL;
 	GtkWidget* main_use_custom_font_radio;
 	GtkWidget* alignment5;
 	GtkWidget* vbox10;
@@ -149,9 +148,6 @@ GtkWidget* create_rc_window() {
 	GtkWidget* image1;
 	GtkWidget* label667;
 	GtkAccelGroup* accel_group;
-	GtkTooltips* tooltips;
-
-	tooltips = gtk_tooltips_new();
 
 	accel_group = gtk_accel_group_new();
 
@@ -159,6 +155,7 @@ GtkWidget* create_rc_window() {
 	gtk_widget_set_name( main_window, "main_window" );
 	gtk_window_set_title( GTK_WINDOW( main_window ), "Gtk2 Theme Selector" );
 	gtk_window_set_transient_for( GTK_WINDOW( main_window ), MainFrame_getWindow() );
+	gtk_window_set_position( GTK_WINDOW( main_window ), GTK_WIN_POS_CENTER_ON_PARENT );
 	gtk_window_set_destroy_with_parent( GTK_WINDOW( main_window ), TRUE );
 
 	//gtk_window_set_keep_above ( GTK_WINDOW( main_window ), TRUE );
@@ -204,7 +201,7 @@ GtkWidget* create_rc_window() {
 	gtk_widget_set_name( main_themelist, "main_themelist" );
 	gtk_widget_show( main_themelist );
 	gtk_container_add( GTK_CONTAINER( scrolledwindow3 ), main_themelist );
-	GTK_WIDGET_SET_FLAGS( main_themelist, GTK_CAN_DEFAULT );
+	gtk_widget_set_can_default( main_themelist, TRUE );
 	gtk_tree_view_set_headers_visible( GTK_TREE_VIEW( main_themelist ), FALSE );
 
 	label1234 = gtk_label_new( "<b>Theme</b>" );
@@ -240,19 +237,15 @@ GtkWidget* create_rc_window() {
 	gtk_widget_show( vbox9 );
 	gtk_box_pack_start( GTK_BOX( hbox8 ), vbox9, TRUE, TRUE, 0 );
 
-	main_use_default_font_radio = gtk_radio_button_new_with_mnemonic( NULL, "Use theme default font" );
+	main_use_default_font_radio = gtk_radio_button_new_with_label_from_widget( NULL, "Use theme default font" );
 	gtk_widget_set_name( main_use_default_font_radio, "main_use_default_font_radio" );
 	gtk_widget_show( main_use_default_font_radio );
 	gtk_box_pack_start( GTK_BOX( vbox9 ), main_use_default_font_radio, FALSE, FALSE, 0 );
-	gtk_radio_button_set_group( GTK_RADIO_BUTTON( main_use_default_font_radio ), main_use_default_font_radio_group );
-	main_use_default_font_radio_group = gtk_radio_button_get_group( GTK_RADIO_BUTTON( main_use_default_font_radio ) );
 
-	main_use_custom_font_radio = gtk_radio_button_new_with_mnemonic( NULL, "Use custom font:" );
+	main_use_custom_font_radio = gtk_radio_button_new_with_label_from_widget( GTK_RADIO_BUTTON( main_use_default_font_radio ), "Use custom font:" );
 	gtk_widget_set_name( main_use_custom_font_radio, "main_use_custom_font_radio" );
 	gtk_widget_show( main_use_custom_font_radio );
 	gtk_box_pack_start( GTK_BOX( vbox9 ), main_use_custom_font_radio, FALSE, FALSE, 0 );
-	gtk_radio_button_set_group( GTK_RADIO_BUTTON( main_use_custom_font_radio ), main_use_default_font_radio_group );
-	main_use_default_font_radio_group = gtk_radio_button_get_group( GTK_RADIO_BUTTON( main_use_custom_font_radio ) );
 	gtk_toggle_button_set_active( GTK_TOGGLE_BUTTON( main_use_custom_font_radio ), TRUE );
 	//gtk_toggle_button_set_active( GTK_TOGGLE_BUTTON( main_use_custom_font_radio ), FALSE );
 
@@ -318,13 +311,13 @@ GtkWidget* create_rc_window() {
 	gtk_widget_set_name( main_ok_button, "main_ok_button" );
 	gtk_widget_show( main_ok_button );
 	gtk_box_pack_end( GTK_BOX( hbox5 ), main_ok_button, TRUE, TRUE, 4 );
-	GTK_WIDGET_SET_FLAGS( main_ok_button, GTK_CAN_DEFAULT );
+	gtk_widget_set_can_default( main_ok_button, TRUE );
 
 	main_cancel_button = gtk_button_new_from_stock( "gtk-cancel" );
 	gtk_widget_set_name( main_cancel_button, "main_cancel_button" );
 	gtk_widget_show( main_cancel_button );
 	gtk_box_pack_end( GTK_BOX( hbox5 ), main_cancel_button, TRUE, TRUE, 4 );
-	GTK_WIDGET_SET_FLAGS( main_cancel_button, GTK_CAN_DEFAULT );
+	gtk_widget_set_can_default( main_cancel_button, TRUE );
 
 	main_reset_button = gtk_button_new();
 	gtk_widget_set_name( main_reset_button, "main_reset_button" );
@@ -406,8 +399,6 @@ GtkWidget* create_rc_window() {
 	GLADE_HOOKUP_OBJECT( main_window, hbox6, "hbox6" );
 	GLADE_HOOKUP_OBJECT( main_window, image1, "image1" );
 	GLADE_HOOKUP_OBJECT( main_window, label667, "label667" );
-
-	GLADE_HOOKUP_OBJECT_NO_REF( main_window, tooltips, "tooltips" );
 
 	gtk_widget_grab_default( main_themelist );
 	gtk_window_add_accel_group( GTK_WINDOW( main_window ), accel_group );

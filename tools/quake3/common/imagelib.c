@@ -686,7 +686,7 @@ void LoadBMP( const char *filename, byte **pic, byte **palette, int *width, int 
 	int bcPlanes;
 	int bcBitCount;
 	byte bcPalette[1024];
-	qboolean flipped;
+	bool flipped;
 	byte *in;
 	int len, pos = 0;
 
@@ -763,10 +763,10 @@ void LoadBMP( const char *filename, byte **pic, byte **palette, int *width, int 
 
 	if ( bcHeight < 0 ) {
 		bcHeight = -bcHeight;
-		flipped = qtrue;
+		flipped = true;
 	}
 	else {
-		flipped = qfalse;
+		flipped = false;
 	}
 
 	if ( width ) {
@@ -817,10 +817,9 @@ void LoadBMP( const char *filename, byte **pic, byte **palette, int *width, int 
    ==============
  */
 void Load256Image( const char *name, byte **pixels, byte **palette, int *width, int *height ){
-	char ext[128];
+	const char *ext = path_get_extension( name );
 
-	ExtractFileExtension( name, ext );
-	if ( !Q_stricmp( ext, "lbm" ) ) {
+	if ( striEqual( ext, "lbm" ) ) {
 		LoadLBM( name, pixels, palette );
 		if ( width ) {
 			*width = bmhd.w;
@@ -829,10 +828,10 @@ void Load256Image( const char *name, byte **pixels, byte **palette, int *width, 
 			*height = bmhd.h;
 		}
 	}
-	else if ( !Q_stricmp( ext, "pcx" ) ) {
+	else if ( striEqual( ext, "pcx" ) ) {
 		LoadPCX( name, pixels, palette, width, height );
 	}
-	else if ( !Q_stricmp( ext, "bmp" ) ) {
+	else if ( striEqual( ext, "bmp" ) ) {
 		LoadBMP( name, pixels, palette, width, height );
 	}
 	else{
@@ -850,13 +849,12 @@ void Load256Image( const char *name, byte **pixels, byte **palette, int *width, 
  */
 void Save256Image( const char *name, byte *pixels, byte *palette,
 				   int width, int height ){
-	char ext[128];
+	const char *ext = path_get_extension( name );
 
-	ExtractFileExtension( name, ext );
-	if ( !Q_stricmp( ext, "lbm" ) ) {
+	if ( striEqual( ext, "lbm" ) ) {
 		WriteLBMfile( name, pixels, width, height, palette );
 	}
-	else if ( !Q_stricmp( ext, "pcx" ) ) {
+	else if ( striEqual( ext, "pcx" ) ) {
 		WritePCXfile( name, pixels, width, height, palette );
 	}
 	else{
@@ -1195,7 +1193,6 @@ void WriteTGAGray( const char *filename, byte *data, int width, int height ) {
    ==============
  */
 void Load32BitImage( const char *name, unsigned **pixels,  int *width, int *height ){
-	char ext[128];
 	byte    *palette;
 	byte    *pixels8;
 	byte    *pixels32;
@@ -1203,8 +1200,7 @@ void Load32BitImage( const char *name, unsigned **pixels,  int *width, int *heig
 	int i;
 	int v;
 
-	ExtractFileExtension( name, ext );
-	if ( !Q_stricmp( ext, "tga" ) ) {
+	if ( striEqual( path_get_extension( name ), "tga" ) ) {
 		LoadTGA( name, (byte **)pixels, width, height );
 	}
 	else {

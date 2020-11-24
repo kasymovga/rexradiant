@@ -202,7 +202,7 @@ void Cmd_File( void ){
 
    ===============
  */
-#ifdef _WIN32
+#ifdef WIN32
 #include "io.h"
 void PackDirectory_r( char *dir ){
 	struct _finddata_t fileinfo;
@@ -235,22 +235,13 @@ void PackDirectory_r( char *dir ){
 #else
 
 #include <sys/types.h>
-#ifdef NeXT
-#include <sys/dir.h>
-#else
 #include <dirent.h>
-#endif
 
 void PackDirectory_r( char *dir ){
-#ifdef NeXT
-	struct direct **namelist, *ent;
-#else
 	struct dirent **namelist, *ent;
-#endif
 	int count;
 	struct stat st;
 	int i;
-	int len;
 	char fullname[1024];
 	char dirstring[1024];
 	char        *name;
@@ -273,7 +264,7 @@ void PackDirectory_r( char *dir ){
 		if ( stat( dirstring, &st ) == -1 ) {
 			Error( "fstating %s", pf->name );
 		}
-		if ( st.st_mode & S_IFDIR ) { // directory
+		if ( S_ISDIR( st.st_mode ) != 0 ) { // directory
 			PackDirectory_r( fullname );
 			continue;
 		}

@@ -34,9 +34,7 @@
 
 #include "gtkmisc.h"
 
-#include <gtk/gtkcolorseldialog.h>
-#include <gtk/gtkentry.h>
-#include <gtk/gtkfontsel.h>
+#include <gtk/gtk.h>
 
 #include "math/vector.h"
 #include "os/path.h"
@@ -47,6 +45,13 @@
 #include "gtkutil/toolbar.h"
 #include "commands.h"
 
+
+void process_gui(){
+	while ( gtk_events_pending() )
+	{
+		gtk_main_iteration();
+	}
+}
 
 // =============================================================================
 // Misc stuff
@@ -87,11 +92,11 @@ GtkMenuItem* create_menu_item_with_mnemonic( GtkMenu* menu, const char *mnemonic
 	return create_menu_item_with_mnemonic( menu, mnemonic, command );
 }
 
-GtkButton* toolbar_append_button( GtkToolbar* toolbar, const char* description, const char* icon, const char* commandName ){
+GtkToolButton* toolbar_append_button( GtkToolbar* toolbar, const char* description, const char* icon, const char* commandName ){
 	return toolbar_append_button( toolbar, description, icon, GlobalCommands_find( commandName ) );
 }
 
-GtkToggleButton* toolbar_append_toggle_button( GtkToolbar* toolbar, const char* description, const char* icon, const char* commandName ){
+GtkToggleToolButton* toolbar_append_toggle_button( GtkToolbar* toolbar, const char* description, const char* icon, const char* commandName ){
 	return toolbar_append_toggle_button( toolbar, description, icon, GlobalToggles_find( commandName ) );
 }
 
@@ -100,18 +105,18 @@ GtkToggleButton* toolbar_append_toggle_button( GtkToolbar* toolbar, const char* 
 
 bool color_dialog( GtkWidget *parent, Vector3& color, const char* title ){
 	GtkWidget* dlg;
-	double clr[3];
+	GdkColor clr = { 0, guint16( color[0] * 65535 ),
+						guint16( color[1] * 65535 ),
+						guint16( color[2] * 65535 ) };
 	ModalDialog dialog;
 
-	clr[0] = color[0];
-	clr[1] = color[1];
-	clr[2] = color[2];
-
 	dlg = gtk_color_selection_dialog_new( title );
-	gtk_color_selection_set_color( GTK_COLOR_SELECTION( GTK_COLOR_SELECTION_DIALOG( dlg )->colorsel ), clr );
+	gtk_color_selection_set_current_color( GTK_COLOR_SELECTION( gtk_color_selection_dialog_get_color_selection( GTK_COLOR_SELECTION_DIALOG( dlg ) ) ), &clr );
 	g_signal_connect( G_OBJECT( dlg ), "delete_event", G_CALLBACK( dialog_delete_callback ), &dialog );
-	g_signal_connect( G_OBJECT( GTK_COLOR_SELECTION_DIALOG( dlg )->ok_button ), "clicked", G_CALLBACK( dialog_button_ok ), &dialog );
-	g_signal_connect( G_OBJECT( GTK_COLOR_SELECTION_DIALOG( dlg )->cancel_button ), "clicked", G_CALLBACK( dialog_button_cancel ), &dialog );
+	GtkWidget *ok_button, *cancel_button;
+	g_object_get( G_OBJECT( dlg ), "ok-button", &ok_button, "cancel-button", &cancel_button, nullptr );
+	g_signal_connect( G_OBJECT( ok_button ), "clicked", G_CALLBACK( dialog_button_ok ), &dialog );
+	g_signal_connect( G_OBJECT( cancel_button ), "clicked", G_CALLBACK( dialog_button_cancel ), &dialog );
 
 	if ( parent != 0 ) {
 		gtk_window_set_transient_for( GTK_WINDOW( dlg ), GTK_WINDOW( parent ) );
@@ -119,15 +124,10 @@ bool color_dialog( GtkWidget *parent, Vector3& color, const char* title ){
 
 	bool ok = modal_dialog_show( GTK_WINDOW( dlg ), dialog ) == eIDOK;
 	if ( ok ) {
-		GdkColor gdkcolor;
-		gtk_color_selection_get_current_color( GTK_COLOR_SELECTION( GTK_COLOR_SELECTION_DIALOG( dlg )->colorsel ), &gdkcolor );
-		clr[0] = gdkcolor.red / 65535.0;
-		clr[1] = gdkcolor.green / 65535.0;
-		clr[2] = gdkcolor.blue / 65535.0;
-
-		color[0] = (float)clr[0];
-		color[1] = (float)clr[1];
-		color[2] = (float)clr[2];
+		gtk_color_selection_get_current_color( GTK_COLOR_SELECTION( gtk_color_selection_dialog_get_color_selection( GTK_COLOR_SELECTION_DIALOG( dlg ) ) ), &clr );
+		color[0] = clr.red / 65535.0;
+		color[1] = clr.green / 65535.0;
+		color[2] = clr.blue / 65535.0;
 	}
 
 	gtk_widget_destroy( dlg );
@@ -164,7 +164,7 @@ bool OpenGLFont_dialog( GtkWidget *parent, const char* font, CopiedString &newfo
 }
 
 void button_clicked_entry_browse_file( GtkWidget* widget, GtkEntry* entry ){
-	const char *filename = file_dialog( gtk_widget_get_toplevel( widget ), TRUE, "Choose File", gtk_entry_get_text( entry ) );
+	const char *filename = file_dialog( gtk_widget_get_toplevel( widget ), true, "Choose File", gtk_entry_get_text( entry ) );
 
 	if ( filename != 0 ) {
 		gtk_entry_set_text( entry, filename );

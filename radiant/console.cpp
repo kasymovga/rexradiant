@@ -22,10 +22,7 @@
 #include "console.h"
 
 #include <time.h>
-#include <gtk/gtktextbuffer.h>
-#include <gtk/gtktextview.h>
-#include <gtk/gtkmenuitem.h>
-#include <gtk/gtkscrolledwindow.h>
+#include <gtk/gtk.h>
 
 #include "gtkutil/accelerator.h"
 #include "gtkutil/messagebox.h"
@@ -46,7 +43,7 @@ namespace
 FILE* g_hLogFile;
 }
 
-bool g_Console_enableLogging = false;
+bool g_Console_enableLogging = true;
 
 // called whenever we need to open/close/check the console log file
 void Sys_LogFile( bool enable ){
@@ -106,7 +103,6 @@ gboolean destroy_set_null( GtkWindow* widget, GtkWidget** p ){
 
 WidgetFocusPrinter g_consoleWidgetFocusPrinter( "console" );
 
-#include <gtk/gtkvbox.h>
 
 GtkWidget* Console_constructWindow( GtkWindow* toplevel ){
 	GtkWidget* scr = gtk_scrolled_window_new( 0, 0 );
@@ -155,7 +151,7 @@ GtkTextBufferOutputStream( GtkTextBuffer* textBuffer, GtkTextIter* iter, GtkText
 }
 std::size_t
 #ifdef __GNUC__
-__attribute__((optimize("O0")))
+//__attribute__((optimize("O0")))
 #endif
 write( const char* buffer, std::size_t length ){
 	gtk_text_buffer_insert_with_tags( textBuffer, iter, buffer, gint( length ), tag, NULL );
@@ -192,9 +188,9 @@ std::size_t Sys_Print( int level, const char* buf, std::size_t length ){
 			const GdkColor orange = { 0, 0xffff, 0x8888, 0x0000 };
 			const GdkColor red = { 0, 0xffff, 0x0000, 0x0000 };
 
-			static GtkTextTag* error_tag = gtk_text_buffer_create_tag( buffer, "red_foreground", "foreground-gdk", &red, 0 );
-			static GtkTextTag* warning_tag = gtk_text_buffer_create_tag( buffer, "yellow_foreground", "foreground-gdk", &orange, 0 );
-			static GtkTextTag* standard_tag = gtk_text_buffer_create_tag( buffer, "black_foreground", 0 );
+			static GtkTextTag* error_tag = gtk_text_buffer_create_tag( buffer, "red_foreground", "foreground-gdk", &red, nullptr );
+			static GtkTextTag* warning_tag = gtk_text_buffer_create_tag( buffer, "yellow_foreground", "foreground-gdk", &orange, nullptr );
+			static GtkTextTag* standard_tag = gtk_text_buffer_create_tag( buffer, "black_foreground", nullptr );
 			GtkTextTag* tag;
 			switch ( level )
 			{
@@ -228,7 +224,7 @@ std::size_t Sys_Print( int level, const char* buf, std::size_t length ){
 			if ( contains_newline ) {
 				gtk_text_view_scroll_mark_onscreen( GTK_TEXT_VIEW( g_console ), end );
 
-				if ( !ScreenUpdates_Enabled() && GTK_WIDGET_REALIZED( g_console ) ) {
+				if ( !ScreenUpdates_Enabled() && gtk_widget_get_realized( g_console ) ) {
 					ScreenUpdates_process();
 				}
 			}

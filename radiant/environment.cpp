@@ -126,6 +126,12 @@ void gamedetect(){
 		{
 			// TODO add more games to this
 
+			if ( gamedetect_check_game( "q3.game", "baseq3/pak0.pk3", NULL, buf, p - buf ) ) {
+				return;
+			}
+			if ( gamedetect_check_game( "q1.game", "id1/pak0.pak", NULL, buf, p - buf ) ) {
+				return;
+			}
 			// try to detect Nexuiz installs
 #if defined( WIN32 )
 			if ( gamedetect_check_game( "nexuiz.game", "data/common-spog.pk3", "nexuiz.exe", buf, p - buf ) )
@@ -196,7 +202,7 @@ CopiedString g_openMapByCmd;
 
 void cmdMap(){
 	for ( int i = 1; i < g_argc; ++i )
-		if( string_equal_suffix_nocase( g_argv[i], ".map" ) ){
+		if( extension_equal( path_get_extension( g_argv[i] ), "map" ) ){
 			StringOutputStream stream( 256 );
 			stream << PathCleaned( g_argv[i] );
 			g_openMapByCmd = stream.c_str();

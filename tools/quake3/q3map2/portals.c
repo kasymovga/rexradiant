@@ -39,7 +39,7 @@
 
 
 /* ydnar: to fix broken portal windings */
-extern qboolean FixWinding( winding_t *w );
+extern bool FixWinding( winding_t *w );
 
 
 /*
@@ -65,10 +65,10 @@ void FreePortal( portal_t *p ){
    returns true if the portal has non-opaque leafs on both sides
  */
 
-qboolean PortalPassable( portal_t *p ){
+bool PortalPassable( portal_t *p ){
 	/* is this to global outside leaf? */
 	if ( !p->onnode ) {
-		return qfalse;
+		return false;
 	}
 
 	/* this should never happen */
@@ -79,16 +79,16 @@ qboolean PortalPassable( portal_t *p ){
 
 	/* ydnar: added antiportal to suppress portal generation for visibility blocking */
 	if ( p->compileFlags & C_ANTIPORTAL ) {
-		return qfalse;
+		return false;
 	}
 
 	/* both leaves on either side of the portal must be passable */
-	if ( p->nodes[ 0 ]->opaque == qfalse && p->nodes[ 1 ]->opaque == qfalse ) {
-		return qtrue;
+	if ( p->nodes[ 0 ]->opaque == false && p->nodes[ 1 ]->opaque == false ) {
+		return true;
 	}
 
 	/* otherwise this isn't a passable portal */
-	return qfalse;
+	return false;
 }
 
 
@@ -201,7 +201,7 @@ void MakeHeadnodePortals( tree_t *tree ){
 	tree->outside_node.planenum = PLANENUM_LEAF;
 	tree->outside_node.brushlist = NULL;
 	tree->outside_node.portals = NULL;
-	tree->outside_node.opaque = qfalse;
+	tree->outside_node.opaque = false;
 
 	for ( i = 0 ; i < 3 ; i++ )
 		for ( j = 0 ; j < 2 ; j++ )
@@ -328,7 +328,7 @@ void MakeNodePortal( node_t *node ){
 
 	/* ydnar: adding this here to fix degenerate windings */
 	#if 0
-	if ( FixWinding( w ) == qfalse ) {
+	if ( !FixWinding( w ) ) {
 		c_badportals++;
 		FreeWinding( w );
 		return;
@@ -512,7 +512,7 @@ void MakeTreePortals_r( node_t *node ){
 	{
 		if ( node->mins[i] < MIN_WORLD_COORD || node->maxs[i] > MAX_WORLD_COORD ) {
 			if ( node->portals && node->portals->winding ) {
-				xml_Winding( "WARNING: Node With Unbounded Volume", node->portals->winding->p, node->portals->winding->numpoints, qfalse );
+				xml_Winding( "WARNING: Node With Unbounded Volume", node->portals->winding->p, node->portals->winding->numpoints, false );
 			}
 
 			break;
@@ -558,7 +558,7 @@ int c_floodedleafs;
    =============
  */
 
-void FloodPortals_r( node_t *node, int dist, qboolean skybox ){
+void FloodPortals_r( node_t *node, int dist, bool skybox ){
 	int s;
 	portal_t    *p;
 
@@ -604,7 +604,7 @@ void FloodPortals_r( node_t *node, int dist, qboolean skybox ){
    =============
  */
 
-qboolean PlaceOccupant( node_t *headnode, vec3_t origin, entity_t *occupant, qboolean skybox ){
+bool PlaceOccupant( node_t *headnode, vec3_t origin, entity_t *occupant, bool skybox ){
 	vec_t d;
 	node_t  *node;
 	plane_t *plane;
@@ -625,14 +625,14 @@ qboolean PlaceOccupant( node_t *headnode, vec3_t origin, entity_t *occupant, qbo
 	}
 
 	if ( node->opaque ) {
-		return qfalse;
+		return false;
 	}
 	node->occupant = occupant;
 	node->skybox = skybox;
 
 	FloodPortals_r( node, 1, skybox );
 
-	return qtrue;
+	return true;
 }
 
 /*
@@ -644,9 +644,7 @@ qboolean PlaceOccupant( node_t *headnode, vec3_t origin, entity_t *occupant, qbo
  */
 
 int FloodEntities( tree_t *tree ){
-	int i, s;
-	vec3_t origin, offset, scale, angles;
-	qboolean r, inside, skybox;
+	bool r, inside, skybox;
 	node_t      *headnode;
 	entity_t    *e, *tripped;
 	const char  *value;
@@ -655,17 +653,18 @@ int FloodEntities( tree_t *tree ){
 
 	headnode = tree->headnode;
 	Sys_FPrintf( SYS_VRB, "--- FloodEntities ---\n" );
-	inside = qfalse;
+	inside = false;
 	tree->outside_node.occupied = 0;
 
-	tripped = qfalse;
+	tripped = NULL;
 	c_floodedleafs = 0;
-	for ( i = 1; i < numEntities; i++ )
+	for ( int i = 1; i < numEntities; i++ )
 	{
 		/* get entity */
 		e = &entities[ i ];
 
 		/* get origin */
+		vec3_t origin;
 		GetVectorForKey( e, "origin", origin );
 #if 0 //allow maps with only point entity@( 0, 0, 0 ); assuming that entities, containing no primitives are point ones
 		/* as a special case, allow origin-less entities */
@@ -679,39 +678,32 @@ int FloodEntities( tree_t *tree ){
 		}
 
 		/* handle skybox entities */
-		value = ValueForKey( e, "classname" );
-		if ( !Q_stricmp( value, "_skybox" ) ) {
-			skybox = qtrue;
-			skyboxPresent = qtrue;
+		if ( ent_class_is( e, "_skybox" ) ) {
+			skybox = true;
+			skyboxPresent = true;
 
 			/* invert origin */
+			vec3_t offset;
 			VectorScale( origin, -1.0f, offset );
 
 			/* get scale */
-			VectorSet( scale, 64.0f, 64.0f, 64.0f );
-			value = ValueForKey( e, "_scale" );
-			if ( value[ 0 ] != '\0' ) {
-				s = sscanf( value, "%f %f %f", &scale[ 0 ], &scale[ 1 ], &scale[ 2 ] );
-				if ( s == 1 ) {
-					scale[ 1 ] = scale[ 0 ];
-					scale[ 2 ] = scale[ 0 ];
-				}
-			}
+			vec3_t scale = { 64.0f, 64.0f, 64.0f };
+			if( !ENT_READKV( &scale, e, "_scale" ) )
+				if( ENT_READKV( &scale[0], e, "_scale" ) )
+					scale[1] = scale[2] = scale[0];
 
-			/* get "angle" (yaw) or "angles" (pitch yaw roll) */
-			VectorClear( angles );
-			angles[ 2 ] = FloatForKey( e, "angle" );
-			value = ValueForKey( e, "angles" );
-			if ( value[ 0 ] != '\0' ) {
-				sscanf( value, "%f %f %f", &angles[ 1 ], &angles[ 2 ], &angles[ 0 ] );
-			}
+			/* get "angle" (yaw) or "angles" (pitch yaw roll), store as (roll pitch yaw) */
+			vec3_t angles = { 0.f, 0.f, 0.f };
+			if ( !ENT_READKV( &value, e, "angles" ) ||
+				3 != sscanf( value, "%f %f %f", &angles[ 1 ], &angles[ 2 ], &angles[ 0 ] ) )
+				ENT_READKV( &angles[ 2 ], e, "angle" );
 
 			/* set transform matrix (thanks spog) */
 			m4x4_identity( skyboxTransform );
 			m4x4_pivoted_transform_by_vec3( skyboxTransform, offset, angles, eXYZ, scale, origin );
 		}
 		else{
-			skybox = qfalse;
+			skybox = false;
 		}
 
 		/* nudge off floor */
@@ -724,10 +716,10 @@ int FloodEntities( tree_t *tree ){
 		/* find leaf */
 		r = PlaceOccupant( headnode, origin, e, skybox );
 		if ( r ) {
-			inside = qtrue;
+			inside = true;
 		}
 		if ( !r ) {
-			Sys_FPrintf( SYS_WRN, "Entity %i (%s): Entity in solid\n", e->mapEntityNum, ValueForKey( e, "classname" ) );
+			Sys_FPrintf( SYS_WRN, "Entity %i (%s): Entity in solid\n", e->mapEntityNum, ent_classname( e ) );
 		}
 		else if ( tree->outside_node.occupied ) {
 			if ( !tripped || tree->outside_node.occupied < tripcount ) {
@@ -738,7 +730,7 @@ int FloodEntities( tree_t *tree ){
 	}
 
 	if ( tripped ) {
-		xml_Select( "Entity leaked", e->mapEntityNum, 0, qfalse );
+		xml_Select( "Entity leaked", e->mapEntityNum, 0, false );
 	}
 
 	Sys_FPrintf( SYS_VRB, "%9d flooded leafs\n", c_floodedleafs );
@@ -915,7 +907,7 @@ void FloodSkyboxArea_r( node_t *node ){
 		return;
 	}
 
-	node->skybox = qtrue;
+	node->skybox = true;
 }
 
 
@@ -959,7 +951,7 @@ void FillOutside_r( node_t *node ){
 	if ( !node->occupied ) {
 		if ( !node->opaque ) {
 			c_outside++;
-			node->opaque = qtrue;
+			node->opaque = true;
 		}
 		else {
 			c_solid++;

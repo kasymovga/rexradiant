@@ -35,15 +35,8 @@
 #include "iundo.h"
 #include "iselection.h"
 
-#include <gtk/gtkhbox.h>
-#include <gtk/gtkvbox.h>
-#include <gtk/gtkframe.h>
-#include <gtk/gtklabel.h>
-#include <gtk/gtktable.h>
-#include <gtk/gtkbutton.h>
-#include <gtk/gtkspinbutton.h>
+#include <gtk/gtk.h>
 #include <gdk/gdkkeysyms.h>
-#include <gtk/gtkcheckbutton.h> //Shamus: For Textool
 
 #include "signal/isignal.h"
 #include "generic/object.h"
@@ -51,6 +44,7 @@
 #include "texturelib.h"
 #include "shaderlib.h"
 #include "stringio.h"
+#include "os/path.h"
 
 #include "gtkutil/idledraw.h"
 #include "gtkutil/dialog.h"
@@ -113,7 +107,7 @@ void queueDraw(){
 
 inline void spin_button_set_step( GtkSpinButton* spin, gfloat step ){
 #if 1
-	gtk_spin_button_get_adjustment( spin )->step_increment = step;
+	gtk_adjustment_set_step_increment( gtk_spin_button_get_adjustment( spin ), step );
 #else
 	GValue gvalue = GValue_default();
 	g_value_init( &gvalue, G_TYPE_DOUBLE );
@@ -217,7 +211,7 @@ void destroyWindow(){
 	Destroy();
 }
 bool visible() const {
-	return GTK_WIDGET_VISIBLE( const_cast<GtkWindow*>( GetWidget() ) );
+	return gtk_widget_get_visible( GTK_WIDGET( GetWidget() ) );
 }
 void queueDraw(){
 	if ( visible() ) {
@@ -414,8 +408,8 @@ void SurfaceInspector_GridChange(){
 // increment * scale = gridsize
 static void OnBtnMatchGrid( GtkWidget *widget, gpointer data ){
 	float hscale, vscale;
-	hscale = static_cast<float>( gtk_spin_button_get_value_as_float( getSurfaceInspector().m_hscaleIncrement.m_spin ) );
-	vscale = static_cast<float>( gtk_spin_button_get_value_as_float( getSurfaceInspector().m_vscaleIncrement.m_spin ) );
+	hscale = static_cast<float>( gtk_spin_button_get_value( getSurfaceInspector().m_hscaleIncrement.m_spin ) );
+	vscale = static_cast<float>( gtk_spin_button_get_value( getSurfaceInspector().m_vscaleIncrement.m_spin ) );
 
 	if ( hscale == 0.0f || vscale == 0.0f ) {
 		globalErrorStream() << "ERROR: unexpected scale == 0.0f\n";
@@ -464,11 +458,11 @@ void SurfaceInspector_ProjectTexture( GtkWidget* widget, EProjectTexture type ){
 	texdef_t texdef;
 	if( widget ){ //gui buttons
 		getSurfaceInspector().exportData();
-		texdef.shift[0] = static_cast<float>( gtk_spin_button_get_value_as_float( getSurfaceInspector().m_hshiftIncrement.m_spin ) );
-		texdef.shift[1] = static_cast<float>( gtk_spin_button_get_value_as_float( getSurfaceInspector().m_vshiftIncrement.m_spin ) );
-		texdef.scale[0] = static_cast<float>( gtk_spin_button_get_value_as_float( getSurfaceInspector().m_hscaleIncrement.m_spin ) );
-		texdef.scale[1] = static_cast<float>( gtk_spin_button_get_value_as_float( getSurfaceInspector().m_vscaleIncrement.m_spin ) );
-		texdef.rotate = static_cast<float>( gtk_spin_button_get_value_as_float( getSurfaceInspector().m_rotateIncrement.m_spin ) );
+		texdef.shift[0] = static_cast<float>( gtk_spin_button_get_value( getSurfaceInspector().m_hshiftIncrement.m_spin ) );
+		texdef.shift[1] = static_cast<float>( gtk_spin_button_get_value( getSurfaceInspector().m_vshiftIncrement.m_spin ) );
+		texdef.scale[0] = static_cast<float>( gtk_spin_button_get_value( getSurfaceInspector().m_hscaleIncrement.m_spin ) );
+		texdef.scale[1] = static_cast<float>( gtk_spin_button_get_value( getSurfaceInspector().m_vscaleIncrement.m_spin ) );
+		texdef.rotate = static_cast<float>( gtk_spin_button_get_value( getSurfaceInspector().m_rotateIncrement.m_spin ) );
 	}
 	else{ //bind
 		texdef.scale[0] = texdef.scale[1] = Texdef_getDefaultTextureScale();
@@ -774,7 +768,7 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 				gtk_table_attach( GTK_TABLE( table ), GTK_WIDGET( spin ), 1, 2, 0, 1,
 								  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
 								  (GtkAttachOptions) ( 0 ), 0, 0 );
-				gtk_widget_set_usize( GTK_WIDGET( spin ), 60, -2 );
+				gtk_widget_set_size_request( GTK_WIDGET( spin ), 60, -1 );
 			}
 			{
 				GtkWidget* label = gtk_label_new( "Step" );
@@ -790,7 +784,7 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 				gtk_table_attach( GTK_TABLE( table ), GTK_WIDGET( entry ), 3, 4, 0, 1,
 								  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
 								  (GtkAttachOptions) ( 0 ), 0, 0 );
-				gtk_widget_set_usize( GTK_WIDGET( entry ), 50, -2 );
+				gtk_widget_set_size_request( GTK_WIDGET( entry ), 50, -1 );
 				m_hshiftIncrement.m_entry = entry;
 				m_hshiftEntry.connect( entry );
 			}
@@ -810,7 +804,7 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 				gtk_table_attach( GTK_TABLE( table ), GTK_WIDGET( spin ), 1, 2, 1, 2,
 								  (GtkAttachOptions) ( GTK_FILL ),
 								  (GtkAttachOptions) ( 0 ), 0, 0 );
-				gtk_widget_set_usize( GTK_WIDGET( spin ), 60, -2 );
+				gtk_widget_set_size_request( GTK_WIDGET( spin ), 60, -1 );
 			}
 			{
 				GtkWidget* label = gtk_label_new( "Step" );
@@ -826,7 +820,7 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 				gtk_table_attach( GTK_TABLE( table ), GTK_WIDGET( entry ), 3, 4, 1, 2,
 								  (GtkAttachOptions) ( GTK_FILL ),
 								  (GtkAttachOptions) ( 0 ), 0, 0 );
-				gtk_widget_set_usize( GTK_WIDGET( entry ), 50, -2 );
+				gtk_widget_set_size_request( GTK_WIDGET( entry ), 50, -1 );
 				m_vshiftIncrement.m_entry = entry;
 				m_vshiftEntry.connect( entry );
 			}
@@ -846,7 +840,7 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 				gtk_table_attach( GTK_TABLE( table ), GTK_WIDGET( spin ), 1, 2, 2, 3,
 								  (GtkAttachOptions) ( GTK_FILL ),
 								  (GtkAttachOptions) ( 0 ), 0, 0 );
-				gtk_widget_set_usize( GTK_WIDGET( spin ), 60, -2 );
+				gtk_widget_set_size_request( GTK_WIDGET( spin ), 60, -1 );
 			}
 			{
 				GtkWidget* label = gtk_label_new( "Step" );
@@ -862,7 +856,7 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 				gtk_table_attach( GTK_TABLE( table ), GTK_WIDGET( entry ), 3, 4, 2, 3,
 								  (GtkAttachOptions) ( GTK_FILL ),
 								  (GtkAttachOptions) ( 0 ), 2, 3 );
-				gtk_widget_set_usize( GTK_WIDGET( entry ), 50, -2 );
+				gtk_widget_set_size_request( GTK_WIDGET( entry ), 50, -1 );
 				m_hscaleIncrement.m_entry = entry;
 				m_hscaleEntry.connect( entry );
 			}
@@ -882,7 +876,7 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 				gtk_table_attach( GTK_TABLE( table ), GTK_WIDGET( spin ), 1, 2, 3, 4,
 								  (GtkAttachOptions) ( GTK_FILL ),
 								  (GtkAttachOptions) ( 0 ), 0, 0 );
-				gtk_widget_set_usize( GTK_WIDGET( spin ), 60, -2 );
+				gtk_widget_set_size_request( GTK_WIDGET( spin ), 60, -1 );
 			}
 			{
 				GtkWidget* label = gtk_label_new( "Step" );
@@ -898,7 +892,7 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 				gtk_table_attach( GTK_TABLE( table ), GTK_WIDGET( entry ), 3, 4, 3, 4,
 								  (GtkAttachOptions) ( GTK_FILL ),
 								  (GtkAttachOptions) ( 0 ), 0, 0 );
-				gtk_widget_set_usize( GTK_WIDGET( entry ), 50, -2 );
+				gtk_widget_set_size_request( GTK_WIDGET( entry ), 50, -1 );
 				m_vscaleIncrement.m_entry = entry;
 				m_vscaleEntry.connect( entry );
 			}
@@ -918,7 +912,7 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 				gtk_table_attach( GTK_TABLE( table ), GTK_WIDGET( spin ), 1, 2, 4, 5,
 								  (GtkAttachOptions) ( GTK_FILL ),
 								  (GtkAttachOptions) ( 0 ), 0, 0 );
-				gtk_widget_set_usize( GTK_WIDGET( spin ), 60, -2 );
+				gtk_widget_set_size_request( GTK_WIDGET( spin ), 60, -1 );
 				gtk_spin_button_set_wrap( spin, TRUE );
 			}
 			{
@@ -935,7 +929,7 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 				gtk_table_attach( GTK_TABLE( table ), GTK_WIDGET( entry ), 3, 4, 4, 5,
 								  (GtkAttachOptions) ( GTK_FILL ),
 								  (GtkAttachOptions) ( 0 ), 0, 0 );
-				gtk_widget_set_usize( GTK_WIDGET( entry ), 50, -2 );
+				gtk_widget_set_size_request( GTK_WIDGET( entry ), 50, -1 );
 				m_rotateIncrement.m_entry = entry;
 				m_rotateEntry.connect( entry );
 			}
@@ -985,7 +979,7 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 					g_signal_connect( G_OBJECT( button ), "clicked",
 									  G_CALLBACK( OnBtnFaceFitWidth ), 0 );
 					g_signal_connect( G_OBJECT( button ), "button_press_event", G_CALLBACK( OnBtnFaceFitWidthOnly ), 0 );
-					gtk_widget_set_usize( button, 60, -2 );
+					gtk_widget_set_size_request( button, 60, -1 );
 				}
 				{
 					GtkWidget* button = gtk_button_new_with_label( "Height" );
@@ -997,7 +991,7 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 					g_signal_connect( G_OBJECT( button ), "clicked",
 									  G_CALLBACK( OnBtnFaceFitHeight ), 0 );
 					g_signal_connect( G_OBJECT( button ), "button_press_event", G_CALLBACK( OnBtnFaceFitHeightOnly ), 0 );
-					gtk_widget_set_usize( button, 60, -2 );
+					gtk_widget_set_size_request( button, 60, -1 );
 				}
 				{
 					GtkWidget* button = gtk_button_new_with_label( "Reset" );
@@ -1007,7 +1001,7 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 									  (GtkAttachOptions) ( 0 ), 0, 0 );
 					g_signal_connect( G_OBJECT( button ), "clicked",
 									  G_CALLBACK( OnBtnReset ), 0 );
-					gtk_widget_set_usize( button, 60, -2 );
+					gtk_widget_set_size_request( button, 60, -1 );
 				}
 				{
 					GtkWidget* button = gtk_button_new_with_label( "Fit" );
@@ -1017,7 +1011,7 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 									  (GtkAttachOptions) ( 0 ), 0, 0 );
 					g_signal_connect( G_OBJECT( button ), "clicked",
 									  G_CALLBACK( OnBtnFaceFit ), 0 );
-					gtk_widget_set_usize( button, 60, -2 );
+					gtk_widget_set_size_request( button, 60, -1 );
 				}
 				{
 					GtkWidget* label = gtk_label_new( "Project:" );
@@ -1037,7 +1031,7 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 									  G_CALLBACK( OnBtnProject ), (gpointer)eProjectAxial );
 					GtkRequisition req;
 					gtk_widget_size_request( button, &req );
-					gtk_widget_set_usize( button, 60, req.height * 3 / 4 );
+					gtk_widget_set_size_request( button, 60, req.height * 3 / 4 );
 				}
 				{
 					GtkWidget* button = gtk_button_new_with_label( "Ortho" );
@@ -1050,7 +1044,7 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 									  G_CALLBACK( OnBtnProject ), (gpointer)eProjectOrtho );
 					GtkRequisition req;
 					gtk_widget_size_request( button, &req );
-					gtk_widget_set_usize( button, 60, req.height * 3 / 4 );
+					gtk_widget_set_size_request( button, 60, req.height * 3 / 4 );
 				}
 				{
 					GtkWidget* button = gtk_button_new_with_label( "Cam" );
@@ -1063,7 +1057,7 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 									  G_CALLBACK( OnBtnProject ), (gpointer)eProjectCam );
 					GtkRequisition req;
 					gtk_widget_size_request( button, &req );
-					gtk_widget_set_usize( button, 60, req.height * 3 / 4 );
+					gtk_widget_set_size_request( button, 60, req.height * 3 / 4 );
 				}
 				{
 					GtkWidget* button = gtk_button_new_with_label( "CAP" );
@@ -1073,7 +1067,7 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 									  (GtkAttachOptions) ( 0 ), 0, 0 );
 					g_signal_connect( G_OBJECT( button ), "clicked",
 									  G_CALLBACK( OnBtnPatchCap ), 0 );
-					gtk_widget_set_usize( button, 60, -2 );
+					gtk_widget_set_size_request( button, 60, -1 );
 				}
 				{
 					GtkWidget* button = gtk_button_new_with_label( "Set..." );
@@ -1083,7 +1077,7 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 									  (GtkAttachOptions) ( 0 ), 0, 0 );
 					g_signal_connect( G_OBJECT( button ), "clicked",
 									  G_CALLBACK( OnBtnPatchFit ), 0 );
-					gtk_widget_set_usize( button, 60, -2 );
+					gtk_widget_set_size_request( button, 60, -1 );
 				}
 				{
 					GtkWidget* button = gtk_button_new_with_label( "Natural" );
@@ -1093,7 +1087,7 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 									  (GtkAttachOptions) ( 0 ), 0, 0 );
 					g_signal_connect( G_OBJECT( button ), "clicked",
 									  G_CALLBACK( OnBtnPatchNatural ), 0 );
-					gtk_widget_set_usize( button, 60, -2 );
+					gtk_widget_set_size_request( button, 60, -1 );
 				}
 				{
 					GtkWidget* button = gtk_button_new_with_label( "Fit" );
@@ -1103,7 +1097,7 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 									  (GtkAttachOptions) ( 0 ), 0, 0 );
 					g_signal_connect( G_OBJECT( button ), "clicked",
 									  G_CALLBACK( OnBtnPatchFit11 ), 0 );
-					gtk_widget_set_usize( button, 60, -2 );
+					gtk_widget_set_size_request( button, 60, -1 );
 				}
 				{
 					GtkWidget* spin = gtk_spin_button_new( GTK_ADJUSTMENT( gtk_adjustment_new( 1, 0, 1 << 16, 1, 10, 0 ) ), 0, 3 );
@@ -1111,7 +1105,7 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 					gtk_table_attach( GTK_TABLE( table ), spin, 2, 3, 1, 2,
 									  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
 									  (GtkAttachOptions) ( 0 ), 0, 0 );
-					gtk_widget_set_usize( spin, 60, -2 );
+					gtk_widget_set_size_request( spin, 60, -1 );
 					AddDialogData( *GTK_SPIN_BUTTON( spin ), m_fitHorizontal );
 				}
 				{
@@ -1120,7 +1114,7 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 					gtk_table_attach( GTK_TABLE( table ), spin, 3, 4, 1, 2,
 									  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
 									  (GtkAttachOptions) ( 0 ), 0, 0 );
-					gtk_widget_set_usize( spin, 60, -2 );
+					gtk_widget_set_size_request( spin, 60, -1 );
 					AddDialogData( *GTK_SPIN_BUTTON( spin ), m_fitVertical );
 				}
 			}
@@ -1231,12 +1225,12 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 				//Prolly should make this a member or global var, so the SI can draw on it...
 				TexTool::g_textoolWin = glwidget_new( FALSE );
 				// --> Dunno, but this stuff may be necessary... (Looks like it!)
-				gtk_widget_ref( TexTool::g_textoolWin );
+				g_object_ref( G_OBJECT( TexTool::g_textoolWin ) );
 				gtk_widget_set_events( TexTool::g_textoolWin, GDK_DESTROY | GDK_EXPOSURE_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK | GDK_POINTER_MOTION_MASK );
-				GTK_WIDGET_SET_FLAGS( TexTool::g_textoolWin, GTK_CAN_FOCUS );
+				gtk_widget_set_can_focus( TexTool::g_textoolWin, TRUE );
 				// <-- end stuff...
 				gtk_widget_show( TexTool::g_textoolWin );
-				gtk_widget_set_usize( TexTool::g_textoolWin, -1, 240 ); //Yeah!
+				gtk_widget_set_size_request( TexTool::g_textoolWin, -1, 240 ); //Yeah!
 				gtk_container_add( GTK_CONTAINER( frame ), TexTool::g_textoolWin );
 
 				g_signal_connect( G_OBJECT( TexTool::g_textoolWin ), "size_allocate", G_CALLBACK( TexTool::size_allocate ), NULL );
@@ -1293,8 +1287,7 @@ void spin_button_set_value_no_signal( GtkSpinButton* spin, gdouble value ){
 }
 
 void spin_button_set_step_increment( GtkSpinButton* spin, gdouble value ){
-	GtkAdjustment* adjust = gtk_spin_button_get_adjustment( spin );
-	adjust->step_increment = value;
+	gtk_adjustment_set_step_increment( gtk_spin_button_get_adjustment( spin ), value );
 }
 
 void SurfaceInspector::Update(){
@@ -1381,7 +1374,7 @@ void SurfaceInspector::Update(){
  */
 void SurfaceInspector::ApplyShader(){
 	StringOutputStream name( 256 );
-	name << GlobalTexturePrefix_get() << gtk_entry_get_text( m_texture );
+	name << GlobalTexturePrefix_get() << PathCleaned( gtk_entry_get_text( m_texture ) );
 
 	// TTimo: detect and refuse invalid texture names (at least the ones with spaces)
 	if ( !texdef_name_valid( name.c_str() ) ) {
@@ -1397,11 +1390,11 @@ void SurfaceInspector::ApplyShader(){
 void SurfaceInspector::ApplyTexdef(){
 	texdef_t shiftScaleRotate;
 
-	shiftScaleRotate.shift[0] = static_cast<float>( gtk_spin_button_get_value_as_float( m_hshiftIncrement.m_spin ) );
-	shiftScaleRotate.shift[1] = static_cast<float>( gtk_spin_button_get_value_as_float( m_vshiftIncrement.m_spin ) );
-	shiftScaleRotate.scale[0] = static_cast<float>( gtk_spin_button_get_value_as_float( m_hscaleIncrement.m_spin ) );
-	shiftScaleRotate.scale[1] = static_cast<float>( gtk_spin_button_get_value_as_float( m_vscaleIncrement.m_spin ) );
-	shiftScaleRotate.rotate = static_cast<float>( gtk_spin_button_get_value_as_float( m_rotateIncrement.m_spin ) );
+	shiftScaleRotate.shift[0] = static_cast<float>( gtk_spin_button_get_value( m_hshiftIncrement.m_spin ) );
+	shiftScaleRotate.shift[1] = static_cast<float>( gtk_spin_button_get_value( m_vshiftIncrement.m_spin ) );
+	shiftScaleRotate.scale[0] = static_cast<float>( gtk_spin_button_get_value( m_hscaleIncrement.m_spin ) );
+	shiftScaleRotate.scale[1] = static_cast<float>( gtk_spin_button_get_value( m_vscaleIncrement.m_spin ) );
+	shiftScaleRotate.rotate = static_cast<float>( gtk_spin_button_get_value( m_rotateIncrement.m_spin ) );
 
 	TextureProjection projection;
 //Shamus: This is the other place that screws up, it seems, since it doesn't seem to do the
@@ -1414,7 +1407,7 @@ void SurfaceInspector::ApplyTexdef(){
 }
 #endif
 void SurfaceInspector::ApplyTexdef_HShift(){
-	const float value = static_cast<float>( gtk_spin_button_get_value_as_float( m_hshiftIncrement.m_spin ) );
+	const float value = static_cast<float>( gtk_spin_button_get_value( m_hshiftIncrement.m_spin ) );
 	StringOutputStream command;
 	command << "textureProjectionSetSelected -hShift " << value;
 	UndoableCommand undo( command.c_str() );
@@ -1422,7 +1415,7 @@ void SurfaceInspector::ApplyTexdef_HShift(){
 }
 
 void SurfaceInspector::ApplyTexdef_VShift(){
-	const float value = static_cast<float>( gtk_spin_button_get_value_as_float( m_vshiftIncrement.m_spin ) );
+	const float value = static_cast<float>( gtk_spin_button_get_value( m_vshiftIncrement.m_spin ) );
 	StringOutputStream command;
 	command << "textureProjectionSetSelected -vShift " << value;
 	UndoableCommand undo( command.c_str() );
@@ -1430,7 +1423,7 @@ void SurfaceInspector::ApplyTexdef_VShift(){
 }
 
 void SurfaceInspector::ApplyTexdef_HScale(){
-	const float value = static_cast<float>( gtk_spin_button_get_value_as_float( m_hscaleIncrement.m_spin ) );
+	const float value = static_cast<float>( gtk_spin_button_get_value( m_hscaleIncrement.m_spin ) );
 	StringOutputStream command;
 	command << "textureProjectionSetSelected -hScale " << value;
 	UndoableCommand undo( command.c_str() );
@@ -1438,7 +1431,7 @@ void SurfaceInspector::ApplyTexdef_HScale(){
 }
 
 void SurfaceInspector::ApplyTexdef_VScale(){
-	const float value = static_cast<float>( gtk_spin_button_get_value_as_float( m_vscaleIncrement.m_spin ) );
+	const float value = static_cast<float>( gtk_spin_button_get_value( m_vscaleIncrement.m_spin ) );
 	StringOutputStream command;
 	command << "textureProjectionSetSelected -vScale " << value;
 	UndoableCommand undo( command.c_str() );
@@ -1446,7 +1439,7 @@ void SurfaceInspector::ApplyTexdef_VScale(){
 }
 
 void SurfaceInspector::ApplyTexdef_Rotation(){
-	const float value = static_cast<float>( gtk_spin_button_get_value_as_float( m_rotateIncrement.m_spin ) );
+	const float value = static_cast<float>( gtk_spin_button_get_value( m_rotateIncrement.m_spin ) );
 	StringOutputStream command;
 	command << "textureProjectionSetSelected -rotation " << static_cast<float>( float_to_integer( value * 100.f ) ) / 100.f;;
 	UndoableCommand undo( command.c_str() );
@@ -1834,8 +1827,8 @@ void SurfaceInspector_registerPreferencesPage(){
 }
 
 void SurfaceInspector_registerCommands(){
-	GlobalCommands_insert( "TextureReset/Cap", FreeCaller<SurfaceInspector_ResetTexture>(), Accelerator( 'N', (GdkModifierType)GDK_SHIFT_MASK ) );
-	GlobalCommands_insert( "FitTexture", FreeCaller<SurfaceInspector_FitTexture>(), Accelerator( 'F', (GdkModifierType)GDK_CONTROL_MASK ) );
+	GlobalCommands_insert( "TextureReset/Cap", FreeCaller<SurfaceInspector_ResetTexture>(), Accelerator( 'N', GDK_SHIFT_MASK ) );
+	GlobalCommands_insert( "FitTexture", FreeCaller<SurfaceInspector_FitTexture>(), Accelerator( 'F', GDK_CONTROL_MASK ) );
 	GlobalCommands_insert( "FitTextureWidth", FreeCaller<SurfaceInspector_FaceFitWidth>() );
 	GlobalCommands_insert( "FitTextureHeight", FreeCaller<SurfaceInspector_FaceFitHeight>() );
 	GlobalCommands_insert( "FitTextureWidthOnly", FreeCaller<SurfaceInspector_FaceFitWidthOnly>() );
@@ -2261,7 +2254,7 @@ gboolean expose( GtkWidget * win, GdkEventExpose * e, gpointer ){
 //This needs to go elsewhere...
 //	InitTextool();
 
-	if ( glwidget_make_current( win ) == FALSE ) {
+	if ( !glwidget_make_current( win ) ) {
 		globalOutputStream() << "    FAILED to make current! Oh, the agony! :-(\n";
 		return true;
 	}

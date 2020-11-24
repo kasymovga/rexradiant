@@ -22,9 +22,7 @@
 #if !defined( INCLUDED_GTKUTIL_NONMODAL_H )
 #define INCLUDED_GTKUTIL_NONMODAL_H
 
-#include <gtk/gtkwindow.h>
-#include <gtk/gtkspinbutton.h>
-#include <gtk/gtkradiobutton.h>
+#include <gtk/gtk.h>
 #include <gdk/gdkkeysyms.h>
 
 #include "generic/callback.h"
@@ -32,11 +30,9 @@
 #include "pointer.h"
 #include "button.h"
 
-typedef struct _GtkEntry GtkEntry;
-
 
 inline gboolean escape_clear_focus_widget( GtkWidget* widget, GdkEventKey* event, gpointer data ){
-	if ( event->keyval == GDK_Escape ) {
+	if ( event->keyval == GDK_KEY_Escape ) {
 		gtk_window_set_focus( GTK_WINDOW( gtk_widget_get_toplevel( GTK_WIDGET( widget ) ) ), NULL );
 		return TRUE;
 	}
@@ -60,7 +56,7 @@ static gboolean focus_in( GtkEntry* entry, GdkEventFocus *event, NonModalEntry* 
 }
 
 static gboolean focus_out( GtkEntry* entry, GdkEventFocus *event, NonModalEntry* self ){
-	if ( self->m_editing && GTK_WIDGET_VISIBLE( entry ) ) {
+	if ( self->m_editing && gtk_widget_get_visible( GTK_WIDGET( entry ) ) ) {
 		self->m_apply();
 	}
 	self->m_editing = false;
@@ -73,7 +69,7 @@ static gboolean changed( GtkEntry* entry, NonModalEntry* self ){
 }
 
 static gboolean enter( GtkEntry* entry, GdkEventKey* event, NonModalEntry* self ){
-	if ( event->keyval == GDK_Return ) {
+	if ( event->keyval == GDK_KEY_Return ) {
 		self->m_apply();
 		self->m_editing = false;
 		gtk_window_set_focus( GTK_WINDOW( gtk_widget_get_toplevel( GTK_WIDGET( entry ) ) ), NULL );
@@ -83,7 +79,7 @@ static gboolean enter( GtkEntry* entry, GdkEventKey* event, NonModalEntry* self 
 }
 
 static gboolean escape( GtkEntry* entry, GdkEventKey* event, NonModalEntry* self ){
-	if ( event->keyval == GDK_Escape ) {
+	if ( event->keyval == GDK_KEY_Escape ) {
 		self->m_cancel();
 		self->m_editing = false;
 		gtk_window_set_focus( GTK_WINDOW( gtk_widget_get_toplevel( GTK_WIDGET( entry ) ) ), NULL );
@@ -116,7 +112,7 @@ static gboolean changed( GtkSpinButton* spin, NonModalSpinner* self ){
 }
 
 static gboolean enter( GtkSpinButton* spin, GdkEventKey* event, NonModalSpinner* self ){
-	if ( event->keyval == GDK_Return ) {
+	if ( event->keyval == GDK_KEY_Return ) {
 		gtk_window_set_focus( GTK_WINDOW( gtk_widget_get_toplevel( GTK_WIDGET( spin ) ) ), NULL );
 		return TRUE;
 	}
@@ -124,7 +120,7 @@ static gboolean enter( GtkSpinButton* spin, GdkEventKey* event, NonModalSpinner*
 }
 
 static gboolean escape( GtkSpinButton* spin, GdkEventKey* event, NonModalSpinner* self ){
-	if ( event->keyval == GDK_Escape ) {
+	if ( event->keyval == GDK_KEY_Escape ) {
 		self->m_cancel();
 		gtk_window_set_focus( GTK_WINDOW( gtk_widget_get_toplevel( GTK_WIDGET( spin ) ) ), NULL );
 		return TRUE;
@@ -152,7 +148,7 @@ public:
 NonModalRadio( const Callback& changed ) : m_changed( changed ){
 }
 void connect( GtkRadioButton* radio ){
-	GSList* group = gtk_radio_button_group( radio );
+	GSList* group = gtk_radio_button_get_group( radio );
 	for (; group != 0; group = g_slist_next( group ) )
 	{
 		toggle_button_connect_callback( GTK_TOGGLE_BUTTON( group->data ), m_changed );

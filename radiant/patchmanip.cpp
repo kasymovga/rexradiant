@@ -840,8 +840,8 @@ void PatchPreferences_construct(){
 
 void Patch_registerCommands(){
 	GlobalCommands_insert( "InvertCurveTextureX", FreeCaller<Patch_FlipTextureX>(), Accelerator( 'I', (GdkModifierType)( GDK_SHIFT_MASK | GDK_CONTROL_MASK ) ) );
-	GlobalCommands_insert( "InvertCurveTextureY", FreeCaller<Patch_FlipTextureY>(), Accelerator( 'I', (GdkModifierType)GDK_SHIFT_MASK ) );
-	GlobalCommands_insert( "NaturalizePatch", FreeCaller<Patch_NaturalTexture>(), Accelerator( 'N', (GdkModifierType)GDK_CONTROL_MASK ) );
+	GlobalCommands_insert( "InvertCurveTextureY", FreeCaller<Patch_FlipTextureY>(), Accelerator( 'I', GDK_SHIFT_MASK ) );
+	GlobalCommands_insert( "NaturalizePatch", FreeCaller<Patch_NaturalTexture>(), Accelerator( 'N', GDK_CONTROL_MASK ) );
 	GlobalCommands_insert( "PatchCylinder", FreeCaller<Patch_Cylinder>() );
 //	GlobalCommands_insert( "PatchDenseCylinder", FreeCaller<Patch_DenseCylinder>() );
 //	GlobalCommands_insert( "PatchVeryDenseCylinder", FreeCaller<Patch_VeryDenseCylinder>() );
@@ -855,28 +855,28 @@ void Patch_registerCommands(){
 //	GlobalCommands_insert( "PatchSquareEndcap", FreeCaller<Patch_SquareEndcap>() );
 	GlobalCommands_insert( "PatchCone", FreeCaller<Patch_Cone>() );
 	GlobalCommands_insert( "PatchSphere", FreeCaller<Patch_Sphere>() );
-	GlobalCommands_insert( "SimplePatchMesh", FreeCaller<Patch_Plane>(), Accelerator( 'P', (GdkModifierType)GDK_SHIFT_MASK ) );
-	GlobalCommands_insert( "PatchInsertFirstColumn", FreeCaller<Patch_InsertFirstColumn>(), Accelerator( GDK_KP_Add, (GdkModifierType)( GDK_SHIFT_MASK | GDK_CONTROL_MASK ) ) );
+	GlobalCommands_insert( "SimplePatchMesh", FreeCaller<Patch_Plane>(), Accelerator( 'P', GDK_SHIFT_MASK ) );
+	GlobalCommands_insert( "PatchInsertFirstColumn", FreeCaller<Patch_InsertFirstColumn>(), Accelerator( GDK_KEY_KP_Add, (GdkModifierType)( GDK_SHIFT_MASK | GDK_CONTROL_MASK ) ) );
 	GlobalCommands_insert( "PatchInsertLastColumn", FreeCaller<Patch_InsertLastColumn>() );
-	GlobalCommands_insert( "PatchInsertFirstRow", FreeCaller<Patch_InsertFirstRow>(), Accelerator( GDK_KP_Add, (GdkModifierType)GDK_CONTROL_MASK ) );
+	GlobalCommands_insert( "PatchInsertFirstRow", FreeCaller<Patch_InsertFirstRow>(), Accelerator( GDK_KEY_KP_Add, GDK_CONTROL_MASK ) );
 	GlobalCommands_insert( "PatchInsertLastRow", FreeCaller<Patch_InsertLastRow>() );
 	GlobalCommands_insert( "PatchDeleteFirstColumn", FreeCaller<Patch_DeleteFirstColumn>() );
-	GlobalCommands_insert( "PatchDeleteLastColumn", FreeCaller<Patch_DeleteLastColumn>(), Accelerator( GDK_KP_Subtract, (GdkModifierType)( GDK_SHIFT_MASK | GDK_CONTROL_MASK ) ) );
+	GlobalCommands_insert( "PatchDeleteLastColumn", FreeCaller<Patch_DeleteLastColumn>(), Accelerator( GDK_KEY_KP_Subtract, (GdkModifierType)( GDK_SHIFT_MASK | GDK_CONTROL_MASK ) ) );
 	GlobalCommands_insert( "PatchDeleteFirstRow", FreeCaller<Patch_DeleteFirstRow>() );
-	GlobalCommands_insert( "PatchDeleteLastRow", FreeCaller<Patch_DeleteLastRow>(), Accelerator( GDK_KP_Subtract, (GdkModifierType)GDK_CONTROL_MASK ) );
-	GlobalCommands_insert( "InvertCurve", FreeCaller<Patch_Invert>(), Accelerator( 'I', (GdkModifierType)GDK_CONTROL_MASK ) );
-	//GlobalCommands_insert( "RedisperseRows", FreeCaller<Patch_RedisperseRows>(), Accelerator( 'E', (GdkModifierType)GDK_CONTROL_MASK ) );
+	GlobalCommands_insert( "PatchDeleteLastRow", FreeCaller<Patch_DeleteLastRow>(), Accelerator( GDK_KEY_KP_Subtract, GDK_CONTROL_MASK ) );
+	GlobalCommands_insert( "InvertCurve", FreeCaller<Patch_Invert>(), Accelerator( 'I', GDK_CONTROL_MASK ) );
+	//GlobalCommands_insert( "RedisperseRows", FreeCaller<Patch_RedisperseRows>(), Accelerator( 'E', GDK_CONTROL_MASK ) );
 	GlobalCommands_insert( "RedisperseRows", FreeCaller<Patch_RedisperseRows>() );
 	//GlobalCommands_insert( "RedisperseCols", FreeCaller<Patch_RedisperseCols>(), Accelerator( 'E', (GdkModifierType)( GDK_SHIFT_MASK | GDK_CONTROL_MASK ) ) );
 	GlobalCommands_insert( "RedisperseCols", FreeCaller<Patch_RedisperseCols>() );
-	GlobalCommands_insert( "SmoothRows", FreeCaller<Patch_SmoothRows>(), Accelerator( 'W', (GdkModifierType)GDK_CONTROL_MASK ) );
+	GlobalCommands_insert( "SmoothRows", FreeCaller<Patch_SmoothRows>(), Accelerator( 'W', GDK_CONTROL_MASK ) );
 	GlobalCommands_insert( "SmoothCols", FreeCaller<Patch_SmoothCols>(), Accelerator( 'W', (GdkModifierType)( GDK_SHIFT_MASK | GDK_CONTROL_MASK ) ) );
 	GlobalCommands_insert( "MatrixTranspose", FreeCaller<Patch_Transpose>(), Accelerator( 'M', (GdkModifierType)( GDK_SHIFT_MASK | GDK_CONTROL_MASK ) ) );
-	GlobalCommands_insert( "CapCurrentCurve", FreeCaller<Patch_Cap>(), Accelerator( 'C', (GdkModifierType)GDK_SHIFT_MASK ) );
+	GlobalCommands_insert( "CapCurrentCurve", FreeCaller<Patch_Cap>(), Accelerator( 'C', GDK_SHIFT_MASK ) );
 //	GlobalCommands_insert( "MakeOverlayPatch", FreeCaller<Patch_OverlayOn>(), Accelerator( 'Y' ) );
-//	GlobalCommands_insert( "ClearPatchOverlays", FreeCaller<Patch_OverlayOff>(), Accelerator( 'L', (GdkModifierType)GDK_CONTROL_MASK ) );
+//	GlobalCommands_insert( "ClearPatchOverlays", FreeCaller<Patch_OverlayOff>(), Accelerator( 'L', GDK_CONTROL_MASK ) );
 	GlobalCommands_insert( "PatchDeform", FreeCaller<Patch_Deform>() );
-	GlobalCommands_insert( "PatchThicken", FreeCaller<Patch_Thicken>(), Accelerator( 'T', (GdkModifierType)GDK_CONTROL_MASK ) );
+	GlobalCommands_insert( "PatchThicken", FreeCaller<Patch_Thicken>(), Accelerator( 'T', GDK_CONTROL_MASK ) );
 }
 
 void Patch_constructToolbar( GtkToolbar* toolbar ){
@@ -972,13 +972,7 @@ void Patch_constructMenu( GtkMenu* menu ){
 }
 
 
-#include <gtk/gtkbox.h>
-#include <gtk/gtktable.h>
-#include <gtk/gtktogglebutton.h>
-#include <gtk/gtkradiobutton.h>
-#include <gtk/gtkcombobox.h>
-#include <gtk/gtkspinbutton.h>
-#include <gtk/gtklabel.h>
+#include <gtk/gtk.h>
 #include "gtkutil/dialog.h"
 #include "gtkutil/widget.h"
 
@@ -1017,8 +1011,8 @@ void DoNewPatchDlg( EPatchPrefab prefab, int minrows, int mincols, int defrows, 
 			}
 
 			{
-				GtkComboBox* combo = GTK_COMBO_BOX( gtk_combo_box_new_text() );
-#define D_ITEM( x ) if ( x >= mincols && ( !maxcols || x <= maxcols ) ) gtk_combo_box_append_text( combo, # x )
+				GtkComboBoxText* combo = GTK_COMBO_BOX_TEXT( gtk_combo_box_text_new() );
+#define D_ITEM( x ) if ( x >= mincols && ( !maxcols || x <= maxcols ) ) gtk_combo_box_text_append_text( combo, # x )
 				D_ITEM( 3 );
 				D_ITEM( 5 );
 				D_ITEM( 7 );
@@ -1040,11 +1034,11 @@ void DoNewPatchDlg( EPatchPrefab prefab, int minrows, int mincols, int defrows, 
 								  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
 								  (GtkAttachOptions) ( 0 ), 0, 0 );
 
-				width = combo;
+				width = GTK_COMBO_BOX( combo );
 			}
 			{
-				GtkComboBox* combo = GTK_COMBO_BOX( gtk_combo_box_new_text() );
-#define D_ITEM( x ) if ( x >= minrows && ( !maxrows || x <= maxrows ) ) gtk_combo_box_append_text( combo, # x )
+				GtkComboBoxText* combo = GTK_COMBO_BOX_TEXT( gtk_combo_box_text_new() );
+#define D_ITEM( x ) if ( x >= minrows && ( !maxrows || x <= maxrows ) ) gtk_combo_box_text_append_text( combo, # x )
 				D_ITEM( 3 );
 				D_ITEM( 5 );
 				D_ITEM( 7 );
@@ -1066,7 +1060,7 @@ void DoNewPatchDlg( EPatchPrefab prefab, int minrows, int mincols, int defrows, 
 								  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
 								  (GtkAttachOptions) ( 0 ), 0, 0 );
 
-				height = combo;
+				height = GTK_COMBO_BOX( combo );
 			}
 
 			if( prefab != ePlane ){
@@ -1090,12 +1084,12 @@ void DoNewPatchDlg( EPatchPrefab prefab, int minrows, int mincols, int defrows, 
 				gtk_box_pack_start( GTK_BOX( vbox ), GTK_WIDGET( button ), FALSE, FALSE, 0 );
 				widget_make_default( GTK_WIDGET( button ) );
 				gtk_widget_grab_focus( GTK_WIDGET( button ) );
-				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel, GDK_Return, (GdkModifierType)0, (GtkAccelFlags)0 );
+				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel, GDK_KEY_Return, (GdkModifierType)0, (GtkAccelFlags)0 );
 			}
 			{
 				GtkButton* button = create_dialog_button( "Cancel", G_CALLBACK( dialog_button_cancel ), &dialog );
 				gtk_box_pack_start( GTK_BOX( vbox ), GTK_WIDGET( button ), FALSE, FALSE, 0 );
-				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel, GDK_Escape, (GdkModifierType)0, (GtkAccelFlags)0 );
+				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel, GDK_KEY_Escape, (GdkModifierType)0, (GtkAccelFlags)0 );
 			}
 		}
 	}
@@ -1196,12 +1190,12 @@ void DoPatchDeformDlg(){
 				gtk_box_pack_start( GTK_BOX( vbox ), GTK_WIDGET( button ), FALSE, FALSE, 0 );
 				widget_make_default( GTK_WIDGET( button ) );
 				gtk_widget_grab_focus( GTK_WIDGET( button ) );
-				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel, GDK_Return, (GdkModifierType)0, (GtkAccelFlags)0 );
+				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel, GDK_KEY_Return, (GdkModifierType)0, (GtkAccelFlags)0 );
 			}
 			{
 				GtkButton* button = create_dialog_button( "Cancel", G_CALLBACK( dialog_button_cancel ), &dialog );
 				gtk_box_pack_start( GTK_BOX( vbox ), GTK_WIDGET( button ), FALSE, FALSE, 0 );
-				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel, GDK_Escape, (GdkModifierType)0, (GtkAccelFlags)0 );
+				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel, GDK_KEY_Escape, (GdkModifierType)0, (GtkAccelFlags)0 );
 			}
 		}
 	}
@@ -1291,55 +1285,46 @@ EMessageBoxReturn DoCapDlg( ECapDialog* type ){
 									  (GtkAttachOptions) ( 0 ), 0, 0 );
 				}
 
-				GSList* group = 0;
+				GtkRadioButton* group = 0;
 				{
-					GtkWidget* button = gtk_radio_button_new_with_label( group, "Bevel" );
+					GtkWidget* button = gtk_radio_button_new_with_label_from_widget( group, "Bevel" );
 					gtk_widget_show( button );
 					gtk_table_attach( table, button, 1, 2, 0, 1,
 									  (GtkAttachOptions) ( GTK_FILL | GTK_EXPAND ),
 									  (GtkAttachOptions) ( 0 ), 0, 0 );
-					group = gtk_radio_button_group( GTK_RADIO_BUTTON( button ) );
-
+					group = GTK_RADIO_BUTTON( button );
 					bevel = button;
 				}
 				{
-					GtkWidget* button = gtk_radio_button_new_with_label( group, "Endcap" );
+					GtkWidget* button = gtk_radio_button_new_with_label_from_widget( group, "Endcap" );
 					gtk_widget_show( button );
 					gtk_table_attach( table, button, 1, 2, 1, 2,
 									  (GtkAttachOptions) ( GTK_FILL | GTK_EXPAND ),
 									  (GtkAttachOptions) ( 0 ), 0, 0 );
-					group = gtk_radio_button_group( GTK_RADIO_BUTTON( button ) );
-
 					endcap = button;
 				}
 				{
-					GtkWidget* button = gtk_radio_button_new_with_label( group, "Inverted Bevel" );
+					GtkWidget* button = gtk_radio_button_new_with_label_from_widget( group, "Inverted Bevel" );
 					gtk_widget_show( button );
 					gtk_table_attach( table, button, 1, 2, 2, 3,
 									  (GtkAttachOptions) ( GTK_FILL | GTK_EXPAND ),
 									  (GtkAttachOptions) ( 0 ), 0, 0 );
-					group = gtk_radio_button_group( GTK_RADIO_BUTTON( button ) );
-
 					ibevel = button;
 				}
 				{
-					GtkWidget* button = gtk_radio_button_new_with_label( group, "Inverted Endcap" );
+					GtkWidget* button = gtk_radio_button_new_with_label_from_widget( group, "Inverted Endcap" );
 					gtk_widget_show( button );
 					gtk_table_attach( table, button, 1, 2, 3, 4,
 									  (GtkAttachOptions) ( GTK_FILL | GTK_EXPAND ),
 									  (GtkAttachOptions) ( 0 ), 0, 0 );
-					group = gtk_radio_button_group( GTK_RADIO_BUTTON( button ) );
-
 					iendcap = button;
 				}
 				{
-					GtkWidget* button = gtk_radio_button_new_with_label( group, "Cylinder" );
+					GtkWidget* button = gtk_radio_button_new_with_label_from_widget( group, "Cylinder" );
 					gtk_widget_show( button );
 					gtk_table_attach( table, button, 1, 2, 4, 5,
 									  (GtkAttachOptions) ( GTK_FILL | GTK_EXPAND ),
 									  (GtkAttachOptions) ( 0 ), 0, 0 );
-					group = gtk_radio_button_group( GTK_RADIO_BUTTON( button ) );
-
 					cylinder = button;
 				}
 			}
@@ -1352,12 +1337,12 @@ EMessageBoxReturn DoCapDlg( ECapDialog* type ){
 				GtkButton* button = create_modal_dialog_button( "OK", ok_button );
 				gtk_box_pack_start( GTK_BOX( vbox ), GTK_WIDGET( button ), FALSE, FALSE, 0 );
 				widget_make_default( GTK_WIDGET( button ) );
-				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel_group, GDK_Return, (GdkModifierType)0, GTK_ACCEL_VISIBLE );
+				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel_group, GDK_KEY_Return, (GdkModifierType)0, GTK_ACCEL_VISIBLE );
 			}
 			{
 				GtkButton* button = create_modal_dialog_button( "Cancel", cancel_button );
 				gtk_box_pack_start( GTK_BOX( vbox ), GTK_WIDGET( button ), FALSE, FALSE, 0 );
-				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel_group, GDK_Escape, (GdkModifierType)0, GTK_ACCEL_VISIBLE );
+				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel_group, GDK_KEY_Escape, (GdkModifierType)0, GTK_ACCEL_VISIBLE );
 			}
 		}
 	}
@@ -1453,7 +1438,7 @@ void DoPatchThickenDlg(){
 			}
 			{
 				// Create the radio button group for choosing the extrude axis
-				GtkWidget* _radNormals = gtk_radio_button_new_with_label( NULL, "Normal" );
+				GtkWidget* _radNormals = gtk_radio_button_new_with_label_from_widget( NULL, "Normal" );
 				GtkWidget* _radX = gtk_radio_button_new_with_label_from_widget( GTK_RADIO_BUTTON(_radNormals), "X" );
 				GtkWidget* _radY = gtk_radio_button_new_with_label_from_widget( GTK_RADIO_BUTTON(_radNormals), "Y" );
 				GtkWidget* _radZ = gtk_radio_button_new_with_label_from_widget( GTK_RADIO_BUTTON(_radNormals), "Z" );
@@ -1489,12 +1474,12 @@ void DoPatchThickenDlg(){
 				gtk_box_pack_start( GTK_BOX( vbox ), GTK_WIDGET( button ), FALSE, FALSE, 0 );
 				widget_make_default( GTK_WIDGET( button ) );
 				gtk_widget_grab_focus( GTK_WIDGET( button ) );
-				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel, GDK_Return, (GdkModifierType)0, (GtkAccelFlags)0 );
+				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel, GDK_KEY_Return, (GdkModifierType)0, (GtkAccelFlags)0 );
 			}
 			{
 				GtkButton* button = create_dialog_button( "Cancel", G_CALLBACK( dialog_button_cancel ), &dialog );
 				gtk_box_pack_start( GTK_BOX( vbox ), GTK_WIDGET( button ), FALSE, FALSE, 0 );
-				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel, GDK_Escape, (GdkModifierType)0, (GtkAccelFlags)0 );
+				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel, GDK_KEY_Escape, (GdkModifierType)0, (GtkAccelFlags)0 );
 			}
 		}
 	}

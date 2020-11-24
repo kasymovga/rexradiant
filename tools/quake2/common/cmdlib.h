@@ -32,7 +32,7 @@
 #include <time.h>
 #include <stdarg.h>
 
-#ifdef WIN32
+#ifdef _MSC_VER
 	#ifdef NDEBUG                           // Don't show in a Release build
 		#pragma warning(disable : 4305)     // truncate from double to float
 		#pragma warning(disable : 4244)     // conversion from double to float
@@ -40,15 +40,11 @@
 	#endif
 #endif
 
-#ifdef WIN32
+#ifdef _MSC_VER
 	#pragma intrinsic( memset, memcpy )
 #endif
 
-#ifndef __BYTEBOOL__
-  #define __BYTEBOOL__
-typedef enum {false, true} qboolean;
-typedef unsigned char byte;
-#endif
+#include "bytebool.h"
 
 #ifdef PATH_MAX
 #define MAX_OS_PATH     PATH_MAX
@@ -65,9 +61,6 @@ typedef unsigned char byte;
    #define SYS_ERR 3 // error
  */
 
-// the dec offsetof macro doesnt work very well...
-#define myoffsetof( type,identifier ) ( (size_t)& ( (type *)0 )->identifier )
-
 #define SAFE_MALLOC
 #ifdef SAFE_MALLOC
 void *safe_malloc( size_t size );
@@ -80,7 +73,11 @@ void *safe_malloc_info( size_t size, char* info );
 extern int myargc;
 extern char **myargv;
 
-char *strlower( char *in );
+static inline char *strLower( char *string ){
+	for( char *in = string; *in; ++in )
+		*in = tolower( *in );
+	return string;
+}
 int Q_strncasecmp( const char *s1, const char *s2, int n );
 int Q_strcasecmp( const char *s1, const char *s2 );
 int Q_stricmp( const char *s1, const char *s2 );

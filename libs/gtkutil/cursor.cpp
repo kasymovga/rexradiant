@@ -24,8 +24,7 @@
 #include "stream/textstream.h"
 
 #include <string.h>
-#include <gdk/gdkcursor.h>
-#include <gdk/gdkpixmap.h>
+#include <gdk/gdk.h>
 
 #if 0
 GdkCursor* create_blank_cursor(){
@@ -46,12 +45,12 @@ GdkCursor* create_blank_cursor(){
 
 void blank_cursor( GtkWidget* widget ){
 	GdkCursor* cursor = create_blank_cursor();
-	gdk_window_set_cursor( widget->window, cursor );
+	gdk_window_set_cursor( gtk_widget_get_window( widget ), cursor );
 	gdk_cursor_unref( cursor );
 }
 
 void default_cursor( GtkWidget* widget ){
-	gdk_window_set_cursor( widget->window, 0 );
+	gdk_window_set_cursor( gtk_widget_get_window( widget ), 0 );
 }
 #endif
 

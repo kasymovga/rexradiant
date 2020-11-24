@@ -207,7 +207,7 @@ void WriteSurfaceExtraFile( const char *path ){
 
 
 	/* dummy check */
-	if ( path == NULL || path[ 0 ] == '\0' ) {
+	if ( strEmptyOrNull( path ) ) {
 		return;
 	}
 
@@ -216,8 +216,7 @@ void WriteSurfaceExtraFile( const char *path ){
 
 	/* open the file */
 	strcpy( srfPath, path );
-	StripExtension( srfPath );
-	strcat( srfPath, ".srf" );
+	path_set_extension( srfPath, ".srf" );
 	Sys_Printf( "Writing %s\n", srfPath );
 	sf = fopen( srfPath, "w" );
 	if ( sf == NULL ) {
@@ -290,7 +289,7 @@ void WriteSurfaceExtraFile( const char *path ){
 		}
 
 		/* lightmap axis vector */
-		if ( VectorCompare( se->lightmapAxis, seDefault.lightmapAxis ) == qfalse ) {
+		if ( !VectorCompare( se->lightmapAxis, seDefault.lightmapAxis ) ) {
 			fprintf( sf, "\tlightmapAxis ( %f %f %f )\n", se->lightmapAxis[ 0 ], se->lightmapAxis[ 1 ], se->lightmapAxis[ 2 ] );
 		}
 
@@ -317,14 +316,13 @@ void LoadSurfaceExtraFile( const char *path ){
 
 
 	/* dummy check */
-	if ( path == NULL || path[ 0 ] == '\0' ) {
+	if ( strEmptyOrNull( path ) ) {
 		return;
 	}
 
 	/* load the file */
 	strcpy( srfPath, path );
-	StripExtension( srfPath );
-	strcat( srfPath, ".srf" );
+	path_set_extension( srfPath, ".srf" );
 	Sys_Printf( "Loading %s\n", srfPath );
 	size = LoadFile( srfPath, (void**) &buffer );
 	if ( size <= 0 ) {
@@ -339,12 +337,12 @@ void LoadSurfaceExtraFile( const char *path ){
 	while ( 1 )
 	{
 		/* test for end of file */
-		if ( !GetToken( qtrue ) ) {
+		if ( !GetToken( true ) ) {
 			break;
 		}
 
 		/* default? */
-		if ( !Q_stricmp( token, "default" ) ) {
+		if ( striEqual( token, "default" ) ) {
 			se = &seDefault;
 		}
 
@@ -361,68 +359,68 @@ void LoadSurfaceExtraFile( const char *path ){
 		}
 
 		/* handle { } section */
-		if ( !GetToken( qtrue ) || strcmp( token, "{" ) ) {
+		if ( !GetToken( true ) || !strEqual( token, "{" ) ) {
 			Error( "ReadSurfaceExtraFile(): %s, line %d: { not found", srfPath, scriptline );
 		}
 		while ( 1 )
 		{
-			if ( !GetToken( qtrue ) ) {
+			if ( !GetToken( true ) ) {
 				break;
 			}
-			if ( !strcmp( token, "}" ) ) {
+			if ( strEqual( token, "}" ) ) {
 				break;
 			}
 
 			/* shader */
-			if ( !Q_stricmp( token, "shader" ) ) {
-				GetToken( qfalse );
+			if ( striEqual( token, "shader" ) ) {
+				GetToken( false );
 				se->si = ShaderInfoForShader( token );
 			}
 
 			/* parent surface number */
-			else if ( !Q_stricmp( token, "parent" ) ) {
-				GetToken( qfalse );
+			else if ( striEqual( token, "parent" ) ) {
+				GetToken( false );
 				se->parentSurfaceNum = atoi( token );
 			}
 
 			/* entity number */
-			else if ( !Q_stricmp( token, "entity" ) ) {
-				GetToken( qfalse );
+			else if ( striEqual( token, "entity" ) ) {
+				GetToken( false );
 				se->entityNum = atoi( token );
 			}
 
 			/* cast shadows */
-			else if ( !Q_stricmp( token, "castShadows" ) ) {
-				GetToken( qfalse );
+			else if ( striEqual( token, "castShadows" ) ) {
+				GetToken( false );
 				se->castShadows = atoi( token );
 			}
 
 			/* recv shadows */
-			else if ( !Q_stricmp( token, "receiveShadows" ) ) {
-				GetToken( qfalse );
+			else if ( striEqual( token, "receiveShadows" ) ) {
+				GetToken( false );
 				se->recvShadows = atoi( token );
 			}
 
 			/* lightmap sample size */
-			else if ( !Q_stricmp( token, "sampleSize" ) ) {
-				GetToken( qfalse );
+			else if ( striEqual( token, "sampleSize" ) ) {
+				GetToken( false );
 				se->sampleSize = atoi( token );
 			}
 
 			/* longest curve */
-			else if ( !Q_stricmp( token, "longestCurve" ) ) {
-				GetToken( qfalse );
+			else if ( striEqual( token, "longestCurve" ) ) {
+				GetToken( false );
 				se->longestCurve = atof( token );
 			}
 
 			/* lightmap axis vector */
-			else if ( !Q_stricmp( token, "lightmapAxis" ) ) {
+			else if ( striEqual( token, "lightmapAxis" ) ) {
 				Parse1DMatrix( 3, se->lightmapAxis );
 			}
 
 			/* ignore all other tokens on the line */
 			while ( TokenAvailable() )
-				GetToken( qfalse );
+				GetToken( false );
 		}
 	}
 

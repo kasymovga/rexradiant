@@ -40,7 +40,7 @@
  * @param widgetName Name of the contained widget to find.
  */
 #define NamedWidget(widgetName) \
-   (gtk_object_get_data(GTK_OBJECT(_dialog), widgetName))
+   (g_object_get_data(G_OBJECT(_dialog), widgetName))
 
 /**
  * Macro to enable/disable a widget inside the dialog, selected by name.
@@ -48,7 +48,7 @@
  * @param widgetName Name of the contained widget to enable/disable.
  */
 #define NamedToggleWidgetActive(widgetName) \
-   (GTK_TOGGLE_BUTTON(NamedWidget(widgetName))->active)
+   gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(NamedWidget(widgetName)))
 
 /**
  * Macro to read text from a widget inside the dialog, selected by name.

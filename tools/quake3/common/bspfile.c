@@ -477,13 +477,11 @@ void PrintBSPFileSizes( void ) {
 int num_entities;
 entity_t entities[MAX_MAP_ENTITIES];
 
-void StripTrailing( char *e ) {
-	char    *s;
-
-	s = e + strlen( e ) - 1;
+void StripTrailing( char *e ){
+	char *s = e + strlen( e ) - 1;
 	while ( s >= e && *s <= 32 )
 	{
-		*s = 0;
+		strClear( s );
 		s--;
 	}
 }
@@ -500,7 +498,7 @@ epair_t *ParseEpair( void ) {
 		Error( "ParseEpar: token too long" );
 	}
 	e->key = copystring( token );
-	GetToken( qfalse );
+	GetToken( false );
 	if ( strlen( token ) >= MAX_VALUE - 1 ) {
 		Error( "ParseEpar: token too long" );
 	}
@@ -520,15 +518,15 @@ epair_t *ParseEpair( void ) {
    ParseEntity
    ================
  */
-qboolean    ParseEntity( void ) {
+bool    ParseEntity( void ) {
 	epair_t     *e;
 	entity_t    *mapent;
 
-	if ( !GetToken( qtrue ) ) {
-		return qfalse;
+	if ( !GetToken( true ) ) {
+		return false;
 	}
 
-	if ( strcmp( token, "{" ) ) {
+	if ( !strEqual( token, "{" ) ) {
 		Error( "ParseEntity: { not found" );
 	}
 	if ( num_entities == MAX_MAP_ENTITIES ) {
@@ -538,10 +536,10 @@ qboolean    ParseEntity( void ) {
 	num_entities++;
 
 	do {
-		if ( !GetToken( qtrue ) ) {
+		if ( !GetToken( true ) ) {
 			Error( "ParseEntity: EOF without closing brace" );
 		}
-		if ( !strcmp( token, "}" ) ) {
+		if ( strEqual( token, "}" ) ) {
 			break;
 		}
 		e = ParseEpair();
@@ -549,7 +547,7 @@ qboolean    ParseEntity( void ) {
 		mapent->epairs = e;
 	} while ( 1 );
 
-	return qtrue;
+	return true;
 }
 
 /*
@@ -631,7 +629,7 @@ void    SetKeyValue( entity_t *ent, const char *key, const char *value ) {
 	epair_t *ep;
 
 	for ( ep = ent->epairs ; ep ; ep = ep->next ) {
-		if ( !strcmp( ep->key, key ) ) {
+		if ( strEqual( ep->key, key ) ) {
 			free( ep->value );
 			ep->value = copystring( value );
 			return;
@@ -648,7 +646,7 @@ const char  *ValueForKey( const entity_t *ent, const char *key ) {
 	epair_t *ep;
 
 	for ( ep = ent->epairs ; ep ; ep = ep->next ) {
-		if ( !strcmp( ep->key, key ) ) {
+		if ( strEqual( ep->key, key ) ) {
 			return ep->value;
 		}
 	}

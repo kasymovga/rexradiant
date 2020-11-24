@@ -30,20 +30,7 @@
 
 #include "debugging/debugging.h"
 
-#include <gtk/gtkmain.h>
-#include <gtk/gtkvbox.h>
-#include <gtk/gtkhbox.h>
-#include <gtk/gtkframe.h>
-#include <gtk/gtklabel.h>
-#include <gtk/gtktogglebutton.h>
-#include <gtk/gtkspinbutton.h>
-#include <gtk/gtkscrolledwindow.h>
-#include <gtk/gtktreemodel.h>
-#include <gtk/gtktreeview.h>
-#include <gtk/gtktreestore.h>
-#include <gtk/gtktreeselection.h>
-#include <gtk/gtkcellrenderertext.h>
-#include <gtk/gtknotebook.h>
+#include <gtk/gtk.h>
 
 #include "generic/callback.h"
 #include "math/vector.h"
@@ -72,26 +59,12 @@ void Global_constructPreferences( PreferencesPage& page ){
 void Interface_constructPreferences( PreferencesPage& page ){
 	page.appendPathEntry( "Shader Editor Command", g_TextEditor_editorCommand, false );
 }
-#if 0
-void Mouse_constructPreferences( PreferencesPage& page ){
-	page.appendCheckBox( "", "Zoom to mouse pointer", g_xywindow_globals.m_bZoomInToPointer );
-}
-void Mouse_constructPage( PreferenceGroup& group ){
-	PreferencesPage page( group.createPage( "Mouse", "Mouse Preferences" ) );
-	Mouse_constructPreferences( page );
-}
-void Mouse_registerPreferencesPage(){
-	PreferencesDialog_addInterfacePage( FreeCaller1<PreferenceGroup&, Mouse_constructPage>() );
-}
-#endif
 
 /*!
    =========================================================
    Games selection dialog
    =========================================================
  */
-
-#include <map>
 
 inline const char* xmlAttr_getName( xmlAttrPtr attr ){
 	return reinterpret_cast<const char*>( attr->name );
@@ -608,7 +581,7 @@ void PreferencesDialog_addSettingsPage( const PreferenceGroupCallback& callback 
 }
 
 void Widget_updateDependency( GtkWidget* self, GtkWidget* toggleButton ){
-	gtk_widget_set_sensitive( self, gtk_toggle_button_get_active( GTK_TOGGLE_BUTTON( toggleButton ) ) && GTK_WIDGET_IS_SENSITIVE( toggleButton ) );
+	gtk_widget_set_sensitive( self, gtk_toggle_button_get_active( GTK_TOGGLE_BUTTON( toggleButton ) ) && gtk_widget_is_sensitive( toggleButton ) );
 }
 
 void ToggleButton_toggled_Widget_updateDependency( GtkWidget *toggleButton, GtkWidget* self ){
@@ -682,7 +655,6 @@ PreferencesPage createPage( const char* treeName, const char* frameName ){
 
 GtkWindow* PrefsDlg::BuildDialog(){
 	PreferencesDialog_addInterfacePreferences( FreeCaller1<PreferencesPage&, Interface_constructPreferences>() );
-	//Mouse_registerPreferencesPage();
 
 	GtkWindow* dialog = create_floating_window( "NetRadiant Preferences", m_parent );
 
@@ -707,7 +679,7 @@ GtkWindow* PrefsDlg::BuildDialog(){
 			{
 				GtkButton* button = create_dialog_button( "Cancel", G_CALLBACK( dialog_button_cancel ), &m_modal );
 				gtk_box_pack_end( GTK_BOX( hbox ), GTK_WIDGET( button ), FALSE, FALSE, 0 );
-				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel, GDK_Escape, (GdkModifierType)0, (GtkAccelFlags)0 );
+				gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel, GDK_KEY_Escape, (GdkModifierType)0, (GtkAccelFlags)0 );
 			}
 			{
 				GtkButton* button = create_dialog_button( "Clean", G_CALLBACK( OnButtonClean ), this );
@@ -841,7 +813,7 @@ GtkWindow* PrefsDlg::BuildDialog(){
 		}
 	}
 
-	gtk_notebook_set_page( GTK_NOTEBOOK( m_notebook ), 0 );
+	gtk_notebook_set_current_page( GTK_NOTEBOOK( m_notebook ), 0 );
 
 	return dialog;
 }
@@ -932,7 +904,7 @@ void PreferencesDialog_restartRequired( const char* staticName ){
 
 void PreferencesDialog_showDialog(){
 	//if ( ConfirmModified( "Edit Preferences" ) && g_Preferences.DoModal() == eIDOK ) {
-	if( gtk_widget_get_realized( g_Preferences.m_treeview ) == TRUE )
+	if( gtk_widget_get_realized( g_Preferences.m_treeview ) )
 		gtk_widget_grab_focus( g_Preferences.m_treeview );
 	if ( g_Preferences.DoModal() == eIDOK ) {
 		if ( !g_restart_required.empty() ) {

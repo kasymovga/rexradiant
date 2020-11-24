@@ -22,9 +22,9 @@
 #include <assert.h>
 #include "q3data.h"
 
-static void Load3DS( const char *filename, _3DS_t *p3DS, qboolean verbose );
+static void Load3DS( const char *filename, _3DS_t *p3DS, bool verbose );
 
-static qboolean s_verbose;
+static bool s_verbose;
 
 #define MAX_MATERIALS 100
 #define MAX_NAMED_OBJECTS 100
@@ -47,8 +47,8 @@ static int ReadString( FILE *fp, char *buffer ){
 	return bytesRead;
 }
 
-static int ReadChunkAndLength( FILE *fp, short *chunk, long *len ){
-	if ( fread( chunk, sizeof( short ), 1, fp ) != 1 ) {
+static int ReadChunkAndLength( FILE *fp, unsigned short *chunk, long *len ){
+	if ( fread( chunk, sizeof( *chunk ), 1, fp ) != 1 ) {
 		return 0;
 	}
 	if ( fread( len, sizeof( long ), 1, fp ) != 1 ) {
@@ -348,7 +348,6 @@ static void LoadNamedTriObject( FILE *fp, long thisChunkLen, _3DSTriObject_t *pT
 static void LoadNamedObject( FILE *fp, long thisChunkLen, _3DSNamedObject_t *pNO ){
 	long chunkLen;
 	unsigned short chunkID;
-	int i = 0;
 	long bytesRead = 0;
 	char name[100];
 	_3DSTriObject_t triObj[MAX_TRI_OBJECTS];
@@ -449,7 +448,7 @@ static void LoadEditChunk( FILE *fp, long thisChunkLen, _3DSEditChunk_t *pEC ){
 	memcpy( pEC->pNamedObjects, namedObjects, numNamedObjects * sizeof( namedObjects[0] ) );
 }
 
-static void Load3DS( const char *filename, _3DS_t *p3DS, qboolean verbose ){
+static void Load3DS( const char *filename, _3DS_t *p3DS, bool verbose ){
 	FILE *fp;
 	unsigned short chunkID;
 	long chunkLen;
@@ -556,7 +555,7 @@ static void ComputeNormals( _3DSTriObject_t *pTO, triangle_t *pTris ){
 /*
 ** void _3DS_LoadPolysets
 */
-void _3DS_LoadPolysets( const char *filename, polyset_t **ppPSET, int *numpsets, qboolean verbose ){
+void _3DS_LoadPolysets( const char *filename, polyset_t **ppPSET, int *numpsets, bool verbose ){
 	_3DS_t _3ds;
 	int numPolysets;
 	polyset_t *pPSET;
@@ -587,9 +586,7 @@ void _3DS_LoadPolysets( const char *filename, polyset_t **ppPSET, int *numpsets,
 		strcpy( pPSET[i].name, _3ds.editChunk.pNamedObjects[i].name );
 
 		strcpy( matnamebuf, filename );
-		if ( strrchr( matnamebuf, '/' ) ) {
-			*( strrchr( matnamebuf, '/' ) + 1 ) = 0;
-		}
+		StripFilename( matnamebuf );
 		strcat( matnamebuf, pTO->pMeshMaterialGroups[0].name );
 
 		if ( strstr( matnamebuf, gamedir ) ) {

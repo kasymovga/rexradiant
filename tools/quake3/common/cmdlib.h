@@ -60,9 +60,6 @@
 #endif
 #define MEM_BLOCKSIZE 4096
 
-// the dec offsetof macro doesnt work very well...
-#define myoffsetof( type,identifier ) ( (size_t)& ( (type *)0 )->identifier )
-
 #define SAFE_MALLOC
 #ifdef SAFE_MALLOC
 void *safe_malloc( size_t size );
@@ -76,18 +73,62 @@ void *safe_calloc_info( size_t size, const char* info );
 #define safe_calloc_info( size, info ) calloc( 1, size )
 #endif /* SAFE_MALLOC */
 
-// set these before calling CheckParm
-extern int myargc;
-extern char **myargv;
 
-char *strlower( char *in );
+static inline bool strEmpty( const char* string ){
+	return *string == '\0';
+}
+static inline bool strEmptyOrNull( const char* string ){
+	return string == NULL || *string == '\0';
+}
+static inline void strClear( char* string ){
+	*string = '\0';
+}
+static inline char *strLower( char *string ){
+	for( char *in = string; *in; ++in )
+		*in = tolower( *in );
+	return string;
+}
+static inline char *copystring( const char *src ){	// version of strdup() with safe_malloc()
+	const size_t size = strlen( src ) + 1;
+	return memcpy( safe_malloc( size ), src, size );
+}
+char* strIstr( const char* haystack, const char* needle );
 #ifdef WIN32
 	#define Q_stricmp           stricmp
-	#define Q_strncasecmp       strnicmp
+	#define Q_strnicmp          strnicmp
 #else
 	#define Q_stricmp           strcasecmp
-	#define Q_strncasecmp       strncasecmp
+	#define Q_strnicmp          strncasecmp
 #endif
+static inline bool strEqual( const char* string, const char* other ){
+	return strcmp( string, other ) == 0;
+}
+static inline bool strnEqual( const char* string, const char* other, size_t n ){
+	return strncmp( string, other, n ) == 0;
+}
+static inline bool striEqual( const char* string, const char* other ){
+	return Q_stricmp( string, other ) == 0;
+}
+static inline bool strniEqual( const char* string, const char* other, size_t n ){
+	return Q_strnicmp( string, other, n ) == 0;
+}
+
+static inline bool strEqualPrefix( const char* string, const char* prefix ){
+	return strnEqual( string, prefix, strlen( prefix ) );
+}
+static inline bool striEqualPrefix( const char* string, const char* prefix ){
+	return strniEqual( string, prefix, strlen( prefix ) );
+}
+static inline bool strEqualSuffix( const char* string, const char* suffix ){
+	const size_t stringLength = strlen( string );
+	const size_t suffixLength = strlen( suffix );
+	return ( suffixLength > stringLength )? false : strnEqual( string + stringLength - suffixLength, suffix, suffixLength );
+}
+static inline bool striEqualSuffix( const char* string, const char* suffix ){
+	const size_t stringLength = strlen( string );
+	const size_t suffixLength = strlen( suffix );
+	return ( suffixLength > stringLength )? false : strniEqual( string + stringLength - suffixLength, suffix, suffixLength );
+}
 /* strlcpy, strlcat versions */
 size_t strcpyQ( char* dest, const char* src, const size_t dest_size );
 size_t strcatQ( char* dest, const char* src, const size_t dest_size );
@@ -103,7 +144,6 @@ void    Q_mkdir( const char *path );
 extern char qdir[1024];
 extern char gamedir[1024];
 extern char writedir[1024];
-extern char    *moddirparam;
 void SetQdirFromPath( const char *path );
 char *ExpandArg( const char *path );    // from cmd line
 char *ExpandPath( const char *path );   // from scripts
@@ -117,7 +157,6 @@ void    Error( const char *error, ... )
 __attribute__( ( noreturn ) )
 #endif
 ;
-int     CheckParm( const char *check );
 
 FILE    *SafeOpenWrite( const char *filename );
 FILE    *SafeOpenRead( const char *filename );
@@ -128,8 +167,19 @@ int     LoadFile( const char *filename, void **bufferptr );
 int   LoadFileBlock( const char *filename, void **bufferptr );
 int     TryLoadFile( const char *filename, void **bufferptr );
 void    SaveFile( const char *filename, const void *buffer, int count );
-qboolean    FileExists( const char *filename );
+bool    FileExists( const char *filename );
 
+
+static inline bool path_separator( const char c ){
+	return c == '/' || c == '\\';
+}
+bool path_is_absolute( const char* path );
+char* path_get_last_separator( const char* path );
+char* path_get_filename_start( const char* path );
+char* path_get_filename_base_end( const char* path );
+char* path_get_extension( const char* path );
+void path_add_slash( char *path );
+void path_set_extension( char *path, const char *extension );
 void    DefaultExtension( char *path, const char *extension );
 void    DefaultPath( char *path, const char *basepath );
 void    StripFilename( char *path );
@@ -155,23 +205,12 @@ float   BigFloat( float l );
 float   LittleFloat( float l );
 
 
-char *COM_Parse( char *data );
-
-extern char com_token[1024];
-extern qboolean com_eof;
-
-char *copystring( const char *src );	// version of strdup() with safe_malloc()
-
-
 void CRC_Init( unsigned short *crcvalue );
 void CRC_ProcessByte( unsigned short *crcvalue, byte data );
 unsigned short CRC_Value( unsigned short crcvalue );
 
 void    CreatePath( const char *path );
 void    QCopyFile( const char *from, const char *to );
-
-extern qboolean archive;
-extern char archivedir[1024];
 
 // sleep for the given amount of milliseconds
 void Sys_Sleep( int n );

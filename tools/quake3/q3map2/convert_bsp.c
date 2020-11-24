@@ -33,6 +33,11 @@
 
 
 
+static void AAS_DData( unsigned char *data, int size ){
+	for ( int i = 0; i < size; i++ )
+		data[i] ^= (unsigned char) i * 119;
+}
+
 /*
    FixAAS()
    resets an aas checksum to match the given BSP
@@ -54,14 +59,13 @@ int FixAAS( int argc, char **argv ){
 
 	/* arg checking */
 	if ( argc < 2 ) {
-		Sys_Printf( "Usage: q3map -fixaas [-v] <mapname>\n" );
+		Sys_Printf( "Usage: q3map2 -fixaas [-v] <mapname>\n" );
 		return 0;
 	}
 
 	/* do some path mangling */
 	strcpy( source, ExpandArg( argv[ argc - 1 ] ) );
-	StripExtension( source );
-	DefaultExtension( source, ".bsp" );
+	path_set_extension( source, ".bsp" );
 
 	/* note it */
 	Sys_Printf( "--- FixAAS ---\n" );
@@ -73,6 +77,7 @@ int FixAAS( int argc, char **argv ){
 	/* create bsp checksum */
 	Sys_Printf( "Creating checksum...\n" );
 	checksum = LittleLong( (int)Com_BlockChecksum( buffer, length ) ); // md4 checksum for a block of data
+	AAS_DData( (unsigned char *) &checksum, 4 );
 
 	/* write checksum to aas */
 	ext = exts;
@@ -80,8 +85,7 @@ int FixAAS( int argc, char **argv ){
 	{
 		/* mangle name */
 		strcpy( aas, source );
-		StripExtension( aas );
-		strcat( aas, *ext );
+		path_set_extension( aas, *ext );
 		Sys_Printf( "Trying %s\n", aas );
 		ext++;
 
@@ -90,7 +94,7 @@ int FixAAS( int argc, char **argv ){
 		if ( !file ) {
 			continue;
 		}
-		if ( fwrite( &checksum, 4, 1, file ) != 1 ) {
+		if ( fseek( file, 8, SEEK_SET ) != 0 || fwrite( &checksum, 4, 1, file ) != 1 ) {
 			Error( "Error writing checksum to %s", aas );
 		}
 		fclose( file );
@@ -130,7 +134,7 @@ int AnalyzeBSP( int argc, char **argv ){
 	void                    *lump;
 	float lumpFloat;
 	char lumpString[ 1024 ], source[ 1024 ];
-	qboolean lumpSwap = qfalse;
+	bool lumpSwap = false;
 	abspLumpTest_t          *lumpTest;
 	static abspLumpTest_t lumpTests[] =
 	{
@@ -153,7 +157,7 @@ int AnalyzeBSP( int argc, char **argv ){
 
 	/* arg checking */
 	if ( argc < 2 ) {
-		Sys_Printf( "Usage: q3map -analyze [-lumpswap] [-v] <mapname>\n" );
+		Sys_Printf( "Usage: q3map2 -analyze [-lumpswap] [-v] <mapname>\n" );
 		return 0;
 	}
 
@@ -161,9 +165,9 @@ int AnalyzeBSP( int argc, char **argv ){
 	for ( i = 1; i < ( argc - 1 ); i++ )
 	{
 		/* -format map|ase|... */
-		if ( !strcmp( argv[ i ],  "-lumpswap" ) ) {
+		if ( strEqual( argv[ i ], "-lumpswap" ) ) {
 			Sys_Printf( "Swapped lump structs enabled\n" );
-			lumpSwap = qtrue;
+			lumpSwap = true;
 		}
 	}
 
@@ -272,7 +276,7 @@ int AnalyzeBSP( int argc, char **argv ){
 
 int BSPInfo( int count, char **fileNames ){
 	int i;
-	char source[ 1024 ], ext[ 64 ];
+	char source[ 1024 ];
 	int size;
 	FILE        *f;
 
@@ -284,7 +288,7 @@ int BSPInfo( int count, char **fileNames ){
 	}
 
 	/* enable info mode */
-	infoMode = qtrue;
+	infoMode = true;
 
 	/* walk file list */
 	for ( i = 0; i < count; i++ )
@@ -293,11 +297,7 @@ int BSPInfo( int count, char **fileNames ){
 
 		/* mangle filename and get size */
 		strcpy( source, fileNames[ i ] );
-		ExtractFileExtension( source, ext );
-		if ( !Q_stricmp( ext, "map" ) ) {
-			StripExtension( source );
-		}
-		DefaultExtension( source, ".bsp" );
+		path_set_extension( source, ".bsp" );
 		f = fopen( source, "rb" );
 		if ( f ) {
 			size = Q_filelength( f );
@@ -405,24 +405,24 @@ int ScaleBSPMain( int argc, char **argv ){
 	vec3_t vec;
 	char str[ 1024 ];
 	int uniform, axis;
-	qboolean texscale;
+	bool texscale;
 	float *old_xyzst = NULL;
 	float spawn_ref = 0;
 
 
 	/* arg checking */
 	if ( argc < 3 ) {
-		Sys_Printf( "Usage: q3map [-v] -scale [-tex] [-spawn_ref <value>] <value> <mapname>\n" );
+		Sys_Printf( "Usage: q3map2 [-v] -scale [-tex] [-spawn_ref <value>] <value> <mapname>\n" );
 		return 0;
 	}
 
-	texscale = qfalse;
+	texscale = false;
 	for ( i = 1; i < argc - 2; ++i )
 	{
-		if ( !strcmp( argv[i], "-tex" ) ) {
-			texscale = qtrue;
+		if ( strEqual( argv[i], "-tex" ) ) {
+			texscale = true;
 		}
-		else if ( !strcmp( argv[i], "-spawn_ref" ) ) {
+		else if ( strEqual( argv[i], "-spawn_ref" ) ) {
 			spawn_ref = atof( argv[i + 1] );
 			++i;
 		}
@@ -444,15 +444,14 @@ int ScaleBSPMain( int argc, char **argv ){
 	uniform = ( ( scale[0] == scale[1] ) && ( scale[1] == scale[2] ) );
 
 	if ( scale[0] == 0.0f || scale[1] == 0.0f || scale[2] == 0.0f ) {
-		Sys_Printf( "Usage: q3map [-v] -scale [-tex] [-spawn_ref <value>] <value> <mapname>\n" );
+		Sys_Printf( "Usage: q3map2 [-v] -scale [-tex] [-spawn_ref <value>] <value> <mapname>\n" );
 		Sys_Printf( "Non-zero scale value required.\n" );
 		return 0;
 	}
 
 	/* do some path mangling */
 	strcpy( source, ExpandArg( argv[ argc - 1 ] ) );
-	StripExtension( source );
-	DefaultExtension( source, ".bsp" );
+	path_set_extension( source, ".bsp" );
 
 	/* load the bsp */
 	Sys_Printf( "Loading %s\n", source );
@@ -467,15 +466,14 @@ int ScaleBSPMain( int argc, char **argv ){
 	for ( i = 0; i < numBSPEntities && i < numEntities; i++ )
 	{
 		/* scale origin */
-		GetVectorForKey( &entities[ i ], "origin", vec );
-		if ( ( vec[ 0 ] || vec[ 1 ] || vec[ 2 ] ) ) {
-			if ( !strncmp( ValueForKey( &entities[i], "classname" ), "info_player_", 12 ) ) {
+		if ( ENT_READKV( &vec, &entities[ i ], "origin" ) ) {
+			if ( ent_class_prefixed( &entities[i], "info_player_" ) ) {
 				vec[2] += spawn_ref;
 			}
 			vec[0] *= scale[0];
 			vec[1] *= scale[1];
 			vec[2] *= scale[2];
-			if ( !strncmp( ValueForKey( &entities[i], "classname" ), "info_player_", 12 ) ) {
+			if ( ent_class_prefixed( &entities[i], "info_player_" ) ) {
 				vec[2] -= spawn_ref;
 			}
 			sprintf( str, "%f %f %f", vec[ 0 ], vec[ 1 ], vec[ 2 ] );
@@ -494,16 +492,14 @@ int ScaleBSPMain( int argc, char **argv ){
 		}
 
 		/* scale door lip */
-		f = FloatForKey( &entities[ i ], "lip" );
-		if ( f ) {
+		if ( ENT_READKV( &f, &entities[ i ], "lip" ) ) {
 			f *= scale[axis];
 			sprintf( str, "%f", f );
 			SetKeyValue( &entities[ i ], "lip", str );
 		}
 
 		/* scale plat height */
-		f = FloatForKey( &entities[ i ], "height" );
-		if ( f ) {
+		if ( ENT_READKV( &f, &entities[ i ], "height" ) ) {
 			f *= scale[2];
 			sprintf( str, "%f", f );
 			SetKeyValue( &entities[ i ], "height", str );
@@ -623,8 +619,7 @@ int ScaleBSPMain( int argc, char **argv ){
 	}
 
 	/* scale gridsize */
-	GetVectorForKey( &entities[ 0 ], "gridsize", vec );
-	if ( ( vec[ 0 ] + vec[ 1 ] + vec[ 2 ] ) == 0.0f ) {
+	if ( !ENT_READKV( &vec, &entities[ 0 ], "gridsize" ) ) {
 		VectorCopy( gridSize, vec );
 	}
 	vec[0] *= scale[0];
@@ -638,8 +633,7 @@ int ScaleBSPMain( int argc, char **argv ){
 
 	/* write the bsp */
 	UnparseEntities();
-	StripExtension( source );
-	DefaultExtension( source, "_s.bsp" );
+	path_set_extension( source, "_s.bsp" );
 	Sys_Printf( "Writing %s\n", source );
 	WriteBSPFile( source );
 
@@ -663,15 +657,15 @@ int ShiftBSPMain( int argc, char **argv ){
 
 	/* arg checking */
 	if ( argc < 3 ) {
-		Sys_Printf( "Usage: q3map [-v] -shift [-tex] [-spawn_ref <value>] <value> <mapname>\n" );
+		Sys_Printf( "Usage: q3map2 [-v] -shift [-tex] [-spawn_ref <value>] <value> <mapname>\n" );
 		return 0;
 	}
 
 	for ( i = 1; i < argc - 2; ++i )
 	{
-		if ( !strcmp( argv[i], "-tex" ) ) {
+		if ( strEqual( argv[i], "-tex" ) ) {
 		}
-		else if ( !strcmp( argv[i], "-spawn_ref" ) ) {
+		else if ( strEqual( argv[i], "-spawn_ref" ) ) {
 			spawn_ref = atof( argv[i + 1] );
 			++i;
 		}
@@ -693,8 +687,7 @@ int ShiftBSPMain( int argc, char **argv ){
 
 	/* do some path mangling */
 	strcpy( source, ExpandArg( argv[ argc - 1 ] ) );
-	StripExtension( source );
-	DefaultExtension( source, ".bsp" );
+	path_set_extension( source, ".bsp" );
 
 	/* load the bsp */
 	Sys_Printf( "Loading %s\n", source );
@@ -709,15 +702,14 @@ int ShiftBSPMain( int argc, char **argv ){
 	for ( i = 0; i < numBSPEntities && i < numEntities; i++ )
 	{
 		/* shift origin */
-		GetVectorForKey( &entities[ i ], "origin", vec );
-		if ( ( vec[ 0 ] || vec[ 1 ] || vec[ 2 ] ) ) {
-			if ( !strncmp( ValueForKey( &entities[i], "classname" ), "info_player_", 12 ) ) {
+		if ( ENT_READKV( &vec, &entities[ i ], "origin" ) ) {
+			if ( ent_class_prefixed( &entities[i], "info_player_" ) ) {
 				vec[2] += spawn_ref;
 			}
 			vec[0] += scale[0];
 			vec[1] += scale[1];
 			vec[2] += scale[2];
-			if ( !strncmp( ValueForKey( &entities[i], "classname" ), "info_player_", 12 ) ) {
+			if ( ent_class_prefixed( &entities[i], "info_player_" ) ) {
 				vec[2] -= spawn_ref;
 			}
 			sprintf( str, "%f %f %f", vec[ 0 ], vec[ 1 ], vec[ 2 ] );
@@ -792,8 +784,7 @@ int ShiftBSPMain( int argc, char **argv ){
 
 	/* scale gridsize */
 	/*
-	GetVectorForKey( &entities[ 0 ], "gridsize", vec );
-	if ( ( vec[ 0 ] + vec[ 1 ] + vec[ 2 ] ) == 0.0f ) {
+	if ( !ENT_READKV( &vec, &entities[ 0 ], "gridsize" ) ) {
 		VectorCopy( gridSize, vec );
 	}
 	vec[0] *= scale[0];
@@ -807,8 +798,7 @@ int ShiftBSPMain( int argc, char **argv ){
 
 	/* write the bsp */
 	UnparseEntities();
-	StripExtension( source );
-	DefaultExtension( source, "_sh.bsp" );
+	path_set_extension( source, "_sh.bsp" );
 	Sys_Printf( "Writing %s\n", source );
 	WriteBSPFile( source );
 
@@ -821,7 +811,7 @@ int ShiftBSPMain( int argc, char **argv ){
    PseudoCompileBSP()
    a stripped down ProcessModels
  */
-void PseudoCompileBSP( qboolean need_tree ){
+void PseudoCompileBSP( bool need_tree ){
 	int models;
 	char modelValue[16];
 	entity_t *entity;
@@ -908,7 +898,7 @@ void PseudoCompileBSP( qboolean need_tree ){
 		EmitBrushes( entity->brushes, &entity->firstBrush, &entity->numBrushes );
 		EndModel( entity, node );
 	}
-	EndBSPFile( qfalse );
+	EndBSPFile( false );
 }
 
 /*
@@ -920,20 +910,19 @@ int ConvertBSPMain( int argc, char **argv ){
 	int i;
 	int ( *convertFunc )( char * );
 	game_t  *convertGame;
-	char ext[1024];
-	qboolean map_allowed, force_bsp, force_map;
+	bool map_allowed, force_bsp, force_map;
 
 
 	/* set default */
 	convertFunc = ConvertBSPToASE;
 	convertGame = NULL;
-	map_allowed = qfalse;
-	force_bsp = qfalse;
-	force_map = qfalse;
+	map_allowed = false;
+	force_bsp = false;
+	force_map = false;
 
 	/* arg checking */
 	if ( argc < 2 ) {
-		Sys_Printf( "Usage: q3map -convert [-format <ase|obj|map_bp|map>] [-shadersasbitmap|-lightmapsastexcoord|-deluxemapsastexcoord] [-readbsp|-readmap [-meta|-patchmeta]] [-v] <mapname>\n" );
+		Sys_Printf( "Usage: q3map2 -convert [-format <ase|obj|map_bp|map>] [-shadersasbitmap|-lightmapsastexcoord|-deluxemapsastexcoord] [-readbsp|-readmap [-meta|-patchmeta]] [-v] <mapname>\n" );
 		return 0;
 	}
 
@@ -941,68 +930,68 @@ int ConvertBSPMain( int argc, char **argv ){
 	for ( i = 1; i < ( argc - 1 ); i++ )
 	{
 		/* -format map|ase|... */
-		if ( !strcmp( argv[ i ],  "-format" ) ) {
+		if ( strEqual( argv[ i ], "-format" ) ) {
 			i++;
-			if ( !Q_stricmp( argv[ i ], "ase" ) ) {
+			if ( striEqual( argv[ i ], "ase" ) ) {
 				convertFunc = ConvertBSPToASE;
-				map_allowed = qfalse;
+				map_allowed = false;
 			}
-			else if ( !Q_stricmp( argv[ i ], "obj" ) ) {
+			else if ( striEqual( argv[ i ], "obj" ) ) {
 				convertFunc = ConvertBSPToOBJ;
-				map_allowed = qfalse;
+				map_allowed = false;
 			}
-			else if ( !Q_stricmp( argv[ i ], "map_bp" ) ) {
+			else if ( striEqual( argv[ i ], "map_bp" ) ) {
 				convertFunc = ConvertBSPToMap_BP;
-				map_allowed = qtrue;
+				map_allowed = true;
 			}
-			else if ( !Q_stricmp( argv[ i ], "map" ) ) {
+			else if ( striEqual( argv[ i ], "map" ) ) {
 				convertFunc = ConvertBSPToMap;
-				map_allowed = qtrue;
+				map_allowed = true;
 			}
 			else
 			{
 				convertGame = GetGame( argv[ i ] );
-				map_allowed = qfalse;
+				map_allowed = false;
 				if ( convertGame == NULL ) {
 					Sys_Printf( "Unknown conversion format \"%s\". Defaulting to ASE.\n", argv[ i ] );
 				}
 			}
 		}
-		else if ( !strcmp( argv[ i ],  "-ne" ) ) {
+		else if ( strEqual( argv[ i ], "-ne" ) ) {
 			normalEpsilon = atof( argv[ i + 1 ] );
 			i++;
 			Sys_Printf( "Normal epsilon set to %f\n", normalEpsilon );
 		}
-		else if ( !strcmp( argv[ i ],  "-de" ) ) {
+		else if ( strEqual( argv[ i ], "-de" ) ) {
 			distanceEpsilon = atof( argv[ i + 1 ] );
 			i++;
 			Sys_Printf( "Distance epsilon set to %f\n", distanceEpsilon );
 		}
-		else if ( !strcmp( argv[ i ],  "-shaderasbitmap" ) || !strcmp( argv[ i ],  "-shadersasbitmap" ) ) {
-			shadersAsBitmap = qtrue;
+		else if ( strEqual( argv[ i ], "-shaderasbitmap" ) || strEqual( argv[ i ], "-shadersasbitmap" ) ) {
+			shadersAsBitmap = true;
 		}
-		else if ( !strcmp( argv[ i ],  "-lightmapastexcoord" ) || !strcmp( argv[ i ],  "-lightmapsastexcoord" ) ) {
-			lightmapsAsTexcoord = qtrue;
+		else if ( strEqual( argv[ i ], "-lightmapastexcoord" ) || strEqual( argv[ i ], "-lightmapsastexcoord" ) ) {
+			lightmapsAsTexcoord = true;
 		}
-		else if ( !strcmp( argv[ i ],  "-deluxemapastexcoord" ) || !strcmp( argv[ i ],  "-deluxemapsastexcoord" ) ) {
-			lightmapsAsTexcoord = qtrue;
-			deluxemap = qtrue;
+		else if ( strEqual( argv[ i ], "-deluxemapastexcoord" ) || strEqual( argv[ i ], "-deluxemapsastexcoord" ) ) {
+			lightmapsAsTexcoord = true;
+			deluxemap = true;
 		}
-		else if ( !strcmp( argv[ i ],  "-readbsp" ) ) {
-			force_bsp = qtrue;
+		else if ( strEqual( argv[ i ], "-readbsp" ) ) {
+			force_bsp = true;
 		}
-		else if ( !strcmp( argv[ i ],  "-readmap" ) ) {
-			force_map = qtrue;
+		else if ( strEqual( argv[ i ], "-readmap" ) ) {
+			force_map = true;
 		}
-		else if ( !strcmp( argv[ i ],  "-meta" ) ) {
-			meta = qtrue;
+		else if ( strEqual( argv[ i ], "-meta" ) ) {
+			meta = true;
 		}
-		else if ( !strcmp( argv[ i ],  "-patchmeta" ) ) {
-			meta = qtrue;
-			patchMeta = qtrue;
+		else if ( strEqual( argv[ i ], "-patchmeta" ) ) {
+			meta = true;
+			patchMeta = true;
 		}
-		else if ( !strcmp( argv[ i ],  "-fast" ) ) {
-			fast = qtrue;
+		else if ( strEqual( argv[ i ], "-fast" ) ) {
+			fast = true;
 		}
 	}
 
@@ -1010,26 +999,23 @@ int ConvertBSPMain( int argc, char **argv ){
 
 	/* clean up map name */
 	strcpy( source, ExpandArg( argv[i] ) );
-	ExtractFileExtension( source, ext );
 
 	if ( !map_allowed && !force_map ) {
-		force_bsp = qtrue;
+		force_bsp = true;
 	}
 
-	if ( force_map || ( !force_bsp && !Q_stricmp( ext, "map" ) && map_allowed ) ) {
+	if ( force_map || ( !force_bsp && striEqual( path_get_extension( source ), "map" ) && map_allowed ) ) {
 		if ( !map_allowed ) {
 			Sys_Warning( "the requested conversion should not be done from .map files. Compile a .bsp first.\n" );
 		}
-		StripExtension( source );
-		DefaultExtension( source, ".map" );
+		path_set_extension( source, ".map" );
 		Sys_Printf( "Loading %s\n", source );
-		LoadMapFile( source, qfalse, convertGame == NULL );
+		LoadMapFile( source, false, convertGame == NULL );
 		PseudoCompileBSP( convertGame != NULL );
 	}
 	else
 	{
-		StripExtension( source );
-		DefaultExtension( source, ".bsp" );
+		path_set_extension( source, ".bsp" );
 		Sys_Printf( "Loading %s\n", source );
 		LoadBSPFile( source );
 		ParseEntities();
@@ -1041,8 +1027,7 @@ int ConvertBSPMain( int argc, char **argv ){
 		game = convertGame;
 
 		/* write bsp */
-		StripExtension( source );
-		DefaultExtension( source, "_c.bsp" );
+		path_set_extension( source, "_c.bsp" );
 		Sys_Printf( "Writing %s\n", source );
 		WriteBSPFile( source );
 

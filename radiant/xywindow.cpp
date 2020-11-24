@@ -39,8 +39,7 @@
 #include "image.h"
 #include "gtkutil/messagebox.h"
 
-#include <gtk/gtklabel.h>
-#include <gtk/gtkmenuitem.h>
+#include <gtk/gtk.h>
 
 #include "generic/callback.h"
 #include "string/string.h"
@@ -96,6 +95,8 @@ struct xywindow_globals_private_t
 
 	int m_MSAA;
 
+	bool m_bZoomToPointer;
+
 	xywindow_globals_private_t() :
 		d_showgrid( true ),
 
@@ -111,7 +112,8 @@ struct xywindow_globals_private_t
 
 		m_bChaseMouse( true ),
 		m_bShowSize( true ),
-		m_MSAA( 8 ){
+		m_MSAA( 8 ),
+		m_bZoomToPointer( true ){
 	}
 
 };
@@ -239,7 +241,9 @@ inline unsigned int buttons_for_state( guint state ){
 
 void XYWnd::SetScale( float f ){
 	const float max_scale = 64.f;
-	const float min_scale = std::min( Width(), Height() ) / ( 1.1f * ( g_MaxWorldCoord - g_MinWorldCoord ) );
+	const float min_scale = std::min( Width(), Height() )
+							/ ( ( 1.1f + ( 1.f - GetMaxGridCoord() / g_MaxWorldCoord ) ) // adaptive min scale factor: from 2.0375 with 4096 grid to 1.1 with 64*1024
+							* 2.f * GetMaxGridCoord() );
 	f = std::min( max_scale, std::max( min_scale, f ) );
 	if( !float_equal_epsilon( m_fScale, f, float_mid( m_fScale, f ) * 1e-5f ) ){
 		m_fScale = f;
@@ -263,7 +267,15 @@ void XYWnd::ZoomOut(){
 void XYWnd::ZoomInWithMouse( int x, int y ){
 	const float old_scale = Scale();
 	ZoomIn();
-	if ( g_xywindow_globals.m_bZoomInToPointer && old_scale != Scale() ) {
+	ZoomCompensateOrigin( x, y, old_scale );
+}
+void XYWnd::ZoomOutWithMouse( int x, int y ){
+	const float old_scale = Scale();
+	ZoomOut();
+	ZoomCompensateOrigin( x, y, old_scale );
+}
+void XYWnd::ZoomCompensateOrigin( int x, int y, float old_scale ){
+	if ( g_xywindow_globals_private.m_bZoomToPointer && old_scale != Scale() ) {
 		const float scale_diff = 1.0 / old_scale - 1.0 / Scale();
 		NDIM1NDIM2( m_viewType )
 		Vector3 origin = GetOrigin();
@@ -461,8 +473,8 @@ Shader* XYWnd::m_state_selected = 0;
 #define OVERLAY_GL_FRONT_DRAW_HACK
 #endif
 bool XYWnd::overlayStart(){
-	if ( GTK_WIDGET_VISIBLE( m_gl_widget ) ) {
-		if ( glwidget_make_current( m_gl_widget ) != FALSE ) {
+	if ( gtk_widget_get_visible( m_gl_widget ) ) {
+		if ( glwidget_make_current( m_gl_widget ) ) {
 			if ( Map_Valid( g_map ) && ScreenUpdates_Enabled() ) {
 				GlobalOpenGL_debugAssertNoErrors();
 #ifdef OVERLAY_GL_FRONT_DRAW_HACK
@@ -552,9 +564,9 @@ void XYWnd::overlayDraw(){
 		glBegin( GL_LINES );
 		for( int i = 0, dim1 = nDim1, dim2 = nDim2; i < 2; ++i, std::swap( dim1, dim2 ) ){
 			v[dim1] = m_mousePosition[dim1];
-			v[dim2] = 2.0f * g_MinWorldCoord;
+			v[dim2] = 2.0f * -GetMaxGridCoord();
 			glVertex3fv( vector3_to_array( v ) );
-			v[dim2] = 2.0f * g_MaxWorldCoord;
+			v[dim2] = 2.0f * GetMaxGridCoord();
 			glVertex3fv( vector3_to_array( v ) );
 		}
 		glEnd();
@@ -633,7 +645,7 @@ gboolean xywnd_wheel_scroll( GtkWidget* widget, GdkEventScroll* event, XYWnd* xy
 		xywnd->ZoomInWithMouse( (int)event->x, (int)event->y );
 	}
 	else if ( event->direction == GDK_SCROLL_DOWN ) {
-		xywnd->ZoomOut();
+		xywnd->ZoomOutWithMouse( (int)event->x, (int)event->y );
 	}
 	return FALSE;
 }
@@ -652,7 +664,7 @@ gboolean xywnd_size_allocate( GtkWidget* widget, GtkAllocation* allocation, XYWn
 }
 
 gboolean xywnd_expose( GtkWidget* widget, GdkEventExpose* event, XYWnd* xywnd ){
-	if ( glwidget_make_current( xywnd->GetWidget() ) != FALSE ) {
+	if ( glwidget_make_current( xywnd->GetWidget() ) ) {
 		if ( Map_Valid( g_map ) && ScreenUpdates_Enabled() ) {
 			GlobalOpenGL_debugAssertNoErrors();
 			xywnd->XY_Draw();
@@ -710,10 +722,10 @@ XYWnd::XYWnd() :
 	m_window_observer->setRectangleDrawCallback( ReferenceCaller1<XYWnd, rect_t, xy_update_xor_rectangle>( *this ) );
 	m_window_observer->setView( m_view );
 
-	gtk_widget_ref( m_gl_widget );
+	g_object_ref( G_OBJECT( m_gl_widget ) );
 
 	gtk_widget_set_events( m_gl_widget, GDK_DESTROY | GDK_EXPOSURE_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK | GDK_POINTER_MOTION_MASK | GDK_SCROLL_MASK );
-	GTK_WIDGET_SET_FLAGS( m_gl_widget, GTK_CAN_FOCUS );
+	gtk_widget_set_can_focus( m_gl_widget, TRUE );
 
 	m_sizeHandler = g_signal_connect( G_OBJECT( m_gl_widget ), "size_allocate", G_CALLBACK( xywnd_size_allocate ), this );
 	m_exposeHandler = g_signal_connect( G_OBJECT( m_gl_widget ), "expose_event", G_CALLBACK( xywnd_expose ), this );
@@ -751,7 +763,7 @@ XYWnd::~XYWnd(){
 	g_signal_handler_disconnect( G_OBJECT( m_gl_widget ), m_sizeHandler );
 	g_signal_handler_disconnect( G_OBJECT( m_gl_widget ), m_exposeHandler );
 
-	gtk_widget_unref( m_gl_widget );
+	g_object_unref( G_OBJECT( m_gl_widget ) );
 
 	m_window_observer->release();
 }
@@ -770,7 +782,7 @@ const Vector3& XYWnd::GetOrigin() const {
 
 void XYWnd::SetOrigin( const Vector3& origin ){
 	for( std::size_t i = 0; i < 3; ++i )
-		m_vOrigin[i] = std::min( g_MaxWorldCoord, std::max( g_MinWorldCoord, origin[i] ) );
+		m_vOrigin[i] = std::min( GetMaxGridCoord(), std::max( -GetMaxGridCoord(), origin[i] ) );
 	updateModelview();
 	XYWnd_Update( *this );
 }
@@ -915,7 +927,7 @@ void XYWnd::NewBrushDrag( int x, int y, bool square, bool cube ){
 int g_entityCreationOffset = 0;
 
 void entitycreate_activated( GtkMenuItem* item, gpointer user_data ){
-	const char* entity_name = gtk_label_get_text( GTK_LABEL( GTK_BIN( item )->child ) );
+	const char* entity_name = gtk_label_get_text( GTK_LABEL( gtk_bin_get_child( GTK_BIN( item ) ) ) );
 	if( g_bCamEntityMenu ){
 		const Vector3 viewvector = -Camera_getViewVector( *g_pParentWnd->GetCamWnd() );
 		const float offset_for_multiple = std::max( GetSnapGridSize(), 8.f ) * g_entityCreationOffset;
@@ -932,14 +944,14 @@ void entitycreate_activated( GtkMenuItem* item, gpointer user_data ){
 gboolean entitycreate_rightClicked( GtkWidget* widget, GdkEvent* event, gpointer user_data ) {
 	/* convert entities */
 	if ( event->button.button == 3 ) {
-		Scene_EntitySetClassname_Selected( gtk_label_get_text( GTK_LABEL( GTK_BIN( widget )->child ) ) );
+		Scene_EntitySetClassname_Selected( gtk_label_get_text( GTK_LABEL( gtk_bin_get_child( GTK_BIN( widget ) ) ) ) );
 		if( ( event->button.state & GDK_CONTROL_MASK ) == 0 ){
 			gtk_menu_popdown( XYWnd::m_mnuDrop );
 		}
 		return TRUE;
 	}
 	/* create entities, don't close menu */
-	else if ( event->button.button == 1 && ( ( event->button.state & GDK_CONTROL_MASK ) != 0 || gtk_menu_get_tearoff_state( XYWnd::m_mnuDrop ) == TRUE ) ) {
+	else if ( event->button.button == 1 && ( ( event->button.state & GDK_CONTROL_MASK ) != 0 || gtk_menu_get_tearoff_state( XYWnd::m_mnuDrop ) ) ) {
 		entitycreate_activated( GTK_MENU_ITEM( widget ), 0 );
 		return TRUE;
 	}
@@ -951,7 +963,7 @@ gboolean entitycreate_rightUnClicked( GtkWidget* widget, GdkEvent* event, gpoint
 	if ( event->button.button == 3 ) {
 		return TRUE;
 	}
-	else if ( event->button.button == 1 && ( ( event->button.state & GDK_CONTROL_MASK ) != 0 || gtk_menu_get_tearoff_state( XYWnd::m_mnuDrop ) == TRUE ) ) {
+	else if ( event->button.button == 1 && ( ( event->button.state & GDK_CONTROL_MASK ) != 0 || gtk_menu_get_tearoff_state( XYWnd::m_mnuDrop ) ) ) {
 		return TRUE;
 	}
 	return FALSE;
@@ -1075,7 +1087,7 @@ void XYWnd::Move_Begin(){
 
 void XYWnd::Move_End(){
 	m_move_started = false;
-	g_xywnd_freezePointer.unfreeze_pointer( m_parent != 0 ? m_parent : MainFrame_getWindow(), false );
+	g_xywnd_freezePointer.unfreeze_pointer( false );
 	g_signal_handler_disconnect( G_OBJECT( m_gl_widget ), m_move_focusOut );
 }
 
@@ -1094,7 +1106,7 @@ void XYWnd_zoomDelta( int x, int y, unsigned int state, void* data ){
 		while ( abs( g_dragZoom ) > threshold )
 		{
 			if ( g_dragZoom > 0 ) {
-				reinterpret_cast<XYWnd*>( data )->ZoomOut();
+				reinterpret_cast<XYWnd*>( data )->ZoomOutWithMouse( g_zoom2x, g_zoom2y );
 				g_dragZoom -= threshold;
 			}
 			else
@@ -1125,7 +1137,7 @@ void XYWnd::Zoom_Begin( int x, int y ){
 
 void XYWnd::Zoom_End(){
 	m_zoom_started = false;
-	g_xywnd_freezePointer.unfreeze_pointer( m_parent != 0 ? m_parent : MainFrame_getWindow(), false );
+	g_xywnd_freezePointer.unfreeze_pointer( false );
 	g_signal_handler_disconnect( G_OBJECT( m_gl_widget ), m_zoom_focusOut );
 }
 
@@ -1339,7 +1351,7 @@ const char* BackgroundImage::background_image_dialog(){
 		buffer << g_qeglobals.m_userGamePath.c_str();
 	}
 
-	const char *filename = file_dialog( GTK_WIDGET( MainFrame_getWindow() ), TRUE, "Background Image", buffer.c_str(), NULL );
+	const char *filename = file_dialog( GTK_WIDGET( MainFrame_getWindow() ), true, "Background Image", buffer.c_str() );
 	if ( filename != 0 ) {
 		// use VFS to get the correct relative path
 		const char* relative = path_make_relative( filename, GlobalFileSystem().findRoot( filename ) );
@@ -1454,44 +1466,46 @@ void XYWnd::XY_DrawAxis( void ){
 	glEnd();
 	glLineWidth( 1 );
 	// now print axis symbols
+	const int fontHeight = GlobalOpenGL().m_font->getPixelHeight();
+	const float fontWidth = fontHeight * .55f;
 	glColor3fv( vector3_to_array( colourX ) );
-	glRasterPos2f( m_vOrigin[nDim1] - w + 55 / m_fScale, m_vOrigin[nDim2] + h - 55 / m_fScale );
+	glRasterPos2f( m_vOrigin[nDim1] - w + ( 65 - 3 - fontWidth ) / m_fScale, m_vOrigin[nDim2] + h - ( 45 + 3 + fontHeight ) / m_fScale );
 	GlobalOpenGL().drawChar( g_AxisName[nDim1] );
-	glRasterPos2f( 28 / m_fScale, -10 / m_fScale );
+	glRasterPos2f( ( 32 - fontWidth / 2 ) / m_fScale, -( 0 + 3 + fontHeight ) / m_fScale );
 	GlobalOpenGL().drawChar( g_AxisName[nDim1] );
 	glColor3fv( vector3_to_array( colourY ) );
-	glRasterPos2f( m_vOrigin[nDim1] - w + 25 / m_fScale, m_vOrigin[nDim2] + h - 30 / m_fScale );
+	glRasterPos2f( m_vOrigin[nDim1] - w + ( 40 - 4 - fontWidth ) / m_fScale, m_vOrigin[nDim2] + h - ( 20 + 3 + fontHeight ) / m_fScale );
 	GlobalOpenGL().drawChar( g_AxisName[nDim2] );
-	glRasterPos2f( -10 / m_fScale, 28 / m_fScale );
+	glRasterPos2f( ( 0 - 3 - fontWidth ) / m_fScale, ( 32 - fontHeight / 2 ) / m_fScale );
 	GlobalOpenGL().drawChar( g_AxisName[nDim2] );
 }
 
 void XYWnd::XY_DrawGrid( void ) {
-	float x, y, xb, xe, yb, ye;
-	float w, h, a;
+	float x, y;
 	char text[32];
 	float step, minor_step, stepx, stepy;
 	step = minor_step = stepx = stepy = GetGridSize();
 
 	int minor_power = Grid_getPower();
-	int mask;
-
 	while ( ( minor_step * m_fScale ) <= 4.0f ) { // make sure minor grid spacing is at least 4 pixels on the screen
 		++minor_power;
 		minor_step *= 2;
 	}
+
 	int power = minor_power;
 	while ( ( power % 3 ) != 0 || ( step * m_fScale ) <= 32.0f ) { // make sure major grid spacing is at least 32 pixels on the screen
 		++power;
 		step = pow( 2.0f, power );
 	}
-	mask = ( 1 << ( power - minor_power ) ) - 1;
+
+	const int mask = ( 1 << ( power - minor_power ) ) - 1;
+
 	while ( ( stepx * m_fScale ) <= 32.0f ) // text step x must be at least 32
 		stepx *= 2;
 	while ( ( stepy * m_fScale ) <= 32.0f ) // text step y must be at least 32
 		stepy *= 2;
 
-	a = ( ( GetSnapGridSize() > 0.0f ) ? 1.0f : 0.3f );
+	const float a = ( ( GetSnapGridSize() > 0.0f ) ? 1.0f : 0.3f );
 
 	glDisable( GL_TEXTURE_2D );
 	glDisable( GL_TEXTURE_1D );
@@ -1499,34 +1513,15 @@ void XYWnd::XY_DrawGrid( void ) {
 	glDisable( GL_BLEND );
 	glLineWidth( 1 );
 
-	w = ( m_nWidth / 2 / m_fScale );
-	h = ( m_nHeight / 2 / m_fScale );
+	const float w = ( m_nWidth / 2 / m_fScale );
+	const float h = ( m_nHeight / 2 / m_fScale );
 
 	NDIM1NDIM2( m_viewType )
 
-	xb = m_vOrigin[nDim1] - w;
-	if ( xb < g_region_mins[nDim1] ) {
-		xb = g_region_mins[nDim1];
-	}
-	xb = step * floor( xb / step );
-
-	xe = m_vOrigin[nDim1] + w;
-	if ( xe > g_region_maxs[nDim1] ) {
-		xe = g_region_maxs[nDim1];
-	}
-	xe = step * ceil( xe / step );
-
-	yb = m_vOrigin[nDim2] - h;
-	if ( yb < g_region_mins[nDim2] ) {
-		yb = g_region_mins[nDim2];
-	}
-	yb = step * floor( yb / step );
-
-	ye = m_vOrigin[nDim2] + h;
-	if ( ye > g_region_maxs[nDim2] ) {
-		ye = g_region_maxs[nDim2];
-	}
-	ye = step * ceil( ye / step );
+	const float xb = step * floor( std::max( m_vOrigin[nDim1] - w, g_region_mins[nDim1] ) / step );
+	const float xe = step * ceil( std::min( m_vOrigin[nDim1] + w, g_region_maxs[nDim1] ) / step );
+	const float yb = step * floor( std::max( m_vOrigin[nDim2] - h, g_region_mins[nDim2] ) / step );
+	const float ye = step * ceil( std::min( m_vOrigin[nDim2] + h, g_region_maxs[nDim2] ) / step );
 
 #define COLORS_DIFFER( a,b ) \
 	( ( a )[0] != ( b )[0] || \
@@ -1582,31 +1577,10 @@ void XYWnd::XY_DrawGrid( void ) {
 		}
 
 		if( g_region_active ){
-			float xb_, xe_, yb_, ye_;
-
-			xb_ = m_vOrigin[nDim1] - w;
-			if ( xb_ < g_MinWorldCoord ) {
-				xb_ = g_MinWorldCoord;
-			}
-			xb_ = step * floor( xb_ / step );
-
-			xe_ = m_vOrigin[nDim1] + w;
-			if ( xe_ > g_MaxWorldCoord ) {
-				xe_ = g_MaxWorldCoord;
-			}
-			xe_ = step * ceil( xe_ / step );
-
-			yb_ = m_vOrigin[nDim2] - h;
-			if ( yb_ < g_MinWorldCoord ) {
-				yb_ = g_MinWorldCoord;
-			}
-			yb_ = step * floor( yb_ / step );
-
-			ye_ = m_vOrigin[nDim2] + h;
-			if ( ye_ > g_MaxWorldCoord ) {
-				ye_ = g_MaxWorldCoord;
-			}
-			ye_ = step * ceil( ye_ / step );
+			const float xb_ = step * floor( std::max( m_vOrigin[nDim1] - w, -GetMaxGridCoord() ) / step );
+			const float xe_ = step * ceil( std::min( m_vOrigin[nDim1] + w, GetMaxGridCoord() ) / step );
+			const float yb_ = step * floor( std::max( m_vOrigin[nDim2] - h, -GetMaxGridCoord() ) / step );
+			const float ye_ = step * ceil( std::min( m_vOrigin[nDim2] + h, GetMaxGridCoord() ) / step );
 
 			glEnable( GL_BLEND );
 			// draw minor blocks
@@ -1653,15 +1627,16 @@ void XYWnd::XY_DrawGrid( void ) {
 	// draw coordinate text if needed
 	if ( g_xywindow_globals_private.show_coordinates ) {
 		glColor4fv( vector4_to_array( Vector4( g_xywindow_globals.color_gridtext, 1.0f ) ) );
-		float offx = m_vOrigin[nDim2] + h - ( 4 + GlobalOpenGL().m_font->getPixelAscent() ) / m_fScale;
-		float offy = m_vOrigin[nDim1] - w +  4                                            / m_fScale;
+		const float offx = m_vOrigin[nDim2] + h - ( 1 + GlobalOpenGL().m_font->getPixelHeight() ) / m_fScale;
+		const float offy = m_vOrigin[nDim1] - w +  4                                            / m_fScale;
+		const float fontDescent = ( GlobalOpenGL().m_font->getPixelDescent() - 1 ) / m_fScale;
 		for ( x = xb - fmod( xb, stepx ); x <= xe ; x += stepx ) {
 			glRasterPos2f( x, offx );
 			sprintf( text, "%g", x );
 			GlobalOpenGL().drawString( text );
 		}
 		for ( y = yb - fmod( yb, stepy ); y <= ye ; y += stepy ) {
-			glRasterPos2f( offy, y );
+			glRasterPos2f( offy, y - fontDescent );
 			sprintf( text, "%g", y );
 			GlobalOpenGL().drawString( text );
 		}
@@ -1673,7 +1648,7 @@ void XYWnd::XY_DrawGrid( void ) {
 	}
 	else{
 		glColor3fv( vector3_to_array( Active()? g_xywindow_globals.color_viewname : g_xywindow_globals.color_gridtext ) );
-		glRasterPos2f( m_vOrigin[nDim1] - w + 35 / m_fScale, m_vOrigin[nDim2] + h - 20 / m_fScale );
+		glRasterPos2f( m_vOrigin[nDim1] - w + 35 / m_fScale, m_vOrigin[nDim2] + h - ( GlobalOpenGL().m_font->getPixelHeight() * 2 ) / m_fScale );
 		GlobalOpenGL().drawString( ViewType_getTitle( m_viewType ) );
 	}
 
@@ -1713,8 +1688,7 @@ void XYWnd::XY_DrawBlockGrid(){
 		g_xywindow_globals_private.blockSize = 1024;
 	}
 
-	float x, y, xb, xe, yb, ye;
-	float w, h;
+	float x, y;
 	char text[32];
 
 	glDisable( GL_TEXTURE_2D );
@@ -1722,34 +1696,15 @@ void XYWnd::XY_DrawBlockGrid(){
 	glDisable( GL_DEPTH_TEST );
 	glDisable( GL_BLEND );
 
-	w = ( m_nWidth / 2 / m_fScale );
-	h = ( m_nHeight / 2 / m_fScale );
+	const float w = ( m_nWidth / 2 / m_fScale );
+	const float h = ( m_nHeight / 2 / m_fScale );
 
 	NDIM1NDIM2( m_viewType )
 
-	xb = m_vOrigin[nDim1] - w;
-	if ( xb < g_region_mins[nDim1] ) {
-		xb = g_region_mins[nDim1];
-	}
-	xb = static_cast<float>( g_xywindow_globals_private.blockSize * floor( xb / g_xywindow_globals_private.blockSize ) );
-
-	xe = m_vOrigin[nDim1] + w;
-	if ( xe > g_region_maxs[nDim1] ) {
-		xe = g_region_maxs[nDim1];
-	}
-	xe = static_cast<float>( g_xywindow_globals_private.blockSize * ceil( xe / g_xywindow_globals_private.blockSize ) );
-
-	yb = m_vOrigin[nDim2] - h;
-	if ( yb < g_region_mins[nDim2] ) {
-		yb = g_region_mins[nDim2];
-	}
-	yb = static_cast<float>( g_xywindow_globals_private.blockSize * floor( yb / g_xywindow_globals_private.blockSize ) );
-
-	ye = m_vOrigin[nDim2] + h;
-	if ( ye > g_region_maxs[nDim2] ) {
-		ye = g_region_maxs[nDim2];
-	}
-	ye = static_cast<float>( g_xywindow_globals_private.blockSize * ceil( ye / g_xywindow_globals_private.blockSize ) );
+	const float xb = g_xywindow_globals_private.blockSize * floor( std::max( m_vOrigin[nDim1] - w, g_region_mins[nDim1] ) / g_xywindow_globals_private.blockSize );
+	const float xe = g_xywindow_globals_private.blockSize * ceil( std::min( m_vOrigin[nDim1] + w, g_region_maxs[nDim1] ) / g_xywindow_globals_private.blockSize );
+	const float yb = g_xywindow_globals_private.blockSize * floor( std::max( m_vOrigin[nDim2] - h, g_region_mins[nDim2] ) / g_xywindow_globals_private.blockSize );
+	const float ye = g_xywindow_globals_private.blockSize * ceil( std::min( m_vOrigin[nDim2] + h, g_region_maxs[nDim2] ) / g_xywindow_globals_private.blockSize );
 
 	// draw major blocks
 
@@ -1866,22 +1821,24 @@ void XYWnd::PaintSizeInfo( const int nDim1, const int nDim2 ){
 	glVertex3fv( vector3_to_array( v ) );
 	glEnd();
 
+	const int fontHeight = GlobalOpenGL().m_font->getPixelHeight();
+
 	v[nDim1] = mid[nDim1];
-	v[nDim2] = min[nDim2] - 20.f / m_fScale;
+	v[nDim2] = min[nDim2] - ( 10 + 2 + fontHeight ) / m_fScale;
 	glRasterPos3fv( vector3_to_array( v ) );
 	dimensions << dimStrings[nDim1] << size[nDim1];
 	GlobalOpenGL().drawString( dimensions.c_str() );
 	dimensions.clear();
 
 	v[nDim1] = max[nDim1] + 16.f / m_fScale;
-	v[nDim2] = mid[nDim2];
+	v[nDim2] = mid[nDim2] - fontHeight / m_fScale / 2;
 	glRasterPos3fv( vector3_to_array( v ) );
 	dimensions << dimStrings[nDim2] << size[nDim2];
 	GlobalOpenGL().drawString( dimensions.c_str() );
 	dimensions.clear();
 
 	v[nDim1] = min[nDim1] + 4.f;
-	v[nDim2] = max[nDim2] + 8.f / m_fScale;
+	v[nDim2] = max[nDim2] + 5.f / m_fScale;
 	glRasterPos3fv( vector3_to_array( v ) );
 	dimensions << "(" << dimStrings[nDim1] << min[nDim1] << "  " << dimStrings[nDim2] << max[nDim2] << ")";
 	GlobalOpenGL().drawString( dimensions.c_str() );
@@ -2170,13 +2127,10 @@ void XYWnd::XY_Draw(){
 
 		glColor3fv( vector3_to_array( g_xywindow_globals.color_viewname ) );
 
-		glRasterPos3f( 2.f, GlobalOpenGL().m_font->getPixelDescent() + 1.f, 0.0f );
+		glRasterPos3f( 2.f, 0.f, 0.0f );
 		extern const char* Renderer_GetStats();
-		GlobalOpenGL().drawString( Renderer_GetStats() );
-
-		//globalOutputStream() << m_render_time.elapsed_msec() << "\n";
 		StringOutputStream stream;
-		stream << " | f2f: " << m_render_time.elapsed_msec();
+		stream << Renderer_GetStats() << " | f2f: " << m_render_time.elapsed_msec();
 		GlobalOpenGL().drawString( stream.c_str() );
 		m_render_time.start();
 	}
@@ -2491,7 +2445,7 @@ typedef FreeCaller1<const IntImportCallback&, MSAAExport> MSAAExportCaller;
 
 void XYShow_registerCommands(){
 	GlobalToggles_insert( "ShowSize2d", FreeCaller<ToggleShowSizeInfo>(), ToggleItem::AddCallbackCaller( g_show_size_item ), Accelerator( 'J' ) );
-	GlobalToggles_insert( "ToggleCrosshairs", FreeCaller<ToggleShowCrosshair>(), ToggleItem::AddCallbackCaller( g_show_crosshair_item ), Accelerator( 'X', (GdkModifierType)GDK_SHIFT_MASK ) );
+	GlobalToggles_insert( "ToggleCrosshairs", FreeCaller<ToggleShowCrosshair>(), ToggleItem::AddCallbackCaller( g_show_crosshair_item ), Accelerator( 'X', GDK_SHIFT_MASK ) );
 	GlobalToggles_insert( "ToggleGrid", FreeCaller<ToggleShowGrid>(), ToggleItem::AddCallbackCaller( g_show_grid_item ), Accelerator( '0' ) );
 
 	GlobalToggles_insert( "ShowAngles", FreeCaller<ShowAnglesToggle>(), ToggleItem::AddCallbackCaller( g_show_angles ) );
@@ -2516,7 +2470,7 @@ void Orthographic_constructPreferences( PreferencesPage& page ){
 	page.appendCheckBox( "", "Solid selection boxes ( no stipple )", g_xywindow_globals.m_bNoStipple );
 	//page.appendCheckBox( "", "Display size info", g_xywindow_globals_private.m_bShowSize );
 	page.appendCheckBox( "", "Chase mouse during drags", g_xywindow_globals_private.m_bChaseMouse );
-	page.appendCheckBox( "", "Zoom In to Mouse pointer", g_xywindow_globals.m_bZoomInToPointer );
+	page.appendCheckBox( "", "Zoom to Mouse pointer", g_xywindow_globals_private.m_bZoomToPointer );
 
 	if( GlobalOpenGL().support_ARB_framebuffer_object ){
 		const char* samples[] = { "0", "2", "4", "8", "16", "32" };
@@ -2546,18 +2500,18 @@ void XYWindow_Construct(){
 	GlobalToggles_insert( "ToggleView", ToggleShown::ToggleCaller( g_xy_top_shown ), ToggleItem::AddCallbackCaller( g_xy_top_shown.m_item ) );
 	GlobalToggles_insert( "ToggleSideView", ToggleShown::ToggleCaller( g_yz_side_shown ), ToggleItem::AddCallbackCaller( g_yz_side_shown.m_item ) );
 	GlobalToggles_insert( "ToggleFrontView", ToggleShown::ToggleCaller( g_xz_front_shown ), ToggleItem::AddCallbackCaller( g_xz_front_shown.m_item ) );
-	GlobalCommands_insert( "NextView", FreeCaller<XY_NextView>(), Accelerator( GDK_Tab, (GdkModifierType)GDK_CONTROL_MASK ) );
-	GlobalCommands_insert( "ZoomIn", FreeCaller<XY_ZoomIn>(), Accelerator( GDK_Delete ) );
-	GlobalCommands_insert( "ZoomOut", FreeCaller<XY_ZoomOut>(), Accelerator( GDK_Insert ) );
-	GlobalCommands_insert( "ViewTop", FreeCaller<XY_Top>(), Accelerator( GDK_KP_7 ) );
-	GlobalCommands_insert( "ViewFront", FreeCaller<XY_Front>(), Accelerator( GDK_KP_1 ) );
-	GlobalCommands_insert( "ViewSide", FreeCaller<XY_Side>(), Accelerator( GDK_KP_3 ) );
+	GlobalCommands_insert( "NextView", FreeCaller<XY_NextView>(), Accelerator( GDK_KEY_Tab, GDK_CONTROL_MASK ) );
+	GlobalCommands_insert( "ZoomIn", FreeCaller<XY_ZoomIn>(), Accelerator( GDK_KEY_Delete ) );
+	GlobalCommands_insert( "ZoomOut", FreeCaller<XY_ZoomOut>(), Accelerator( GDK_KEY_Insert ) );
+	GlobalCommands_insert( "ViewTop", FreeCaller<XY_Top>(), Accelerator( GDK_KEY_KP_7 ) );
+	GlobalCommands_insert( "ViewFront", FreeCaller<XY_Front>(), Accelerator( GDK_KEY_KP_1 ) );
+	GlobalCommands_insert( "ViewSide", FreeCaller<XY_Side>(), Accelerator( GDK_KEY_KP_3 ) );
 	GlobalCommands_insert( "Zoom100", FreeCaller<XY_Zoom100>() );
-	GlobalCommands_insert( "CenterXYView", FreeCaller<XY_Centralize>(), Accelerator( GDK_Tab, (GdkModifierType)( GDK_SHIFT_MASK | GDK_CONTROL_MASK ) ) );
-	GlobalCommands_insert( "XYFocusOnSelected", FreeCaller<XY_Focus>(), Accelerator( GDK_grave ) );
+	GlobalCommands_insert( "CenterXYView", FreeCaller<XY_Centralize>(), Accelerator( GDK_KEY_Tab, (GdkModifierType)( GDK_SHIFT_MASK | GDK_CONTROL_MASK ) ) );
+	GlobalCommands_insert( "XYFocusOnSelected", FreeCaller<XY_Focus>(), Accelerator( GDK_KEY_grave ) );
 
 	GlobalPreferenceSystem().registerPreference( "XYMSAA", IntImportStringCaller( g_xywindow_globals_private.m_MSAA ), IntExportStringCaller( g_xywindow_globals_private.m_MSAA ) );
-	GlobalPreferenceSystem().registerPreference( "2DZoomInToPointer", BoolImportStringCaller( g_xywindow_globals.m_bZoomInToPointer ), BoolExportStringCaller( g_xywindow_globals.m_bZoomInToPointer ) );
+	GlobalPreferenceSystem().registerPreference( "2DZoomInToPointer", BoolImportStringCaller( g_xywindow_globals_private.m_bZoomToPointer ), BoolExportStringCaller( g_xywindow_globals_private.m_bZoomToPointer ) );
 	GlobalPreferenceSystem().registerPreference( "ChaseMouse", BoolImportStringCaller( g_xywindow_globals_private.m_bChaseMouse ), BoolExportStringCaller( g_xywindow_globals_private.m_bChaseMouse ) );
 	GlobalPreferenceSystem().registerPreference( "ShowSize2d", BoolImportStringCaller( g_xywindow_globals_private.m_bShowSize ), BoolExportStringCaller( g_xywindow_globals_private.m_bShowSize ) );
 	GlobalPreferenceSystem().registerPreference( "ShowCrosshair", BoolImportStringCaller( g_bCrossHairs ), BoolExportStringCaller( g_bCrossHairs ) );

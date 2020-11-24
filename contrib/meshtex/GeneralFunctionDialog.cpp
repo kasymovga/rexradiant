@@ -127,17 +127,17 @@ GeneralFunctionDialog::GeneralFunctionDialog(const std::string& key) :
 
    // Mutually exclusive "Surface values" and "Control values" radio buttons.
 
-   button = gtk_radio_button_new_with_label(NULL,
+   button = gtk_radio_button_new_with_label_from_widget(NULL,
                                             DIALOG_GEN_FUNC_SURFACE_VALUES);
-   gtk_object_set_data(GTK_OBJECT(_dialog), "surface", button);
+   g_object_set_data(G_OBJECT(_dialog), "surface", button);
    gtk_box_pack_start(GTK_BOX(hbox), button, FALSE, FALSE, 0);
    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(button), TRUE);
    gtk_widget_show(button);
 
-   button = gtk_radio_button_new_with_label(
-      gtk_radio_button_group(GTK_RADIO_BUTTON(button)),
+   button = gtk_radio_button_new_with_label_from_widget(
+                             GTK_RADIO_BUTTON(button),
                              DIALOG_GEN_FUNC_CONTROL_VALUES);
-   gtk_object_set_data(GTK_OBJECT(_dialog), "control", button);
+   g_object_set_data(G_OBJECT(_dialog), "control", button);
    gtk_box_pack_end(GTK_BOX(hbox), button, FALSE, FALSE, 0);
    gtk_widget_show(button);
 
@@ -150,7 +150,7 @@ GeneralFunctionDialog::GeneralFunctionDialog(const std::string& key) :
    // be active when it is checked.
 
    applybutton = gtk_check_button_new();
-   gtk_object_set_data(GTK_OBJECT(_dialog), "s_apply", applybutton);
+   g_object_set_data(G_OBJECT(_dialog), "s_apply", applybutton);
    gtk_table_attach_defaults(GTK_TABLE(table), applybutton, 0, 1, 2, 3);
    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(applybutton), TRUE);
    gtk_widget_show(applybutton);
@@ -162,10 +162,10 @@ GeneralFunctionDialog::GeneralFunctionDialog(const std::string& key) :
    UIInstance().RegisterWidgetDependence(applybutton, label);
 
    entry = gtk_entry_new();
-   gtk_object_set_data(GTK_OBJECT(_dialog), "s_oldval", entry);
+   g_object_set_data(G_OBJECT(_dialog), "s_oldval", entry);
    gtk_entry_set_text(GTK_ENTRY(entry), "1.0");
    gtk_table_attach_defaults(GTK_TABLE(table), entry, 2, 3, 2, 3);
-   gtk_widget_set_usize(entry, 50, -2);
+   gtk_widget_set_size_request(entry, 50, -1);
    gtk_widget_show(entry);
 
    UIInstance().RegisterWidgetDependence(applybutton, entry);
@@ -177,10 +177,10 @@ GeneralFunctionDialog::GeneralFunctionDialog(const std::string& key) :
    UIInstance().RegisterWidgetDependence(applybutton, label);
 
    entry = gtk_entry_new();
-   gtk_object_set_data(GTK_OBJECT(_dialog), "s_rowdist", entry);
+   g_object_set_data(G_OBJECT(_dialog), "s_rowdist", entry);
    gtk_entry_set_text(GTK_ENTRY(entry), "0.0");
    gtk_table_attach_defaults(GTK_TABLE(table), entry, 4, 5, 2, 3);
-   gtk_widget_set_usize(entry, 50, -2);
+   gtk_widget_set_size_request(entry, 50, -1);
    gtk_widget_show(entry);
 
    UIInstance().RegisterWidgetDependence(applybutton, entry);
@@ -192,10 +192,10 @@ GeneralFunctionDialog::GeneralFunctionDialog(const std::string& key) :
    UIInstance().RegisterWidgetDependence(applybutton, label);
 
    entry = gtk_entry_new();
-   gtk_object_set_data(GTK_OBJECT(_dialog), "s_coldist", entry);
+   g_object_set_data(G_OBJECT(_dialog), "s_coldist", entry);
    gtk_entry_set_text(GTK_ENTRY(entry), "0.0");
    gtk_table_attach_defaults(GTK_TABLE(table), entry, 6, 7, 2, 3);
-   gtk_widget_set_usize(entry, 50, -2);
+   gtk_widget_set_size_request(entry, 50, -1);
    gtk_widget_show(entry);
 
    UIInstance().RegisterWidgetDependence(applybutton, entry);
@@ -207,10 +207,10 @@ GeneralFunctionDialog::GeneralFunctionDialog(const std::string& key) :
    UIInstance().RegisterWidgetDependence(applybutton, label);
 
    entry = gtk_entry_new();
-   gtk_object_set_data(GTK_OBJECT(_dialog), "s_rownum", entry);
+   g_object_set_data(G_OBJECT(_dialog), "s_rownum", entry);
    gtk_entry_set_text(GTK_ENTRY(entry), "0.0");
    gtk_table_attach_defaults(GTK_TABLE(table), entry, 8, 9, 2, 3);
-   gtk_widget_set_usize(entry, 50, -2);
+   gtk_widget_set_size_request(entry, 50, -1);
    gtk_widget_show(entry);
 
    UIInstance().RegisterWidgetDependence(applybutton, entry);
@@ -222,10 +222,10 @@ GeneralFunctionDialog::GeneralFunctionDialog(const std::string& key) :
    UIInstance().RegisterWidgetDependence(applybutton, label);
 
    entry = gtk_entry_new();
-   gtk_object_set_data(GTK_OBJECT(_dialog), "s_colnum", entry);
+   g_object_set_data(G_OBJECT(_dialog), "s_colnum", entry);
    gtk_entry_set_text(GTK_ENTRY(entry), "0.0");
    gtk_table_attach_defaults(GTK_TABLE(table), entry, 10, 11, 2, 3);
-   gtk_widget_set_usize(entry, 50, -2);
+   gtk_widget_set_size_request(entry, 50, -1);
    gtk_widget_show(entry);
 
    UIInstance().RegisterWidgetDependence(applybutton, entry);
@@ -237,10 +237,10 @@ GeneralFunctionDialog::GeneralFunctionDialog(const std::string& key) :
    UIInstance().RegisterWidgetDependence(applybutton, label);
 
    entry = gtk_entry_new();
-   gtk_object_set_data(GTK_OBJECT(_dialog), "s_constant", entry);
+   g_object_set_data(G_OBJECT(_dialog), "s_constant", entry);
    gtk_entry_set_text(GTK_ENTRY(entry), "0.0");
    gtk_table_attach_defaults(GTK_TABLE(table), entry, 12, 13, 2, 3);
-   gtk_widget_set_usize(entry, 50, -2);
+   gtk_widget_set_size_request(entry, 50, -1);
    gtk_widget_show(entry);
 
    UIInstance().RegisterWidgetDependence(applybutton, entry);
@@ -250,7 +250,7 @@ GeneralFunctionDialog::GeneralFunctionDialog(const std::string& key) :
    // be active when it is checked.
 
    applybutton = gtk_check_button_new();
-   gtk_object_set_data(GTK_OBJECT(_dialog), "t_apply", applybutton);
+   g_object_set_data(G_OBJECT(_dialog), "t_apply", applybutton);
    gtk_table_attach_defaults(GTK_TABLE(table), applybutton, 0, 1, 3, 4);
    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(applybutton), TRUE);
    gtk_widget_show(applybutton);
@@ -262,10 +262,10 @@ GeneralFunctionDialog::GeneralFunctionDialog(const std::string& key) :
    UIInstance().RegisterWidgetDependence(applybutton, label);
 
    entry = gtk_entry_new();
-   gtk_object_set_data(GTK_OBJECT(_dialog), "t_oldval", entry);
+   g_object_set_data(G_OBJECT(_dialog), "t_oldval", entry);
    gtk_entry_set_text(GTK_ENTRY(entry), "1.0");
    gtk_table_attach_defaults(GTK_TABLE(table), entry, 2, 3, 3, 4);
-   gtk_widget_set_usize(entry, 50, -2);
+   gtk_widget_set_size_request(entry, 50, -1);
    gtk_widget_show(entry);
 
    UIInstance().RegisterWidgetDependence(applybutton, entry);
@@ -277,10 +277,10 @@ GeneralFunctionDialog::GeneralFunctionDialog(const std::string& key) :
    UIInstance().RegisterWidgetDependence(applybutton, label);
 
    entry = gtk_entry_new();
-   gtk_object_set_data(GTK_OBJECT(_dialog), "t_rowdist", entry);
+   g_object_set_data(G_OBJECT(_dialog), "t_rowdist", entry);
    gtk_entry_set_text(GTK_ENTRY(entry), "0.0");
    gtk_table_attach_defaults(GTK_TABLE(table), entry, 4, 5, 3, 4);
-   gtk_widget_set_usize(entry, 50, -2);
+   gtk_widget_set_size_request(entry, 50, -1);
    gtk_widget_show(entry);
 
    UIInstance().RegisterWidgetDependence(applybutton, entry);
@@ -292,10 +292,10 @@ GeneralFunctionDialog::GeneralFunctionDialog(const std::string& key) :
    UIInstance().RegisterWidgetDependence(applybutton, label);
 
    entry = gtk_entry_new();
-   gtk_object_set_data(GTK_OBJECT(_dialog), "t_coldist", entry);
+   g_object_set_data(G_OBJECT(_dialog), "t_coldist", entry);
    gtk_entry_set_text(GTK_ENTRY(entry), "0.0");
    gtk_table_attach_defaults(GTK_TABLE(table), entry, 6, 7, 3, 4);
-   gtk_widget_set_usize(entry, 50, -2);
+   gtk_widget_set_size_request(entry, 50, -1);
    gtk_widget_show(entry);
 
    UIInstance().RegisterWidgetDependence(applybutton, entry);
@@ -307,10 +307,10 @@ GeneralFunctionDialog::GeneralFunctionDialog(const std::string& key) :
    UIInstance().RegisterWidgetDependence(applybutton, label);
 
    entry = gtk_entry_new();
-   gtk_object_set_data(GTK_OBJECT(_dialog), "t_rownum", entry);
+   g_object_set_data(G_OBJECT(_dialog), "t_rownum", entry);
    gtk_entry_set_text(GTK_ENTRY(entry), "0.0");
    gtk_table_attach_defaults(GTK_TABLE(table), entry, 8, 9, 3, 4);
-   gtk_widget_set_usize(entry, 50, -2);
+   gtk_widget_set_size_request(entry, 50, -1);
    gtk_widget_show(entry);
 
    UIInstance().RegisterWidgetDependence(applybutton, entry);
@@ -322,10 +322,10 @@ GeneralFunctionDialog::GeneralFunctionDialog(const std::string& key) :
    UIInstance().RegisterWidgetDependence(applybutton, label);
 
    entry = gtk_entry_new();
-   gtk_object_set_data(GTK_OBJECT(_dialog), "t_colnum", entry);
+   g_object_set_data(G_OBJECT(_dialog), "t_colnum", entry);
    gtk_entry_set_text(GTK_ENTRY(entry), "0.0");
    gtk_table_attach_defaults(GTK_TABLE(table), entry, 10, 11, 3, 4);
-   gtk_widget_set_usize(entry, 50, -2);
+   gtk_widget_set_size_request(entry, 50, -1);
    gtk_widget_show(entry);
 
    UIInstance().RegisterWidgetDependence(applybutton, entry);
@@ -337,10 +337,10 @@ GeneralFunctionDialog::GeneralFunctionDialog(const std::string& key) :
    UIInstance().RegisterWidgetDependence(applybutton, label);
 
    entry = gtk_entry_new();
-   gtk_object_set_data(GTK_OBJECT(_dialog), "t_constant", entry);
+   g_object_set_data(G_OBJECT(_dialog), "t_constant", entry);
    gtk_entry_set_text(GTK_ENTRY(entry), "0.0");
    gtk_table_attach_defaults(GTK_TABLE(table), entry, 12, 13, 3, 4);
-   gtk_widget_set_usize(entry, 50, -2);
+   gtk_widget_set_size_request(entry, 50, -1);
    gtk_widget_show(entry);
 
    UIInstance().RegisterWidgetDependence(applybutton, entry);
@@ -377,18 +377,18 @@ GeneralFunctionDialog::GeneralFunctionDialog(const std::string& key) :
    gtk_widget_show(button);
 
    entry = gtk_entry_new();
-   gtk_object_set_data(GTK_OBJECT(_dialog), "col_num_align", entry);
+   g_object_set_data(G_OBJECT(_dialog), "col_num_align", entry);
    gtk_entry_set_text(GTK_ENTRY(entry), "0");
    gtk_box_pack_start(GTK_BOX(hbox), entry, FALSE, FALSE, 5);
-   gtk_widget_set_usize(entry, 25, -2);
+   gtk_widget_set_size_request(entry, 25, -1);
    gtk_widget_show(entry);
 
    UIInstance().RegisterWidgetDependence(button, entry);
 
-   button = gtk_radio_button_new_with_label(
-      gtk_radio_button_group(GTK_RADIO_BUTTON(button)),
+   button = gtk_radio_button_new_with_label_from_widget(
+                             GTK_RADIO_BUTTON(button),
                              DIALOG_GEN_FUNC_MAX_OPT_LABEL);
-   gtk_object_set_data(GTK_OBJECT(_dialog), "col_max_align", button);
+   g_object_set_data(G_OBJECT(_dialog), "col_max_align", button);
    gtk_box_pack_end(GTK_BOX(hbox), button, TRUE, FALSE, 5);
    gtk_widget_show(button);
 
@@ -399,7 +399,7 @@ GeneralFunctionDialog::GeneralFunctionDialog(const std::string& key) :
    // Widgets for specifying the reference row & usage.
 
    refbutton = gtk_check_button_new_with_label(DIALOG_GEN_FUNC_REF_ROW_FRAME_LABEL);
-   gtk_object_set_data(GTK_OBJECT(_dialog), "row_ref", refbutton);
+   g_object_set_data(G_OBJECT(_dialog), "row_ref", refbutton);
    gtk_widget_show(refbutton);
 
    frame = gtk_frame_new(NULL);
@@ -424,20 +424,20 @@ GeneralFunctionDialog::GeneralFunctionDialog(const std::string& key) :
    UIInstance().RegisterWidgetDependence(refbutton, button);
 
    entry = gtk_entry_new();
-   gtk_object_set_data(GTK_OBJECT(_dialog), "row_num_ref", entry);
+   g_object_set_data(G_OBJECT(_dialog), "row_num_ref", entry);
    gtk_entry_set_text(GTK_ENTRY(entry), "0");
    gtk_box_pack_start(GTK_BOX(hbox), entry, FALSE, FALSE, 5);
-   gtk_widget_set_usize(entry, 25, -2);
+   gtk_widget_set_size_request(entry, 25, -1);
    gtk_widget_set_sensitive(entry, FALSE);
    gtk_widget_show(entry);
 
    UIInstance().RegisterWidgetDependence(refbutton, entry);
    UIInstance().RegisterWidgetDependence(button, entry);
 
-   button = gtk_radio_button_new_with_label(
-      gtk_radio_button_group(GTK_RADIO_BUTTON(button)),
+   button = gtk_radio_button_new_with_label_from_widget(
+                             GTK_RADIO_BUTTON(button),
                              DIALOG_GEN_FUNC_MAX_OPT_LABEL);
-   gtk_object_set_data(GTK_OBJECT(_dialog), "row_max_ref", button);
+   g_object_set_data(G_OBJECT(_dialog), "row_max_ref", button);
    gtk_box_pack_end(GTK_BOX(hbox), button, TRUE, FALSE, 5);
    gtk_widget_set_sensitive(button, FALSE);
    gtk_widget_show(button);
@@ -449,7 +449,7 @@ GeneralFunctionDialog::GeneralFunctionDialog(const std::string& key) :
    gtk_widget_show(hbox);
 
    button = gtk_check_button_new_with_label(DIALOG_GEN_FUNC_REF_TOTAL_OPT_LABEL);
-   gtk_object_set_data(GTK_OBJECT(_dialog), "row_ref_total", button);
+   g_object_set_data(G_OBJECT(_dialog), "row_ref_total", button);
    gtk_box_pack_start(GTK_BOX(hbox), button, FALSE, FALSE, 5);
    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(button), TRUE);
    gtk_widget_set_sensitive(button, FALSE);
@@ -485,18 +485,18 @@ GeneralFunctionDialog::GeneralFunctionDialog(const std::string& key) :
    gtk_widget_show(button);
 
    entry = gtk_entry_new();
-   gtk_object_set_data(GTK_OBJECT(_dialog), "row_num_align", entry);
+   g_object_set_data(G_OBJECT(_dialog), "row_num_align", entry);
    gtk_entry_set_text(GTK_ENTRY(entry), "0");
    gtk_box_pack_start(GTK_BOX(hbox), entry, FALSE, FALSE, 5);
-   gtk_widget_set_usize(entry, 25, -2);
+   gtk_widget_set_size_request(entry, 25, -1);
    gtk_widget_show(entry);
 
    UIInstance().RegisterWidgetDependence(button, entry);
 
-   button = gtk_radio_button_new_with_label(
-      gtk_radio_button_group(GTK_RADIO_BUTTON(button)),
+   button = gtk_radio_button_new_with_label_from_widget(
+                             GTK_RADIO_BUTTON(button),
                              DIALOG_GEN_FUNC_MAX_OPT_LABEL);
-   gtk_object_set_data(GTK_OBJECT(_dialog), "row_max_align", button);
+   g_object_set_data(G_OBJECT(_dialog), "row_max_align", button);
    gtk_box_pack_end(GTK_BOX(hbox), button, TRUE, FALSE, 5);
    gtk_widget_show(button);
 
@@ -507,7 +507,7 @@ GeneralFunctionDialog::GeneralFunctionDialog(const std::string& key) :
    // Widgets for specifying the reference column & usage.
 
    refbutton = gtk_check_button_new_with_label(DIALOG_GEN_FUNC_REF_COL_FRAME_LABEL);
-   gtk_object_set_data(GTK_OBJECT(_dialog), "col_ref", refbutton);
+   g_object_set_data(G_OBJECT(_dialog), "col_ref", refbutton);
    gtk_widget_show(refbutton);
 
    frame = gtk_frame_new(NULL);
@@ -532,20 +532,20 @@ GeneralFunctionDialog::GeneralFunctionDialog(const std::string& key) :
    UIInstance().RegisterWidgetDependence(refbutton, button);
 
    entry = gtk_entry_new();
-   gtk_object_set_data(GTK_OBJECT(_dialog), "col_num_ref", entry);
+   g_object_set_data(G_OBJECT(_dialog), "col_num_ref", entry);
    gtk_entry_set_text(GTK_ENTRY(entry), "0");
    gtk_box_pack_start(GTK_BOX(hbox), entry, FALSE, FALSE, 5);
-   gtk_widget_set_usize(entry, 25, -2);
+   gtk_widget_set_size_request(entry, 25, -1);
    gtk_widget_set_sensitive(entry, FALSE);
    gtk_widget_show(entry);
 
    UIInstance().RegisterWidgetDependence(refbutton, entry);
    UIInstance().RegisterWidgetDependence(button, entry);
 
-   button = gtk_radio_button_new_with_label(
-      gtk_radio_button_group(GTK_RADIO_BUTTON(button)),
+   button = gtk_radio_button_new_with_label_from_widget(
+                             GTK_RADIO_BUTTON(button),
                              DIALOG_GEN_FUNC_MAX_OPT_LABEL);
-   gtk_object_set_data(GTK_OBJECT(_dialog), "col_max_ref", button);
+   g_object_set_data(G_OBJECT(_dialog), "col_max_ref", button);
    gtk_box_pack_end(GTK_BOX(hbox), button, TRUE, FALSE, 5);
    gtk_widget_set_sensitive(button, FALSE);
    gtk_widget_show(button);
@@ -557,7 +557,7 @@ GeneralFunctionDialog::GeneralFunctionDialog(const std::string& key) :
    gtk_widget_show(hbox);
 
    button = gtk_check_button_new_with_label(DIALOG_GEN_FUNC_REF_TOTAL_OPT_LABEL);
-   gtk_object_set_data(GTK_OBJECT(_dialog), "col_ref_total", button);
+   g_object_set_data(G_OBJECT(_dialog), "col_ref_total", button);
    gtk_box_pack_start(GTK_BOX(hbox), button, FALSE, FALSE, 5);
    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(button), TRUE);
    gtk_widget_set_sensitive(button, FALSE);
@@ -573,7 +573,7 @@ GeneralFunctionDialog::GeneralFunctionDialog(const std::string& key) :
 
    button = gtk_button_new_with_label(DIALOG_CANCEL_BUTTON);
    gtk_box_pack_end(GTK_BOX(hbox), button, FALSE, FALSE, 0);
-   gtk_widget_set_usize(button, 60, -2);
+   gtk_widget_set_size_request(button, 60, -1);
    gtk_widget_show(button);
 
    CreateCancelButtonCallback(button);
@@ -582,7 +582,7 @@ GeneralFunctionDialog::GeneralFunctionDialog(const std::string& key) :
 
    button = gtk_button_new_with_label(DIALOG_APPLY_BUTTON);
    gtk_box_pack_end(GTK_BOX(hbox), button, FALSE, FALSE, 10);
-   gtk_widget_set_usize (button, 60, -2);
+   gtk_widget_set_size_request (button, 60, -1);
    gtk_widget_show(button);
 
    CreateApplyButtonCallback(button);
@@ -591,7 +591,7 @@ GeneralFunctionDialog::GeneralFunctionDialog(const std::string& key) :
 
    button = gtk_button_new_with_label(DIALOG_OK_BUTTON);
    gtk_box_pack_end(GTK_BOX(hbox), button, FALSE, FALSE, 0);
-   gtk_widget_set_usize (button, 60, -2);
+   gtk_widget_set_size_request (button, 60, -1);
    gtk_widget_show(button);
 
    CreateOkButtonCallback(button);

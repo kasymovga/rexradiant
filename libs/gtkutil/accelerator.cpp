@@ -25,8 +25,7 @@
 
 #include <map>
 #include <set>
-#include <gtk/gtkwindow.h>
-#include <gtk/gtkaccelgroup.h>
+#include <gtk/gtk.h>
 
 #include "generic/callback.h"
 #include "generic/bitfield.h"
@@ -57,7 +56,7 @@ unsigned int global_keys_find( const char* name ){
 		return 0;
 	}
 	k = gdk_keyval_from_name( name );
-	if ( k == GDK_VoidSymbol ) {
+	if ( k == GDK_KEY_VoidSymbol ) {
 		return 0;
 	}
 	return k;
@@ -109,8 +108,8 @@ bool accelerator_map_erase( AcceleratorMap& acceleratorMap, Accelerator accelera
 }
 
 Accelerator accelerator_for_event_key( guint keyval, guint state ){
-	if ( keyval == GDK_ISO_Left_Tab ) {
-		keyval = GDK_Tab;
+	if ( keyval == GDK_KEY_ISO_Left_Tab ) {
+		keyval = GDK_KEY_Tab;
 	}
 	return Accelerator( keyval, (GdkModifierType)( state & gtk_accelerator_get_default_mod_mask() ) );
 }
@@ -243,7 +242,7 @@ bool Buttons_press( ButtonMask& buttons, guint button, guint state ){
 		{
 			GtkWindow* toplevel = *i;
 			ASSERT_MESSAGE( window_has_accel( toplevel ), "ERROR" );
-			ASSERT_MESSAGE( GTK_WIDGET_TOPLEVEL( toplevel ), "disabling accel for non-toplevel window" );
+			ASSERT_MESSAGE( gtk_widget_is_toplevel( GTK_WIDGET( toplevel ) ), "disabling accel for non-toplevel window" );
 			gtk_window_remove_accel_group( toplevel,  global_accel );
 #if 0
 			globalOutputStream() << reinterpret_cast<unsigned int>( toplevel ) << ": disabled global accelerators\n";
@@ -269,7 +268,7 @@ bool Buttons_release( ButtonMask& buttons, guint button, guint state ){
 		{
 			GtkWindow* toplevel = *i;
 			ASSERT_MESSAGE( !window_has_accel( toplevel ), "ERROR" );
-			ASSERT_MESSAGE( GTK_WIDGET_TOPLEVEL( toplevel ), "enabling accel for non-toplevel window" );
+			ASSERT_MESSAGE( gtk_widget_is_toplevel( GTK_WIDGET( toplevel ) ), "enabling accel for non-toplevel window" );
 			gtk_window_add_accel_group( toplevel, global_accel );
 #if 0
 			globalOutputStream() << reinterpret_cast<unsigned int>( toplevel ) << ": enabled global accelerators\n";

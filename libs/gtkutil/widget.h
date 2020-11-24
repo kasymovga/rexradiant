@@ -23,16 +23,14 @@
 #define INCLUDED_GTKUTIL_WIDGET_H
 
 #include <list>
-#include <gtk/gtkwidget.h>
+#include <gtk/gtk.h>
 #include "generic/callback.h"
 #include "warnings.h"
 #include "debugging/debugging.h"
 
-#include <gtk/gtkmain.h>
-
 inline bool widget_is_visible( GtkWidget* widget ){
-	//return GTK_WIDGET_VISIBLE( widget ) != FALSE;
-	return gtk_widget_get_visible( widget ) != FALSE;
+	//return GTK_WIDGET_VISIBLE( widget );
+	return gtk_widget_get_visible( widget );
 }
 
 inline void widget_set_visible( GtkWidget* widget, bool show ){
@@ -172,7 +170,7 @@ typedef ReferenceCaller<GtkWidget, widget_queue_draw> WidgetQueueDrawCaller;
 
 
 inline void widget_make_default( GtkWidget* widget ){
-	GTK_WIDGET_SET_FLAGS( widget, GTK_CAN_DEFAULT );
+	gtk_widget_set_can_default( widget, TRUE );
 	gtk_widget_grab_default( widget );
 }
 

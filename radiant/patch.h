@@ -1543,6 +1543,47 @@ void setSelectedComponents( bool select, SelectionSystem::EComponentMode mode ){
 		m_dragPlanes.setSelected( select );
 	}
 }
+void testSelectComponents( Selector& selector, SelectionTest& test, SelectionSystem::EComponentMode mode ){
+	test.BeginMesh( localToWorld() );
+
+	switch ( mode )
+	{
+	case SelectionSystem::eVertex:
+	{
+		for ( PatchControlInstances::iterator i = m_ctrl_instances.begin(); i != m_ctrl_instances.end(); ++i )
+		{
+			( *i ).testSelect( selector, test );
+		}
+	}
+	break;
+	default:
+		break;
+	}
+}
+void gatherComponentsHighlight( std::vector<std::vector<Vector3>>& polygons, SelectionIntersection& intersection, SelectionTest& test, SelectionSystem::EComponentMode mode ) const {
+	test.BeginMesh( localToWorld() );
+
+	switch ( mode )
+	{
+	case SelectionSystem::eVertex:
+	{
+		for ( const PatchControlInstance& pci : m_ctrl_instances )
+		{
+			SelectionIntersection best;
+			test.TestPoint( pci.m_ctrl->m_vertex, best );
+			if ( SelectionIntersection_closer( best, intersection ) ) {
+				intersection = best;
+				polygons.clear();
+				polygons.emplace_back( std::initializer_list<Vector3>( { pci.m_ctrl->m_vertex } ) );
+			}
+		}
+	}
+	break;
+	default:
+		break;
+	}
+}
+
 const AABB& getSelectedComponentsBounds() const {
 	m_aabb_component = AABB();
 
@@ -1564,26 +1605,8 @@ void gatherSelectedComponents( const Vector3Callback& callback ) const {
 	}
 }
 
-void testSelectComponents( Selector& selector, SelectionTest& test, SelectionSystem::EComponentMode mode ){
-	test.BeginMesh( localToWorld() );
-
-	switch ( mode )
-	{
-	case SelectionSystem::eVertex:
-	{
-		for ( PatchControlInstances::iterator i = m_ctrl_instances.begin(); i != m_ctrl_instances.end(); ++i )
-		{
-			( *i ).testSelect( selector, test );
-		}
-	}
-	break;
-	default:
-		break;
-	}
-}
-
-bool selectedVertices(){
-	for ( PatchControlInstances::iterator i = m_ctrl_instances.begin(); i != m_ctrl_instances.end(); ++i )
+bool selectedVertices() const {
+	for ( PatchControlInstances::const_iterator i = m_ctrl_instances.begin(); i != m_ctrl_instances.end(); ++i )
 	{
 		if ( ( *i ).m_selectable.isSelected() ) {
 			return true;
@@ -1626,16 +1649,19 @@ void selectReversedPlanes( Selector& selector, const SelectedPlanes& selectedPla
 	m_dragPlanes.selectReversedPlanes( m_patch.localAABB(), selector, selectedPlanes );
 }
 
-void bestPlaneDirect( SelectionTest& test, Plane3& plane, SelectionIntersection& intersection ){
+void bestPlaneDirect( SelectionTest& test, Plane3& plane, SelectionIntersection& intersection ) const {
 	test.BeginMesh( localToWorld() );
 	m_dragPlanes.bestPlaneDirect( m_patch.localAABB(), test, plane, intersection );
 }
-void bestPlaneIndirect( SelectionTest& test, Plane3& plane, Vector3& intersection, float& dist ){
+void bestPlaneIndirect( SelectionTest& test, Plane3& plane, Vector3& intersection, float& dist ) const {
 	test.BeginMesh( localToWorld() );
 	m_dragPlanes.bestPlaneIndirect( m_patch.localAABB(), test, plane, intersection, dist );
 }
 void selectByPlane( const Plane3& plane ){
 	m_dragPlanes.selectByPlane( m_patch.localAABB(), plane );
+}
+void gatherPolygonsByPlane( const Plane3& plane, std::vector<std::vector<Vector3>>& polygons ) const {
+	m_dragPlanes.gatherPolygonsByPlane( m_patch.localAABB(), plane, polygons );
 }
 
 
@@ -1881,7 +1907,7 @@ bool pre( const scene::Path& path, scene::Instance& instance ) const {
 	if ( path.top().get().visible() ) {
 		Patch* patch = Node_getPatch( path.top() );
 		if ( patch != 0
-			 && Instance_getSelectable( instance )->isSelected() ) {
+			 && Instance_isSelected( instance ) ) {
 			m_functor( *patch );
 		}
 	}

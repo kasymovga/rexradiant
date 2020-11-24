@@ -52,9 +52,6 @@
 
 #define WinError WinPrint
 
-#define qtrue   1
-#define qfalse  0
-
 #define ioctlsocket ioctl
 #define closesocket close
 
@@ -88,8 +85,6 @@ static int net_acceptsocket = -1;       // socket for fielding new connections
 static int net_controlsocket;
 static int net_hostport;                // udp port number for acceptsocket
 static int net_broadcastsocket = 0;
-//static qboolean ifbcastinit = qfalse;
-//static struct sockaddr_s broadcastaddr;
 static struct sockaddr_s broadcastaddr;
 
 static unsigned long myAddr;
@@ -205,7 +200,7 @@ int WINS_Init( void ){
 
 	( (struct sockaddr_in *)&broadcastaddr )->sin_family = AF_INET;
 	( (struct sockaddr_in *)&broadcastaddr )->sin_addr.s_addr = INADDR_BROADCAST;
-	( (struct sockaddr_in *)&broadcastaddr )->sin_port = htons( (u_short)net_hostport );
+	( (struct sockaddr_in *)&broadcastaddr )->sin_port = htons( (unsigned short)net_hostport );
 
 	WINS_GetSocketAddr( net_controlsocket, &addr );
 	strcpy( my_tcpip_address,  WINS_AddrToString( &addr ) );
@@ -273,7 +268,7 @@ void WINS_Shutdown( void ){
 int WINS_OpenSocket( int port ){
 	int newsocket;
 	struct sockaddr_in address;
-	u_long _true = 1;
+	unsigned long _true = 1;
 
 	if ( ( newsocket = socket( PF_INET, SOCK_DGRAM, IPPROTO_UDP ) ) == SOCKET_ERROR ) {
 		WinPrint( "WINS_OpenSocket: %s\n", WINS_ErrorMessage( WSAGetLastError() ) );
@@ -289,7 +284,7 @@ int WINS_OpenSocket( int port ){
 	memset( (char *) &address, 0, sizeof( address ) );
 	address.sin_family = AF_INET;
 	address.sin_addr.s_addr = INADDR_ANY;
-	address.sin_port = htons( (u_short)port );
+	address.sin_port = htons( (unsigned short)port );
 	if ( bind( newsocket, (void *)&address, sizeof( address ) ) == -1 ) {
 		WinPrint( "WINS_OpenSocket: %s\n", WINS_ErrorMessage( WSAGetLastError() ) );
 		closesocket( newsocket );
@@ -307,7 +302,7 @@ int WINS_OpenSocket( int port ){
 int WINS_OpenReliableSocket( int port ){
 	int newsocket;
 	struct sockaddr_in address;
-	qboolean _true = 0xFFFFFFFF;
+	int _true = 0xFFFFFFFF;
 
 	//IPPROTO_TCP
 	//
@@ -319,7 +314,7 @@ int WINS_OpenReliableSocket( int port ){
 	memset( (char *) &address, 0, sizeof( address ) );
 	address.sin_family = AF_INET;
 	address.sin_addr.s_addr = htonl( INADDR_ANY );
-	address.sin_port = htons( (u_short)port );
+	address.sin_port = htons( (unsigned short)port );
 	if ( bind( newsocket, (void *)&address, sizeof( address ) ) == -1 ) {
 		WinPrint( "WINS_OpenReliableSocket: %s\n", WINS_ErrorMessage( WSAGetLastError() ) );
 		closesocket( newsocket );
@@ -341,7 +336,7 @@ int WINS_OpenReliableSocket( int port ){
 // Changes Globals:		-
 //===========================================================================
 int WINS_Listen( int socket ){
-	u_long _true = 1;
+	unsigned long _true = 1;
 
 	if ( ioctlsocket( socket, FIONBIO, &_true ) == -1 ) {
 		WinPrint( "WINS_Listen: %s\n", WINS_ErrorMessage( WSAGetLastError() ) );
@@ -362,7 +357,7 @@ int WINS_Listen( int socket ){
 int WINS_Accept( int socket, struct sockaddr_s *addr ){
 	socklen_t addrlen = sizeof( struct sockaddr_s );
 	int newsocket;
-	qboolean _true = 1;
+	int _true = 1;
 
 	newsocket = accept( socket, (struct sockaddr *)addr, &addrlen );
 	if ( newsocket == INVALID_SOCKET ) {
@@ -435,7 +430,7 @@ static int PartialIPAddress( char *in, struct sockaddr_s *hostaddr ){
 	}
 
 	hostaddr->sa_family = AF_INET;
-	( (struct sockaddr_in *)hostaddr )->sin_port = htons( (u_short)net_hostport );
+	( (struct sockaddr_in *)hostaddr )->sin_port = htons( (unsigned short)net_hostport );
 	( (struct sockaddr_in *)hostaddr )->sin_addr.s_addr = ( myAddr & htonl( mask ) ) | htonl( addr );
 
 	return 0;
@@ -448,7 +443,7 @@ static int PartialIPAddress( char *in, struct sockaddr_s *hostaddr ){
 //===========================================================================
 int WINS_Connect( int socket, struct sockaddr_s *addr ){
 	int ret;
-	u_long _true2 = 0xFFFFFFFF;
+	unsigned long _true2 = 0xFFFFFFFF;
 
 	ret = connect( socket, (struct sockaddr *)addr, sizeof( struct sockaddr_s ) );
 	if ( ret == SOCKET_ERROR ) {
@@ -564,53 +559,34 @@ int WINS_Broadcast( int socket, byte *buf, int len ){
 	return WINS_Write( socket, buf, len, &broadcastaddr );
 } //end of the function WINS_Broadcast
 //===========================================================================
-// returns qtrue on success or qfalse on failure
+// returns true on success or false on failure
 //
 // Parameter:				-
 // Returns:					-
 // Changes Globals:		-
 //===========================================================================
-int WINS_Write( int socket, byte *buf, int len, struct sockaddr_s *addr ){
-	int ret, written;
-	ret = 0;
+bool WINS_Write( int socket, byte *buf, int len, struct sockaddr_s *addr ){
+	int ret = 0, written = 0;
 
-	if ( addr ) {
-		written = 0;
-		while ( written < len )
-		{
-			ret = sendto( socket, &buf[written], len - written, 0, (struct sockaddr *)addr, sizeof( struct sockaddr_s ) );
-			if ( ret == SOCKET_ERROR ) {
-				if ( WSAGetLastError() != EAGAIN ) {
-					return qfalse;
-				}
-				//++timo FIXME: what is this used for?
-//				Sleep(1000);
-			} //end if
-			else
-			{
-				written += ret;
-			}
-		}
-	} //end if
-	else
+	while ( written < len )
 	{
-		written = 0;
-		while ( written < len )
-		{
+		if ( addr )
+			ret = sendto( socket, &buf[written], len - written, 0, (struct sockaddr *)addr, sizeof( struct sockaddr_s ) );
+		else
 			ret = send( socket, buf, len, 0 );
-			if ( ret == SOCKET_ERROR ) {
-				if ( WSAGetLastError() != EAGAIN ) {
-					return qfalse;
-				}
-				//++timo FIXME: what is this used for?
-//				Sleep(1000);
-			} //end if
-			else
-			{
-				written += ret;
+
+		if ( ret == SOCKET_ERROR ) {
+			if ( WSAGetLastError() != EAGAIN ) {
+				return false;
 			}
+			//++timo FIXME: what is this used for?
+//			Sleep(1000);
 		}
-	} //end else
+		else
+		{
+			written += ret;
+		}
+	}
 	if ( ret == SOCKET_ERROR ) {
 		WinPrint( "WINS_Write: %s\n", WINS_ErrorMessage( WSAGetLastError() ) );
 	} //end if
@@ -645,7 +621,7 @@ int WINS_StringToAddr( char *string, struct sockaddr_s *addr ){
 
 	addr->sa_family = AF_INET;
 	( (struct sockaddr_in *)addr )->sin_addr.s_addr = htonl( ipaddr );
-	( (struct sockaddr_in *)addr )->sin_port = htons( (u_short)hp );
+	( (struct sockaddr_in *)addr )->sin_port = htons( (unsigned short)hp );
 	return 0;
 } //end of the function WINS_StringToAddr
 //===========================================================================
@@ -704,7 +680,7 @@ int WINS_GetAddrFromName( char *name, struct sockaddr_s *addr ){
 	}
 
 	addr->sa_family = AF_INET;
-	( (struct sockaddr_in *)addr )->sin_port = htons( (u_short)net_hostport );
+	( (struct sockaddr_in *)addr )->sin_port = htons( (unsigned short)net_hostport );
 	( (struct sockaddr_in *)addr )->sin_addr.s_addr = *(int *)hostentry->h_addr_list[0];
 
 	return 0;
@@ -746,6 +722,6 @@ int WINS_GetSocketPort( struct sockaddr_s *addr ){
 // Changes Globals:		-
 //===========================================================================
 int WINS_SetSocketPort( struct sockaddr_s *addr, int port ){
-	( (struct sockaddr_in *)addr )->sin_port = htons( (u_short)port );
+	( (struct sockaddr_in *)addr )->sin_port = htons( (unsigned short)port );
 	return 0;
 } //end of the function WINS_SetSocketPort

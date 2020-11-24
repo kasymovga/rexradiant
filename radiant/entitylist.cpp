@@ -23,13 +23,7 @@
 
 #include "iselection.h"
 
-#include <gtk/gtktreemodel.h>
-#include <gtk/gtktreeview.h>
-#include <gtk/gtktreeselection.h>
-#include <gtk/gtkcellrenderertext.h>
-#include <gtk/gtkcheckbutton.h>
-#include <gtk/gtkvbox.h>
-#include <gtk/gtkhbox.h>
+#include <gtk/gtk.h>
 
 #include "string/string.h"
 #include "scenelib.h"
@@ -87,7 +81,7 @@ EntityList() :
 }
 
 bool visible() const {
-	return GTK_WIDGET_VISIBLE( GTK_WIDGET( m_window ) );
+	return gtk_widget_get_visible( GTK_WIDGET( m_window ) );
 }
 };
 
@@ -163,7 +157,7 @@ static gboolean entitylist_tree_select( GtkTreeSelection *selection, GtkTreeMode
 	Selectable* selectable = Instance_getSelectable( *instance );
 
 	if ( node == 0 ) {
-		if ( path_currently_selected != FALSE ) {
+		if ( path_currently_selected ) {
 			getEntityList().m_selection_disabled = true;
 			GlobalSelectionSystem().setSelectedAll( false );
 			getEntityList().m_selection_disabled = false;
@@ -171,7 +165,7 @@ static gboolean entitylist_tree_select( GtkTreeSelection *selection, GtkTreeMode
 	}
 	else if ( selectable != 0 ) {
 		getEntityList().m_selection_disabled = true;
-		selectable->setSelected( path_currently_selected == FALSE );
+		selectable->setSelected( !path_currently_selected );
 		getEntityList().m_selection_disabled = false;
 		if( gtk_toggle_button_get_active( GTK_TOGGLE_BUTTON( getEntityList().m_check ) ) ){
 			FocusAllViews();
@@ -269,7 +263,7 @@ void EntityList_SetShown( bool shown ){
 	widget_set_visible( GTK_WIDGET( getEntityList().m_window ), shown );
 	if( shown ){ /* expand map's root node for convenience */
 		GtkTreePath* path = gtk_tree_path_new_from_string( "1" );
-		if( gtk_tree_view_row_expanded( getEntityList().m_tree_view, path ) == FALSE )
+		if( !gtk_tree_view_row_expanded( getEntityList().m_tree_view, path ) )
 			gtk_tree_view_expand_row( getEntityList().m_tree_view, path, FALSE );
 		gtk_tree_path_free( path );
 	}
@@ -295,7 +289,6 @@ gint graph_tree_model_compare_name( GtkTreeModel *model, GtkTreeIter *a, GtkTree
 }
 
 /* search */
-#include <gtk/gtkstock.h>
 static gboolean tree_view_search_equal_func( GtkTreeModel* model, gint column, const gchar* key, GtkTreeIter* iter, gpointer search_from_start ) {
 	scene::Node* node;
 	gtk_tree_model_get( model, iter, column, (gpointer*)&node, -1 );
@@ -340,22 +333,19 @@ gboolean searchEntryScroll( GtkWidget* widget, GdkEventScroll* event, gpointer u
 					if( node ){
 						scene::Instance* instance;
 						gtk_tree_model_get_pointer( model, &iter, 1, &instance );
-						Selectable* selectable = Instance_getSelectable( *instance );
-						if( selectable ){
-							if( selectable->isSelected() || instance->childSelected() ){
-								if( iter_first.stamp == 0 ){
-									iter_first = iter;
-								}
-								if( iter_found.stamp != 0 ){
-									iter_next = iter;
-									break;
-								}
-								if( node == getEntityList().m_search_focus_node ){
-									iter_found = iter;
-								}
-								else{
-									iter_prev = iter;
-								}
+						if( Instance_isSelected( *instance ) || instance->childSelected() ){
+							if( iter_first.stamp == 0 ){
+								iter_first = iter;
+							}
+							if( iter_found.stamp != 0 ){
+								iter_next = iter;
+								break;
+							}
+							if( node == getEntityList().m_search_focus_node ){
+								iter_found = iter;
+							}
+							else{
+								iter_prev = iter;
 							}
 						}
 					}
@@ -391,10 +381,10 @@ gboolean searchEntryScroll( GtkWidget* widget, GdkEventScroll* event, gpointer u
 	/* hijack internal gtk keypress function for handling scroll via synthesized event */
 	GdkEvent* eventmp = gdk_event_new( GDK_KEY_PRESS );
 	if ( event->direction == GDK_SCROLL_UP ) {
-		eventmp->key.keyval = GDK_Up;
+		eventmp->key.keyval = GDK_KEY_Up;
 	}
 	else if ( event->direction == GDK_SCROLL_DOWN ) {
-		eventmp->key.keyval = GDK_Down;
+		eventmp->key.keyval = GDK_KEY_Down;
 	}
 	if( eventmp->key.keyval ){
 		eventmp->key.window = gtk_widget_get_window( widget );
@@ -410,7 +400,7 @@ gboolean searchEntryScroll( GtkWidget* widget, GdkEventScroll* event, gpointer u
 }
 
 static gboolean searchEntryKeypress( GtkEntry* widget, GdkEventKey* event, gpointer user_data ){
-	if ( event->keyval == GDK_Escape ) {
+	if ( event->keyval == GDK_KEY_Escape ) {
 		gtk_entry_set_text( GTK_ENTRY( widget ), "" );
 		return TRUE;
 	}

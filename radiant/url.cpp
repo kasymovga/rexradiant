@@ -28,18 +28,16 @@
 #include <gdk/gdkwin32.h>
 #include <shellapi.h>
 bool open_url( const char* url ){
-	return ShellExecute( (HWND)GDK_WINDOW_HWND( GTK_WIDGET( MainFrame_getWindow() )->window ), "open", url, 0, 0, SW_SHOW ) > (HINSTANCE)32;
+	return ShellExecute( (HWND)GDK_WINDOW_HWND( gtk_widget_get_window( GTK_WIDGET( MainFrame_getWindow() ) ) ), "open", url, 0, 0, SW_SHOW ) > (HINSTANCE)32;
 }
 #endif
 
 #if defined( __linux__ ) || defined( __FreeBSD__ )
 #include <stdlib.h>
 bool open_url( const char* url ){
-	// \todo FIXME: the way we open URLs on *nix should be improved. A script is good (see how I do on RTCW)
-	//Fedora 25: Help > Manual leads to "sh: firefox: command not found" error on terminal, while xdg-open http://some/url/ works just fine (and opens up the URL in the web browser)
 	char command[2 * PATH_MAX];
 	snprintf( command, sizeof( command ),
-			  "firefox -remote \"openURL(%s,new-window)\" || firefox \"%s\" &", url, url );
+			  "xdg-open \"%s\" &", url );
 	return system( command ) == 0;
 }
 #endif

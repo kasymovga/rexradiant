@@ -24,7 +24,7 @@
 #ifndef __CMDLIB__
 #define __CMDLIB__
 
-#ifdef _WIN32
+#ifdef _MSC_VER
 #pragma warning(disable : 4244)     // MIPS
 #pragma warning(disable : 4136)     // X86
 #pragma warning(disable : 4051)     // ALPHA
@@ -44,18 +44,13 @@
 #include <time.h>
 #include <stdarg.h>
 
-#ifdef _WIN32
+#ifdef _MSC_VER
 
 #pragma intrinsic( memset, memcpy )
 
 #endif
 
-#ifndef __BYTEBOOL__
-  #define __BYTEBOOL__
-//typedef enum {false, true} qboolean;
-//typedef unsigned char byte;
-  #include "q_typedef.h"
-#endif
+#include "q_typedef.h"
 
 #ifdef PATH_MAX
 #define MAX_OS_PATH     PATH_MAX
@@ -70,8 +65,6 @@
    #define SYS_WRN 2 // warnings
    #define SYS_ERR 3 // error
  */
-// the dec offsetof macro doesnt work very well...
-#define myoffsetof( type,identifier ) ( (size_t)& ( (type *)0 )->identifier )
 
 #define SAFE_MALLOC
 #ifdef SAFE_MALLOC
@@ -85,7 +78,16 @@ void *safe_malloc_info( size_t size, char* info );
 extern int myargc;
 extern char **myargv;
 
-char *strlower( char *in );
+static inline char *strUpper( char *string ){
+	for( char *in = string; *in; ++in )
+		*in = toupper( *in );
+	return string;
+}
+static inline char *strLower( char *string ){
+	for( char *in = string; *in; ++in )
+		*in = tolower( *in );
+	return string;
+}
 int Q_strncasecmp( const char *s1, const char *s2, int n );
 int Q_stricmp( const char *s1, const char *s2 );
 int Q_strcasecmp( const char *s1, const char *s2 );

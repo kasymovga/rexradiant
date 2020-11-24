@@ -33,24 +33,7 @@
 #include <map>
 #include <set>
 #include <gdk/gdkkeysyms.h>
-#include <gtk/gtktreemodel.h>
-#include <gtk/gtktreeview.h>
-#include <gtk/gtkcellrenderertext.h>
-#include <gtk/gtktreeselection.h>
-#include <gtk/gtkliststore.h>
-#include <gtk/gtktextview.h>
-#include <gtk/gtklabel.h>
-#include <gtk/gtktable.h>
-#include <gtk/gtktogglebutton.h>
-#include <gtk/gtkcheckbutton.h>
-#include <gtk/gtkhbox.h>
-#include <gtk/gtkvbox.h>
-#include <gtk/gtkvpaned.h>
-#include <gtk/gtkscrolledwindow.h>
-#include <gtk/gtkentry.h>
-#include <gtk/gtkcombobox.h>
-#include <gtk/gtkstock.h>
-
+#include <gtk/gtk.h>
 
 #include "os/path.h"
 #include "eclasslib.h"
@@ -312,7 +295,7 @@ void update(){
 }
 typedef MemberCaller<ModelAttribute, &ModelAttribute::update> UpdateCaller;
 void browse( const BrowsedPathEntry::SetPathCallback& setPath ){
-	const char *filename = misc_model_dialog( gtk_widget_get_toplevel( GTK_WIDGET( m_entry.m_entry.m_frame ) ) );
+	const char *filename = misc_model_dialog( gtk_widget_get_toplevel( GTK_WIDGET( m_entry.m_entry.m_frame ) ), gtk_entry_get_text( GTK_ENTRY( m_entry.m_entry.m_entry ) ) );
 
 	if ( filename != 0 ) {
 		setPath( filename );
@@ -322,18 +305,25 @@ void browse( const BrowsedPathEntry::SetPathCallback& setPath ){
 typedef MemberCaller1<ModelAttribute, const BrowsedPathEntry::SetPathCallback&, &ModelAttribute::browse> BrowseCaller;
 };
 
-const char* browse_sound( GtkWidget* parent ){
+const char* browse_sound( GtkWidget* parent, const char* filepath ){
 	StringOutputStream buffer( 1024 );
 
-	buffer << g_qeglobals.m_userGamePath.c_str() << "sound/";
+	if( !string_empty( filepath ) ){
+		const char* root = GlobalFileSystem().findFile( filepath );
+		if( !string_empty( root ) && file_is_directory( root ) )
+			buffer << root << filepath;
+	}
+	if( buffer.empty() ){
+		buffer << g_qeglobals.m_userGamePath.c_str() << "sound/";
 
-	if ( !file_readable( buffer.c_str() ) ) {
-		// just go to fsmain
-		buffer.clear();
-		buffer << g_qeglobals.m_userGamePath.c_str();
+		if ( !file_readable( buffer.c_str() ) ) {
+			// just go to fsmain
+			buffer.clear();
+			buffer << g_qeglobals.m_userGamePath.c_str();
+		}
 	}
 
-	const char* filename = file_dialog( parent, TRUE, "Open Wav File", buffer.c_str(), "sound" );
+	const char* filename = file_dialog( parent, true, "Open Wav File", buffer.c_str(), "sound" );
 	if ( filename != 0 ) {
 		const char* relative = path_make_relative( filename, GlobalFileSystem().findRoot( filename ) );
 		if ( relative == filename ) {
@@ -375,7 +365,7 @@ void update(){
 }
 typedef MemberCaller<SoundAttribute, &SoundAttribute::update> UpdateCaller;
 void browse( const BrowsedPathEntry::SetPathCallback& setPath ){
-	const char *filename = browse_sound( gtk_widget_get_toplevel( GTK_WIDGET( m_entry.m_entry.m_frame ) ) );
+	const char *filename = browse_sound( gtk_widget_get_toplevel( GTK_WIDGET( m_entry.m_entry.m_frame ) ), gtk_entry_get_text( GTK_ENTRY( m_entry.m_entry.m_entry ) ) );
 
 	if ( filename != 0 ) {
 		setPath( filename );
@@ -783,17 +773,17 @@ ListAttribute( const char* key, const ListAttributeType& type ) :
 	m_combo( 0 ),
 	m_nonModal( ApplyCaller( *this ) ),
 	m_type( type ){
-	GtkComboBox* combo = GTK_COMBO_BOX( gtk_combo_box_new_text() );
+	GtkWidget* combo = gtk_combo_box_text_new();
 
 	for ( ListAttributeType::const_iterator i = type.begin(); i != type.end(); ++i )
 	{
-		gtk_combo_box_append_text( GTK_COMBO_BOX( combo ), ( *i ).first.c_str() );
+		gtk_combo_box_text_append_text( GTK_COMBO_BOX_TEXT( combo ), ( *i ).first.c_str() );
 	}
 
-	gtk_widget_show( GTK_WIDGET( combo ) );
-	m_nonModal.connect( combo );
+	gtk_widget_show( combo );
+	m_nonModal.connect( GTK_COMBO_BOX( combo ) );
 
-	m_combo = combo;
+	m_combo = GTK_COMBO_BOX( combo );
 }
 void release(){
 	delete this;
@@ -1030,9 +1020,9 @@ void SurfaceFlags_setEntityClass( EntityClass* eclass ){
 		for ( int i = 0; i < g_spawnflag_count; ++i )
 		{
 			GtkWidget* widget = GTK_WIDGET( g_entitySpawnflagsCheck[i] );
-			gtk_label_set_text( GTK_LABEL( GTK_BIN( widget )->child ), " " );
+			gtk_label_set_text( GTK_LABEL( gtk_bin_get_child( GTK_BIN( widget ) ) ), " " );
 			gtk_widget_hide( widget );
-			gtk_widget_ref( widget );
+			g_object_ref( G_OBJECT( widget ) );
 			gtk_container_remove( GTK_CONTAINER( g_spawnflagsTable ), widget );
 		}
 	}
@@ -1051,11 +1041,11 @@ void SurfaceFlags_setEntityClass( EntityClass* eclass ){
 			gtk_table_attach( g_spawnflagsTable, widget, i % 4, i % 4 + 1, i / 4, i / 4 + 1,
 							  (GtkAttachOptions)( GTK_FILL ),
 							  (GtkAttachOptions)( GTK_FILL ), 0, 0 );
-			gtk_widget_unref( widget );
+			g_object_unref( G_OBJECT( widget ) );
 
-			gtk_label_set_text( GTK_LABEL( GTK_BIN( widget )->child ), str.c_str() );
+			gtk_label_set_text( GTK_LABEL( gtk_bin_get_child( GTK_BIN( widget ) ) ), str.c_str() );
 
-			if( const EntityClassAttribute* attribute = eclass->flagAttributes[i] ){
+			if( const EntityClassAttribute* attribute = eclass->flagAttributes[spawn_table[i]] ){
 				EntityAttribute_setTooltip( widget, attribute->m_name.c_str(), attribute->m_description.c_str() );
 			}
 		}
@@ -1065,7 +1055,7 @@ void SurfaceFlags_setEntityClass( EntityClass* eclass ){
 void EntityClassList_selectEntityClass( EntityClass* eclass ){
 	GtkTreeModel* model = GTK_TREE_MODEL( g_entlist_store );
 	GtkTreeIter iter;
-	for ( gboolean good = gtk_tree_model_get_iter_first( model, &iter ); good != FALSE; good = gtk_tree_model_iter_next( model, &iter ) )
+	for ( gboolean good = gtk_tree_model_get_iter_first( model, &iter ); good; good = gtk_tree_model_iter_next( model, &iter ) )
 	{
 		char* text;
 		gtk_tree_model_get( model, &iter, 0, &text, -1 );
@@ -1073,7 +1063,7 @@ void EntityClassList_selectEntityClass( EntityClass* eclass ){
 			GtkTreeView* view = g_entityClassList;
 			GtkTreePath* path = gtk_tree_model_get_path( model, &iter );
 			gtk_tree_selection_select_path( gtk_tree_view_get_selection( view ), path );
-			if ( GTK_WIDGET_REALIZED( view ) ) {
+			if ( gtk_widget_get_realized( GTK_WIDGET( view ) ) ) {
 				gtk_tree_view_scroll_to_cell( view, path, 0, FALSE, 0, 0 );
 			}
 			gtk_tree_path_free( path );
@@ -1269,7 +1259,7 @@ void EntityClassList_convertEntity(){
 
 	GtkTreeModel* model;
 	GtkTreeIter iter;
-	if ( gtk_tree_selection_get_selected( gtk_tree_view_get_selection( view ), &model, &iter ) == FALSE ) {
+	if ( !gtk_tree_selection_get_selected( gtk_tree_view_get_selection( view ), &model, &iter ) ) {
 		gtk_MessageBox( gtk_widget_get_toplevel( GTK_WIDGET( g_entityClassList ) ), "You must have a selected class to create an entity", "info" );
 		return;
 	}
@@ -1325,11 +1315,11 @@ void EntityInspector_clearKeyValue(){
 }
 
 static gint EntityProperties_keypress( GtkEntry* widget, GdkEventKey* event, gpointer data ){
-	if ( event->keyval == GDK_Delete ) {
+	if ( event->keyval == GDK_KEY_Delete ) {
 		EntityInspector_clearKeyValue();
 		return TRUE;
 	}
-	if ( event->keyval == GDK_Tab ) {
+	if ( event->keyval == GDK_KEY_Tab ) {
 		gtk_window_set_focus( GTK_WINDOW( gtk_widget_get_toplevel( GTK_WIDGET( widget ) ) ), GTK_WIDGET( g_entityKeyEntry ) );
 		return TRUE;
 	}
@@ -1372,7 +1362,7 @@ static gint EntityClassList_button_press( GtkWidget *widget, GdkEventButton *eve
 }
 
 static gint EntityClassList_keypress( GtkWidget* widget, GdkEventKey* event, gpointer data ){
-	if ( event->keyval == GDK_Return ) {
+	if ( event->keyval == GDK_KEY_Return ) {
 		EntityClassList_convertEntity();
 		return TRUE;
 	}
@@ -1384,8 +1374,8 @@ static gint EntityClassList_keypress( GtkWidget* widget, GdkEventKey* event, gpo
 		GtkTreeView* view = g_entityClassList;
 		GtkTreeModel* model;
 		GtkTreeIter iter;
-		if ( gtk_tree_selection_get_selected( gtk_tree_view_get_selection( view ), &model, &iter ) == FALSE
-			 || gtk_tree_model_iter_next( model, &iter ) == FALSE ) {
+		if ( !gtk_tree_selection_get_selected( gtk_tree_view_get_selection( view ), &model, &iter )
+			 || !gtk_tree_model_iter_next( model, &iter ) ) {
 			gtk_tree_model_get_iter_first( model, &iter );
 		}
 
@@ -1397,7 +1387,7 @@ static gint EntityClassList_keypress( GtkWidget* widget, GdkEventKey* event, gpo
 			if ( toupper( text[0] ) == (int)code ) {
 				GtkTreePath* path = gtk_tree_model_get_path( model, &iter );
 				gtk_tree_selection_select_path( gtk_tree_view_get_selection( view ), path );
-				if ( GTK_WIDGET_REALIZED( view ) ) {
+				if ( gtk_widget_get_realized( GTK_WIDGET( view ) ) ) {
 					gtk_tree_view_scroll_to_cell( view, path, 0, FALSE, 0, 0 );
 				}
 				gtk_tree_path_free( path );
@@ -1406,7 +1396,7 @@ static gint EntityClassList_keypress( GtkWidget* widget, GdkEventKey* event, gpo
 
 			g_free( text );
 
-			if ( gtk_tree_model_iter_next( model, &iter ) == FALSE ) {
+			if ( !gtk_tree_model_iter_next( model, &iter ) ) {
 				gtk_tree_model_get_iter_first( model, &iter );
 			}
 		}
@@ -1421,7 +1411,7 @@ static void EntityProperties_selection_changed( GtkTreeSelection* selection, gpo
 	// find out what type of entity we are trying to create
 	GtkTreeModel* model;
 	GtkTreeIter iter;
-	if ( gtk_tree_selection_get_selected( selection, &model, &iter ) == FALSE ) {
+	if ( !gtk_tree_selection_get_selected( selection, &model, &iter ) ) {
 		return;
 	}
 
@@ -1441,7 +1431,7 @@ static void SpawnflagCheck_toggled( GtkWidget *widget, gpointer data ){
 }
 
 static gint EntityEntry_keypress( GtkEntry* widget, GdkEventKey* event, gpointer data ){
-	if ( event->keyval == GDK_Return ) {
+	if ( event->keyval == GDK_KEY_Return ) {
 		if ( widget == g_entityKeyEntry ) {
 			//gtk_entry_set_text( g_entityValueEntry, "" );
 			gtk_window_set_focus( GTK_WINDOW( gtk_widget_get_toplevel( GTK_WIDGET( widget ) ) ), GTK_WIDGET( g_entityValueEntry ) );
@@ -1452,7 +1442,7 @@ static gint EntityEntry_keypress( GtkEntry* widget, GdkEventKey* event, gpointer
 		}
 		return TRUE;
 	}
-	if ( event->keyval == GDK_Tab ) {
+	if ( event->keyval == GDK_KEY_Tab ) {
 		if ( widget == g_entityKeyEntry ) {
 			gtk_window_set_focus( GTK_WINDOW( gtk_widget_get_toplevel( GTK_WIDGET( widget ) ) ), GTK_WIDGET( g_entityValueEntry ) );
 		}
@@ -1462,7 +1452,7 @@ static gint EntityEntry_keypress( GtkEntry* widget, GdkEventKey* event, gpointer
 		}
 		return TRUE;
 	}
-	if ( event->keyval == GDK_Escape ) {
+	if ( event->keyval == GDK_KEY_Escape ) {
 		//gtk_window_set_focus( GTK_WINDOW( gtk_widget_get_toplevel( GTK_WIDGET( widget ) ) ), NULL );
 		GroupDialog_showPage( g_page_entity );
 		return TRUE;
@@ -1480,14 +1470,14 @@ void EntityInspector_destroyWindow( GtkWidget* widget, gpointer data ){
 }
 
 static gint EntityInspector_hideWindowKB( GtkWidget* widget, GdkEventKey* event, gpointer data ){
-	//if ( event->keyval == GDK_Escape && GTK_WIDGET_VISIBLE( GTK_WIDGET( widget ) ) ) {
-	if ( event->keyval == GDK_Escape  ) {
+	//if ( event->keyval == GDK_KEY_Escape && gtk_widget_get_visible( widget ) ) {
+	if ( event->keyval == GDK_KEY_Escape  ) {
 		//GroupDialog_showPage( g_page_entity );
 		gtk_widget_hide( GTK_WIDGET( GroupDialog_getWindow() ) );
 		return TRUE;
 	}
 	/* this doesn't work, if tab is bound (func is not called then) */
-	if ( event->keyval == GDK_Tab ) {
+	if ( event->keyval == GDK_KEY_Tab ) {
 		gtk_window_set_focus( GTK_WINDOW( gtk_widget_get_toplevel( GTK_WIDGET( widget ) ) ), GTK_WIDGET( g_entityKeyEntry ) );
 		return TRUE;
 	}
@@ -1512,6 +1502,19 @@ void EntityInspector_selectConnected( GtkButton *button, gpointer user_data ){
 void EntityInspector_focusSelected( GtkButton *button, gpointer user_data ){
 	FocusAllViews();
 }
+
+void EntityInspector_selectByKey( GtkButton *button, gpointer user_data ){
+	Select_EntitiesByKeyValue( gtk_entry_get_text( g_entityKeyEntry ), nullptr );
+}
+
+void EntityInspector_selectByValue( GtkButton *button, gpointer user_data ){
+	Select_EntitiesByKeyValue( nullptr, gtk_entry_get_text( g_entityValueEntry ) );
+}
+
+void EntityInspector_selectByKeyValue( GtkButton *button, gpointer user_data ){
+	Select_EntitiesByKeyValue( gtk_entry_get_text( g_entityKeyEntry ), gtk_entry_get_text( g_entityValueEntry ) );
+}
+
 
 GtkWidget* EntityInspector_constructWindow( GtkWindow* toplevel ){
 	GtkWidget* vbox = gtk_vbox_new( FALSE, 2 );
@@ -1622,7 +1625,7 @@ GtkWidget* EntityInspector_constructWindow( GtkWindow* toplevel ){
 					for ( int i = 0; i < MAX_FLAGS; i++ )
 					{
 						GtkCheckButton* check = GTK_CHECK_BUTTON( gtk_check_button_new_with_label( "" ) );
-						gtk_widget_ref( GTK_WIDGET( check ) );
+						g_object_ref( G_OBJECT( check ) );
 						g_object_set_data( G_OBJECT( check ), "handler", gint_to_pointer( g_signal_connect( G_OBJECT( check ), "toggled", G_CALLBACK( SpawnflagCheck_toggled ), 0 ) ) );
 						g_entitySpawnflagsCheck[i] = check;
 					}
@@ -1673,7 +1676,7 @@ GtkWidget* EntityInspector_constructWindow( GtkWindow* toplevel ){
 
 				{
 					// key/value entry
-					GtkTable* table = GTK_TABLE( gtk_table_new( 2, 2, FALSE ) );
+					GtkTable* table = GTK_TABLE( gtk_table_new( 2, 3, FALSE ) );
 					gtk_widget_show( GTK_WIDGET( table ) );
 					gtk_box_pack_start( GTK_BOX( vbox2 ), GTK_WIDGET( table ), FALSE, TRUE, 0 );
 					gtk_table_set_row_spacings( table, 3 );
@@ -1718,6 +1721,49 @@ GtkWidget* EntityInspector_constructWindow( GtkWindow* toplevel ){
 										  (GtkAttachOptions)( 0 ), 0, 0 );
 						gtk_misc_set_alignment( GTK_MISC( label ), 0, 0.5 );
 					}
+
+					/* select by key/value buttons */
+					GtkTable* tab = GTK_TABLE( gtk_table_new( 2, 2, FALSE ) );
+					gtk_table_attach( table, GTK_WIDGET( tab ), 2, 3, 0, 2,
+									  (GtkAttachOptions)( GTK_FILL ),
+									  (GtkAttachOptions)( 0 ), 0, 0 );
+					table = tab;
+					gtk_widget_show( GTK_WIDGET( table ) );
+					gtk_table_set_row_spacings( table, 0 );
+					gtk_table_set_col_spacings( table, 0 );
+					{
+						GtkWidget* button = gtk_button_new();
+						gtk_button_set_image( GTK_BUTTON( button ), gtk_image_new_from_stock( GTK_STOCK_APPLY, GTK_ICON_SIZE_MENU ) );
+						gtk_widget_set_can_focus( button, FALSE );
+						gtk_widget_set_tooltip_text( button, "Select by key" );
+						gtk_widget_show( button );
+						gtk_table_attach( table, button, 0, 1, 0, 1,
+										  (GtkAttachOptions)( GTK_FILL ),
+										  (GtkAttachOptions)( 0 ), 0, 0 );
+						g_signal_connect( G_OBJECT( button ), "clicked", G_CALLBACK( EntityInspector_selectByKey ), 0 );
+					}
+					{
+						GtkWidget* button = gtk_button_new();
+						gtk_button_set_image( GTK_BUTTON( button ), gtk_image_new_from_stock( GTK_STOCK_APPLY, GTK_ICON_SIZE_MENU ) );
+						gtk_widget_set_can_focus( button, FALSE );
+						gtk_widget_set_tooltip_text( button, "Select by value" );
+						gtk_widget_show( button );
+						gtk_table_attach( table, button, 0, 1, 1, 2,
+										  (GtkAttachOptions)( GTK_FILL ),
+										  (GtkAttachOptions)( 0 ), 0, 0 );
+						g_signal_connect( G_OBJECT( button ), "clicked", G_CALLBACK( EntityInspector_selectByValue ), 0 );
+					}
+					{
+						GtkWidget* button = gtk_button_new();
+						gtk_button_set_image( GTK_BUTTON( button ), gtk_image_new_from_stock( GTK_STOCK_APPLY, GTK_ICON_SIZE_MENU ) );
+						gtk_widget_set_can_focus( button, FALSE );
+						gtk_widget_set_tooltip_text( button, "Select by key + value" );
+						gtk_widget_show( button );
+						gtk_table_attach( table, button, 1, 2, 0, 2,
+										  (GtkAttachOptions)( GTK_FILL ),
+										  (GtkAttachOptions)( GTK_FILL ), 0, 0 );
+						g_signal_connect( G_OBJECT( button ), "clicked", G_CALLBACK( EntityInspector_selectByKeyValue ), 0 );
+					}
 				}
 
 				{
@@ -1727,14 +1773,14 @@ GtkWidget* EntityInspector_constructWindow( GtkWindow* toplevel ){
 
 					{
 						GtkButton* button = GTK_BUTTON( gtk_button_new_with_label( "Clear All" ) );
-						GTK_WIDGET_UNSET_FLAGS( GTK_WIDGET( button ), GTK_CAN_FOCUS );
+						gtk_widget_set_can_focus( GTK_WIDGET( button ), FALSE );
 						gtk_widget_show( GTK_WIDGET( button ) );
 						g_signal_connect( G_OBJECT( button ), "clicked", G_CALLBACK( EntityInspector_clearAllKeyValues ), 0 );
 						gtk_box_pack_start( hbox, GTK_WIDGET( button ), TRUE, TRUE, 0 );
 					}
 					{
 						GtkButton* button = GTK_BUTTON( gtk_button_new_with_label( "Delete Key" ) );
-						GTK_WIDGET_UNSET_FLAGS( GTK_WIDGET( button ), GTK_CAN_FOCUS );
+						gtk_widget_set_can_focus( GTK_WIDGET( button ), FALSE );
 						gtk_widget_show( GTK_WIDGET( button ) );
 						g_signal_connect( G_OBJECT( button ), "clicked", G_CALLBACK( EntityInspector_clearKeyValue ), 0 );
 						gtk_box_pack_start( hbox, GTK_WIDGET( button ), TRUE, TRUE, 0 );
@@ -1742,7 +1788,7 @@ GtkWidget* EntityInspector_constructWindow( GtkWindow* toplevel ){
 					{
 						GtkButton* button = GTK_BUTTON( gtk_button_new_with_label( "<" ) );
 						gtk_widget_set_tooltip_text( GTK_WIDGET( button ), "Select targeting entities" );
-						GTK_WIDGET_UNSET_FLAGS( GTK_WIDGET( button ), GTK_CAN_FOCUS );
+						gtk_widget_set_can_focus( GTK_WIDGET( button ), FALSE );
 						gtk_widget_show( GTK_WIDGET( button ) );
 						g_signal_connect( G_OBJECT( button ), "clicked", G_CALLBACK( EntityInspector_selectTargeting ), 0 );
 						gtk_box_pack_start( hbox, GTK_WIDGET( button ), FALSE, FALSE, 0 );
@@ -1750,7 +1796,7 @@ GtkWidget* EntityInspector_constructWindow( GtkWindow* toplevel ){
 					{
 						GtkButton* button = GTK_BUTTON( gtk_button_new_with_label( ">" ) );
 						gtk_widget_set_tooltip_text( GTK_WIDGET( button ), "Select targets" );
-						GTK_WIDGET_UNSET_FLAGS( GTK_WIDGET( button ), GTK_CAN_FOCUS );
+						gtk_widget_set_can_focus( GTK_WIDGET( button ), FALSE );
 						gtk_widget_show( GTK_WIDGET( button ) );
 						g_signal_connect( G_OBJECT( button ), "clicked", G_CALLBACK( EntityInspector_selectTargets ), 0 );
 						gtk_box_pack_start( hbox, GTK_WIDGET( button ), FALSE, FALSE, 0 );
@@ -1758,18 +1804,17 @@ GtkWidget* EntityInspector_constructWindow( GtkWindow* toplevel ){
 					{
 						GtkButton* button = GTK_BUTTON( gtk_button_new_with_label( "<->" ) );
 						gtk_widget_set_tooltip_text( GTK_WIDGET( button ), "Select connected entities" );
-						GTK_WIDGET_UNSET_FLAGS( GTK_WIDGET( button ), GTK_CAN_FOCUS );
+						gtk_widget_set_can_focus( GTK_WIDGET( button ), FALSE );
 						gtk_widget_show( GTK_WIDGET( button ) );
 						g_signal_connect( G_OBJECT( button ), "clicked", G_CALLBACK( EntityInspector_selectConnected ), 0 );
 						gtk_box_pack_start( hbox, GTK_WIDGET( button ), FALSE, FALSE, 0 );
 					}
 					{
 						GtkWidget* button = gtk_toggle_button_new();
-						GtkImage* image = GTK_IMAGE( gtk_image_new_from_stock( GTK_STOCK_ZOOM_IN, GTK_ICON_SIZE_SMALL_TOOLBAR ) );
-						gtk_widget_show( GTK_WIDGET( image ) );
-						gtk_container_add( GTK_CONTAINER( button ), GTK_WIDGET( image ) );
+						GtkWidget* image = gtk_image_new_from_stock( GTK_STOCK_ZOOM_IN, GTK_ICON_SIZE_SMALL_TOOLBAR );
+						gtk_button_set_image( GTK_BUTTON( button ), image );
 						gtk_button_set_relief( GTK_BUTTON( button ), GTK_RELIEF_NONE );
-						GTK_WIDGET_UNSET_FLAGS( button, GTK_CAN_FOCUS );
+						gtk_widget_set_can_focus( button, FALSE );
 						gtk_box_pack_start( hbox, button, FALSE, FALSE, 0 );
 						gtk_widget_set_tooltip_text( button, "AutoFocus on Selection" );
 						gtk_widget_show( button );
@@ -1865,14 +1910,4 @@ void EntityInspector_construct(){
 
 void EntityInspector_destroy(){
 	GlobalEntityClassManager().detach( g_EntityInspector );
-}
-
-const char *EntityInspector_getCurrentKey(){
-	if ( !GroupDialog_isShown() ) {
-		return 0;
-	}
-	if ( GroupDialog_getPage() != g_page_entity ) {
-		return 0;
-	}
-	return gtk_entry_get_text( g_entityKeyEntry );
 }

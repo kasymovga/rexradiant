@@ -24,18 +24,16 @@
 
 #include "vfs.h"
 
-qboolean g_verbose;
-qboolean g_stripify = qtrue;
-qboolean g_release;             // don't grab, copy output data to new tree
+bool g_verbose;
+bool g_stripify = true;
+bool g_release;             // don't grab, copy output data to new tree
 char g_releasedir[1024];        // c:\quake2\baseq2, etc
-qboolean g_archive;             // don't grab, copy source data to new tree
+bool g_archive;             // don't grab, copy source data to new tree
 char g_only[256];               // if set, only grab this cd
-qboolean g_skipmodel;           // set true when a cd is not g_only
+bool g_skipmodel;           // set true when a cd is not g_only
 
 // bogus externs for some TA hacks (common/ using them against q3map)
 char *moddir = NULL;
-// some old defined that was in cmdlib lost during merge
-char writedir[1024];
 
 /*
    =======================================================
@@ -69,7 +67,7 @@ packheader_t pakheader;
    ==============
    ReleaseFile
 
-   Filename should be gamedir reletive.
+   Filename should be gamedir relative.
    Either copies the file to the release dir, or adds it to
    the pak file.
    ==============
@@ -126,10 +124,7 @@ void FindShaderFiles( char *filename ){
 	s_shaderFiles.num = 0;
 
 	strcpy( stripped, filename );
-	if ( strrchr( stripped, '.' ) ) {
-		*strrchr( stripped, '.' ) = 0;
-	}
-	strcat( stripped, ".shader" );
+	path_set_extension( stripped, ".shader" );
 
 	if ( FileExists( stripped ) ) {
 		char *p;
@@ -163,7 +158,7 @@ void FindShaderFiles( char *filename ){
 			}
 			linebuffer[i] = 0;
 
-			strlower( linebuffer );
+			strLower( linebuffer );
 
 			// see if the line specifies an opaque map or blendmap
 			if ( strstr( linebuffer, "opaquemap" ) == linebuffer ||
@@ -219,9 +214,7 @@ void FindShaderFiles( char *filename ){
 	}
 	else
 	{
-		if ( strrchr( stripped, '.' ) ) {
-			*strrchr( stripped, '.' ) = 0;
-		}
+		StripExtension( stripped );
 
 		// look for diffuse maps
 		for ( i = 0; i < 3; i++ )
@@ -284,7 +277,7 @@ void ReleaseShader( char *filename ){
    ===============
  */
 void Cmd_File( void ){
-	GetToken( qfalse );
+	GetToken( false );
 	ReleaseFile( token );
 }
 
@@ -294,7 +287,7 @@ void Cmd_File( void ){
 
    ===============
  */
-#ifdef _WIN32
+#ifdef WIN32
 #include "io.h"
 void PackDirectory_r( char *dir ){
 	struct _finddata_t fileinfo;
@@ -327,22 +320,13 @@ void PackDirectory_r( char *dir ){
 #else
 
 #include <sys/types.h>
-#ifndef WIN32
 #include <sys/dir.h>
-#else
-#include <sys/dirent.h>
-#endif
 
 void PackDirectory_r( char *dir ){
-#ifdef NeXT
-	struct direct **namelist, *ent;
-#else
 	struct dirent **namelist, *ent;
-#endif
 	int count;
 	struct stat st;
 	int i;
-	int len;
 	char fullname[1024];
 	char dirstring[1024];
 	char        *name;
@@ -365,7 +349,7 @@ void PackDirectory_r( char *dir ){
 		if ( stat( dirstring, &st ) == -1 ) {
 			Error( "fstating %s", pf->name );
 		}
-		if ( st.st_mode & S_IFDIR ) { // directory
+		if ( S_ISDIR( st.st_mode ) != 0 ) { // directory
 			PackDirectory_r( fullname );
 			continue;
 		}
@@ -386,7 +370,7 @@ void PackDirectory_r( char *dir ){
    ===============
  */
 void Cmd_Dir( void ){
-	GetToken( qfalse );
+	GetToken( false );
 	PackDirectory_r( token );
 }
 
@@ -401,7 +385,7 @@ void ReleaseTexture( char *name ){
 	char path[1024];
 
 	for ( i = 0 ; i < numrtex ; i++ )
-		if ( !Q_stricmp( name, rtex[i] ) ) {
+		if ( striEqual( name, rtex[i] ) ) {
 			return;
 		}
 
@@ -430,7 +414,7 @@ void Cmd_Maps( void ){
 
 	while ( TokenAvailable() )
 	{
-		GetToken( qfalse );
+		GetToken( false );
 		sprintf( map, "maps/%s.bsp", token );
 		ReleaseFile( map );
 
@@ -457,7 +441,7 @@ void ParseScript( void ){
 	{
 		do
 		{   // look for a line starting with a $ command
-			GetToken( qtrue );
+			GetToken( true );
 			if ( endofscript ) {
 				return;
 			}
@@ -465,7 +449,7 @@ void ParseScript( void ){
 				break;
 			}
 			while ( TokenAvailable() )
-				GetToken( qfalse );
+				GetToken( false );
 		} while ( 1 );
 
 		//
@@ -505,10 +489,10 @@ void ParseScript( void ){
 			Cmd_SpriteShader();
 		}
 		else if ( !strcmp( token, "$aseconvert" ) ) {
-			Cmd_ASEConvert( qfalse );
+			Cmd_ASEConvert( false );
 		}
 		else if ( !strcmp( token, "$aseanimconvert" ) ) {
-			Cmd_ASEConvert( qtrue );
+			Cmd_ASEConvert( true );
 		}
 
 		//
@@ -561,7 +545,7 @@ void ParseScript( void ){
    ==============
  */
 int main( int argc, char **argv ){
-	static int i;           // VC4.2 compiler bug if auto...
+	int i;           // VC4.2 compiler bug if auto...
 	char path[1024];
 
 	// using GtkRadiant's versioning next to Id's versioning
@@ -572,20 +556,14 @@ int main( int argc, char **argv ){
 
 	for ( i = 1 ; i < argc ; i++ )
 	{
-		if ( !strcmp( argv[i], "-archive" ) ) {
-			archive = qtrue;
-			strcpy( archivedir, argv[i + 1] );
-			printf( "Archiving source to: %s\n", archivedir );
-			i++;
-		}
-		else if ( !strcmp( argv[i], "-release" ) ) {
-			g_release = qtrue;
+		if ( !strcmp( argv[i], "-release" ) ) {
+			g_release = true;
 			strcpy( g_releasedir, argv[i + 1] );
 			printf( "Copy output to: %s\n", g_releasedir );
 			i++;
 		}
 		else if ( !strcmp( argv[i], "-nostrips" ) ) {
-			g_stripify = qfalse;
+			g_stripify = false;
 			printf( "Not optimizing for strips\n" );
 		}
 		else if ( !strcmp( argv[i], "-writedir" ) ) {
@@ -594,11 +572,11 @@ int main( int argc, char **argv ){
 			i++;
 		}
 		else if ( !strcmp( argv[i], "-verbose" ) ) {
-			g_verbose = qtrue;
+			g_verbose = true;
 		}
 		else if ( !strcmp( argv[i], "-dump" ) ) {
 			printf( "Dumping contents of: '%s'\n", argv[i + 1] );
-			if ( strstr( argv[i + 1], ".md3" ) ) {
+			if ( striEqual( path_get_filename_base_end( argv[i + 1] ), ".md3" ) ) {
 				MD3_Dump( argv[i + 1] );
 			}
 			else
@@ -635,7 +613,7 @@ int main( int argc, char **argv ){
 	}
 
 	if ( i == argc ) {
-		Error( "usage: q3data [-archive <directory>] [-dump <file.md3>] [-release <directory>] [-only <model>] [-3dsconvert <file.3ds>] [-verbose] [file.qdt]" );
+		Error( "usage: q3data [-dump <file.md3>] [-release <directory>] [-only <model>] [-3dsconvert <file.3ds>] [-verbose] [file.qdt]" );
 	}
 
 	for ( ; i < argc ; i++ )

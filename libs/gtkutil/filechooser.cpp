@@ -25,11 +25,7 @@
 
 #include <list>
 #include <vector>
-#include <gtk/gtkwidget.h>
-#include <gtk/gtkwindow.h>
-#include <gtk/gtkfilechooser.h>
-#include <gtk/gtkfilechooserdialog.h>
-#include <gtk/gtkstock.h>
+#include <gtk/gtk.h>
 
 #include "string/string.h"
 #include "stream/stringstream.h"
@@ -176,14 +172,15 @@ const char* file_dialog_show( GtkWidget* parent, bool open, const char* title, c
 		{
 			*w++ = ( *r == '/' ) ? G_DIR_SEPARATOR : *r;
 		}
-		// remove separator from end of path if required
-		if ( *( w - 1 ) == G_DIR_SEPARATOR ) {
-			--w;
-		}
 		// terminate string
 		*w = '\0';
 
-		gtk_file_chooser_set_current_folder( GTK_FILE_CHOOSER( dialog ), new_path.data() );
+		if( file_is_directory( new_path.data() ) ){ // folder path
+			gtk_file_chooser_set_current_folder( GTK_FILE_CHOOSER( dialog ), new_path.data() );
+		}
+		else{ // file path
+			gtk_file_chooser_set_filename( GTK_FILE_CHOOSER( dialog ), new_path.data() );
+		}
 	}
 
 	// we should add all important paths as shortcut folder...
@@ -226,7 +223,7 @@ const char* file_dialog_show( GtkWidget* parent, bool open, const char* title, c
 			else{ /* validate extension */
 				bool valid = false;
 				for ( std::size_t i = 0; i < masks.m_filters.size(); ++i )
-					if( string_length( masks.m_filters[i].c_str() ) >= 2 && string_equal_nocase( extension, masks.m_filters[i].c_str() + 2 ) )
+					if( string_length( masks.m_filters[i].c_str() ) >= 2 && extension_equal( extension, masks.m_filters[i].c_str() + 2 ) )
 						valid = true;
 				if( !valid ){
 					g_file_dialog_file[0] = '\0';

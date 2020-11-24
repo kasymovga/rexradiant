@@ -25,7 +25,7 @@
 #define MAX_SPRFRAMES           MAX_MD2SKINS
 
 dsprite_t sprite;
-dsprframe_t frames[MAX_SPRFRAMES];
+static dsprframe_t frames[MAX_SPRFRAMES];
 
 byte            *byteimage, *lbmpalette;
 int byteimagewidth, byteimageheight;
@@ -41,7 +41,6 @@ void FinishSprite( void );
 void Cmd_Spritename( void );
 
 char spr_prefix[1024];
-char pic_prefix[1024];
 
 extern char        *g_outputDir;
 
@@ -53,7 +52,7 @@ extern char        *g_outputDir;
  */
 void FinishSprite( void ){
 	FILE    *spriteouthandle;
-	int i, curframe;
+	int i;
 	dsprite_t spritetemp;
 	char savename[1024];
 
@@ -95,8 +94,6 @@ void FinishSprite( void ){
 //
 // write out the frames
 //
-	curframe = 0;
-
 	for ( i = 0 ; i < sprite.numframes ; i++ )
 	{
 		frames[i].width = LittleLong( frames[i].width );

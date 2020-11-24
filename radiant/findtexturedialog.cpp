@@ -31,20 +31,11 @@
 
 #include "ishaders.h"
 
-#include <gtk/gtkhbox.h>
-#include <gtk/gtkentry.h>
-#include <gtk/gtkvbox.h>
-#include <gtk/gtkframe.h>
-#include <gtk/gtklabel.h>
-#include <gtk/gtktable.h>
-#include <gtk/gtkbutton.h>
-#include <gtk/gtktogglebutton.h>
-#include <gtk/gtkcheckbutton.h>
-#include <gtk/gtkmenuitem.h>
-#include <gtk/gtkarrow.h>
+#include <gtk/gtk.h>
 
 #include "gtkutil/window.h"
 #include "stream/stringstream.h"
+#include "os/path.h"
 
 #include "commands.h"
 #include "dialog.h"
@@ -92,7 +83,7 @@ void FindTextureDialog_apply(){
 	StringOutputStream replace( 256 );
 
 	find << "textures/" << g_FindTextureDialog.m_strFind.c_str();
-	replace << "textures/" << g_FindTextureDialog.m_strReplace.c_str();
+	replace << "textures/" << PathCleaned( g_FindTextureDialog.m_strReplace.c_str() );
 	FindReplaceTextures( find.c_str(), replace.c_str(), g_FindTextureDialog.m_bSelectedOnly );
 }
 
@@ -212,14 +203,14 @@ GtkWindow* FindTextureDialog::BuildDialog(){
 	gtk_box_pack_start( GTK_BOX( vbox ), button, FALSE, FALSE, 0 );
 	g_signal_connect( G_OBJECT( button ), "clicked",
 					  G_CALLBACK( OnApply ), 0 );
-	gtk_widget_set_usize( button, 60, -2 );
+	gtk_widget_set_size_request( button, 60, -1 );
 
 	button = gtk_button_new_with_label( "Close" );
 	gtk_widget_show( button );
 	gtk_box_pack_start( GTK_BOX( vbox ), button, FALSE, FALSE, 0 );
 	g_signal_connect( G_OBJECT( button ), "clicked",
 					  G_CALLBACK( OnClose ), 0 );
-	gtk_widget_set_usize( button, 60, -2 );
+	gtk_widget_set_size_request( button, 60, -1 );
 
 	return dlg;
 }
@@ -237,7 +228,7 @@ void FindTextureDialog::updateTextures( const char* name ){
 }
 
 bool FindTextureDialog::isOpen(){
-	return GTK_WIDGET_VISIBLE( g_FindTextureDialog.GetWidget() ) == TRUE;
+	return gtk_widget_get_visible( GTK_WIDGET( g_FindTextureDialog.GetWidget() ) );
 }
 
 void FindTextureDialog::setFindStr( const char* name ){

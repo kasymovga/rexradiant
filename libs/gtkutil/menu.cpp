@@ -22,11 +22,7 @@
 #include "menu.h"
 
 #include <ctype.h>
-#include <gtk/gtkmenu.h>
-#include <gtk/gtkmenubar.h>
-#include <gtk/gtkradiomenuitem.h>
-#include <gtk/gtktearoffmenuitem.h>
-#include <gtk/gtkaccellabel.h>
+#include <gtk/gtk.h>
 
 #include "generic/callback.h"
 
@@ -130,9 +126,9 @@ GtkCheckMenuItem* create_check_menu_item_with_mnemonic( GtkMenu* menu, const cha
 GtkRadioMenuItem* new_radio_menu_item_with_mnemonic( GSList** group, const char* mnemonic, const Callback& callback ){
 	GtkRadioMenuItem* item = GTK_RADIO_MENU_ITEM( gtk_radio_menu_item_new_with_mnemonic( *group, mnemonic ) );
 	if ( *group == 0 ) {
-		gtk_check_menu_item_set_state( GTK_CHECK_MENU_ITEM( item ), TRUE );
+		gtk_check_menu_item_set_active( GTK_CHECK_MENU_ITEM( item ), TRUE );
 	}
-	*group = gtk_radio_menu_item_group( item );
+	*group = gtk_radio_menu_item_get_group( item );
 	gtk_widget_show( GTK_WIDGET( item ) );
 	check_menu_item_connect_callback( GTK_CHECK_MENU_ITEM( item ), callback );
 	return item;
@@ -227,23 +223,13 @@ void accelerator_name( const Accelerator& accelerator, GString* gstring ){
 }
 
 void menu_item_set_accelerator( GtkMenuItem* item, Accelerator accelerator ){
-	GtkAccelLabel* accel_label = GTK_ACCEL_LABEL( gtk_bin_get_child( GTK_BIN( item ) ) );
-
-	g_free( accel_label->accel_string );
-	accel_label->accel_string = 0;
-
-	GString* gstring = g_string_new( accel_label->accel_string );
+	GString* gstring = g_string_new( nullptr );
 	g_string_append( gstring, "   " );
-
 	accelerator_name( accelerator, gstring );
 
+	GtkAccelLabel* accel_label = GTK_ACCEL_LABEL( gtk_bin_get_child( GTK_BIN( item ) ) );
 	g_free( accel_label->accel_string );
-	accel_label->accel_string = gstring->str;
-	g_string_free( gstring, FALSE );
-
-	if ( !accel_label->accel_string ) {
-		accel_label->accel_string = g_strdup( "" );
-	}
+	accel_label->accel_string = g_string_free( gstring, FALSE );
 
 	gtk_widget_queue_resize( GTK_WIDGET( accel_label ) );
 }

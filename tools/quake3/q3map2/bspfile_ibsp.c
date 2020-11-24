@@ -452,10 +452,10 @@ void LoadIBSPFile( const char *filename ){
 	SwapBlock( (int*) ( (byte*) header + sizeof( int ) ), sizeof( *header ) - sizeof( int ) );
 
 	/* make sure it matches the format we're trying to load */
-	if ( force == qfalse && *( (int*) header->ident ) != *( (int*) game->bspIdent ) ) {
+	if ( !force && *( (int*) header->ident ) != *( (int*) game->bspIdent ) ) {
 		Error( "%s is not a %s file", filename, game->bspIdent );
 	}
-	if ( force == qfalse && header->version != game->bspVersion ) {
+	if ( !force && header->version != game->bspVersion ) {
 		Error( "%s is version %d, not %d", filename, header->version, game->bspVersion );
 	}
 
@@ -497,7 +497,7 @@ void LoadIBSPFile( const char *filename ){
 	CopyLightGridLumps( header );
 
 	/* advertisements */
-	if ( header->version == 47 && !strcmp( game->arg, "quakelive" ) ) { // quake live's bsp version minus wolf, et, etut
+	if ( header->version == 47 && strEqual( game->arg, "quakelive" ) ) { // quake live's bsp version minus wolf, et, etut
 		numBSPAds = CopyLump( (bspHeader_t*) header, LUMP_ADVERTISEMENTS, bspAds, sizeof( bspAdvertisement_t ) );
 	}
 	else{
@@ -524,10 +524,10 @@ void PartialLoadIBSPFile( const char *filename ){
 	SwapBlock( (int*) ( (byte*) header + sizeof( int ) ), sizeof( *header ) - sizeof( int ) );
 
 	/* make sure it matches the format we're trying to load */
-	if ( force == qfalse && *( (int*) header->ident ) != *( (int*) game->bspIdent ) ) {
+	if ( !force && *( (int*) header->ident ) != *( (int*) game->bspIdent ) ) {
 		Error( "%s is not a %s file", filename, game->bspIdent );
 	}
-	if ( force == qfalse && header->version != game->bspVersion ) {
+	if ( !force && header->version != game->bspVersion ) {
 		Error( "%s is version %d, not %d", filename, header->version, game->bspVersion );
 	}
 
@@ -571,7 +571,8 @@ void WriteIBSPFile( const char *filename ){
 
 	/* add marker lump */
 	time( &t );
-	sprintf( marker, "I LOVE MY Q3MAP2 %s on %s)", Q3MAP_VERSION, asctime( localtime( &t ) ) );
+	/* asctime adds an implicit trailing \n */
+	sprintf( marker, "I LOVE MY Q3MAP2 %s on %s", Q3MAP_VERSION, asctime( localtime( &t ) ) );
 	AddLump( file, (bspHeader_t*) header, 0, marker, strlen( marker ) + 1 );
 
 	/* add lumps */

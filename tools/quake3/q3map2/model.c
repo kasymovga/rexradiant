@@ -99,7 +99,7 @@ picoModel_t *FindModel( const char *name, int frame ){
 	}
 
 	/* dummy check */
-	if ( name == NULL || name[ 0 ] == '\0' ) {
+	if ( strEmptyOrNull( name ) ) {
 		return NULL;
 	}
 
@@ -107,7 +107,7 @@ picoModel_t *FindModel( const char *name, int frame ){
 	for ( i = 0; i < MAX_MODELS; i++ )
 	{
 		if ( picoModels[ i ] != NULL &&
-			 !strcmp( PicoGetModelName( picoModels[ i ] ), name ) &&
+			 strEqual( PicoGetModelName( picoModels[ i ] ), name ) &&
 			 PicoGetModelFrameNum( picoModels[ i ] ) == frame ) {
 			return picoModels[ i ];
 		}
@@ -135,7 +135,7 @@ picoModel_t *LoadModel( const char *name, int frame ){
 	}
 
 	/* dummy check */
-	if ( name == NULL || name[ 0 ] == '\0' ) {
+	if ( strEmptyOrNull( name ) ) {
 		return NULL;
 	}
 
@@ -218,12 +218,11 @@ void InsertModel( const char *name, int skin, int frame, m4x4_t transform, remap
 	shaderInfo_t        *si;
 	mapDrawSurface_t    *ds;
 	bspDrawVert_t       *dv;
-	char                *picoShaderName;
+	const char          *picoShaderName;
 	char shaderName[ MAX_QPATH ];
 	picoVec_t           *xyz, *normal, *st;
 	byte                *color;
 	picoIndex_t         *indexes;
-	remap_t             *rm, *rmto, *glob;
 	skinfile_t          *sf, *sf2;
 	char skinfilename[ MAX_QPATH ];
 	char                *skinfilecontent;
@@ -262,21 +261,20 @@ void InsertModel( const char *name, int skin, int frame, m4x4_t transform, remap
 	sf = NULL;
 	if ( skinfilesize >= 0 ) {
 		Sys_Printf( "Using skin %d of %s\n", skin, name );
-		int pos;
-		for ( skinfileptr = skinfilecontent; *skinfileptr; skinfileptr = skinfilenextptr )
+		for ( skinfileptr = skinfilecontent; !strEmpty( skinfileptr ); skinfileptr = skinfilenextptr )
 		{
 			// for fscanf
 			char format[64];
 
 			skinfilenextptr = strchr( skinfileptr, '\r' );
-			if ( skinfilenextptr ) {
-				*skinfilenextptr++ = 0;
+			if ( skinfilenextptr != NULL ) {
+				strClear( skinfilenextptr++ );
 			}
 			else
 			{
 				skinfilenextptr = strchr( skinfileptr, '\n' );
-				if ( skinfilenextptr ) {
-					*skinfilenextptr++ = 0;
+				if ( skinfilenextptr != NULL ) {
+					strClear( skinfilenextptr++ );
 				}
 				else{
 					skinfilenextptr = skinfileptr + strlen( skinfileptr );
@@ -293,7 +291,7 @@ void InsertModel( const char *name, int skin, int frame, m4x4_t transform, remap
 				continue;
 			}
 			sprintf( format, " %%%d[^,  ] ,%%%ds", (int)sizeof( sf->name ) - 1, (int)sizeof( sf->to ) - 1 );
-			if ( ( pos = sscanf( skinfileptr, format, sf->name, sf->to ) ) == 2 ) {
+			if ( sscanf( skinfileptr, format, sf->name, sf->to ) == 2 ) {
 				continue;
 			}
 
@@ -359,53 +357,46 @@ void InsertModel( const char *name, int skin, int frame, m4x4_t transform, remap
 			picoShaderName = NULL;
 			for ( sf2 = sf; sf2 != NULL; sf2 = sf2->next )
 			{
-				if ( !Q_stricmp( surface->name, sf2->name ) ) {
+				if ( striEqual( surface->name, sf2->name ) ) {
 					Sys_FPrintf( SYS_VRB, "Skin file: mapping %s to %s\n", surface->name, sf2->to );
 					picoShaderName = sf2->to;
 					break;
 				}
 			}
-			if ( !picoShaderName ) {
+			if ( picoShaderName == NULL ) {
 				Sys_FPrintf( SYS_VRB, "Skin file: not mapping %s\n", surface->name );
 				continue;
 			}
 		}
 
 		/* handle shader remapping */
-		glob = rmto = NULL;
-		for ( rm = remap; rm != NULL; rm = rm->next )
 		{
-			if ( rm->from[ 0 ] == '*' && rm->from[ 1 ] == '\0' ) {
-				glob = rm;
-			}
-			else{
-				const size_t shaderLen = strlen( picoShaderName );
-				const size_t suffixLen = strlen( rm->from );
-				if( shaderLen >= suffixLen && !Q_strncasecmp( picoShaderName + shaderLen - suffixLen, rm->from, suffixLen ) ){
-					rmto = rm;
-					if( shaderLen == suffixLen ) // exact match priority
-						break;
+			const char* to = NULL;
+			size_t fromlen = 0;
+			for ( remap_t *rm = remap; rm != NULL; rm = rm->next )
+			{
+				if ( strEqual( rm->from, "*" ) && fromlen == 0 ) { // only globbing, if no respective match
+					to = rm->to;
+				}
+				else if( striEqualSuffix( picoShaderName, rm->from ) && strlen( rm->from ) > fromlen ){ // longer match has priority
+					to = rm->to;
+					fromlen = strlen( rm->from );
 				}
 			}
-		}
-		if( rmto ){
-			Sys_FPrintf( SYS_VRB, "Remapping '%s' to '%s'\n", picoShaderName, rmto->to );
-			picoShaderName = rmto->to;
-		}
-		else if ( glob ) {
-			Sys_FPrintf( SYS_VRB, "Globbing '%s' to '%s'\n", picoShaderName, glob->to );
-			picoShaderName = glob->to;
+			if( to != NULL ){
+				Sys_FPrintf( SYS_VRB, ( fromlen == 0? "Globbing '%s' to '%s'\n" : "Remapping '%s' to '%s'\n" ), picoShaderName, to );
+				picoShaderName = to;
+			}
 		}
 
 		/* shader renaming for sof2 */
 		if ( renameModelShaders ) {
 			strcpy( shaderName, picoShaderName );
-			StripExtension( shaderName );
 			if ( spawnFlags & 1 ) {
-				strcat( shaderName, "_RMG_BSP" );
+				path_set_extension( shaderName, "_RMG_BSP" );
 			}
 			else{
-				strcat( shaderName, "_BSP" );
+				path_set_extension( shaderName, "_BSP" );
 			}
 			si = ShaderInfoForShader( shaderName );
 		}
@@ -546,7 +537,7 @@ void InsertModel( const char *name, int skin, int frame, m4x4_t transform, remap
 			vec3_t points[ 4 ], cnt, bestNormal, nrm, Vnorm[3], Enorm[3];
 			vec4_t plane, reverse, p[3];
 			double normalEpsilon_save;
-			qboolean snpd;
+			bool snpd;
 			vec3_t min = { 999999, 999999, 999999 }, max = { -999999, -999999, -999999 };
 			vec3_t avgDirection = { 0, 0, 0 };
 			int axis;
@@ -634,12 +625,12 @@ void InsertModel( const char *name, int skin, int frame, m4x4_t transform, remap
 					buildBrush->contentShader = si;
 					buildBrush->compileFlags = si->compileFlags;
 					buildBrush->contentFlags = si->contentFlags;
-					buildBrush->detail = qtrue;
+					buildBrush->detail = true;
 
 					//snap points before using them for further calculations
 					//precision suffers a lot, when two of normal values are under .00025 (often no collision, knocking up effect in ioq3)
 					//also broken drawsurfs in case of normal brushes
-					snpd = qfalse;
+					snpd = false;
 					for ( j=0; j<3; j++ )
 					{
 						if ( fabs(plane[j]) < 0.00025 && fabs(plane[(j+1)%3]) < 0.00025 && ( plane[j] != 0.0 || plane[(j+1)%3] != 0.0 ) ){
@@ -647,7 +638,7 @@ void InsertModel( const char *name, int skin, int frame, m4x4_t transform, remap
 							VectorAdd( cnt, points[ 2 ], cnt );
 							VectorScale( cnt, 0.3333333333333f, cnt );
 							points[0][(j+2)%3]=points[1][(j+2)%3]=points[2][(j+2)%3]=cnt[(j+2)%3];
-							snpd = qtrue;
+							snpd = true;
 							break;
 						}
 					}
@@ -663,14 +654,14 @@ void InsertModel( const char *name, int skin, int frame, m4x4_t transform, remap
 								//Sys_Printf( "b4(%6.6f %6.6f %6.6f)(%6.6f %6.6f %6.6f)\n", points[j][0], points[j][1], points[j][2], points[(j+1)%3][0], points[(j+1)%3][1], points[(j+1)%3][2] );
 								points[j][k]=points[(j+1)%3][k] = ( points[j][k] + points[(j+1)%3][k] ) / 2.0;
 								//Sys_Printf( "sn(%6.6f %6.6f %6.6f)(%6.6f %6.6f %6.6f)\n", points[j][0], points[j][1], points[j][2], points[(j+1)%3][0], points[(j+1)%3][1], points[(j+1)%3][2] );
-								snpd = qtrue;
+								snpd = true;
 							}
 						}
 					}
 
 					if ( snpd ) {
 						PlaneFromPoints( plane, points[ 0 ], points[ 1 ], points[ 2 ] );
-						snpd = qfalse;
+						snpd = false;
 					}
 
 					//vector-is-close-to-be-on-axis check again, happens after previous code sometimes
@@ -691,7 +682,7 @@ void InsertModel( const char *name, int skin, int frame, m4x4_t transform, remap
 					{
 						if ( plane[j] != 0.0 && fabs(plane[j]) < 0.00005 ){
 							plane[j]=0.0;
-							snpd = qtrue;
+							snpd = true;
 						}
 					}
 
@@ -995,12 +986,12 @@ void InsertModel( const char *name, int skin, int frame, m4x4_t transform, remap
 							VectorNormalize( p[ j ], p[ j ] );
 							p[j][3] = DotProduct( points[j], p[j] );
 							//snap nearly axial side planes
-							snpd = qfalse;
+							snpd = false;
 							for ( k = 0; k < 3; k++ )
 							{
 								if ( fabs(p[j][k]) < 0.00025 && p[j][k] != 0.0 ){
 									p[j][k] = 0.0;
-									snpd = qtrue;
+									snpd = true;
 								}
 							}
 							if ( snpd ){
@@ -1081,13 +1072,13 @@ void InsertModel( const char *name, int skin, int frame, m4x4_t transform, remap
 							VectorNormalize( p[ j ], p[ j ] );
 							p[j][3] = DotProduct( points[j], p[j] );
 							//snap nearly axial side planes
-							snpd = qfalse;
+							snpd = false;
 							for ( k = 0; k < 3; k++ )
 							{
 								if ( fabs(p[j][k]) < 0.00025 && p[j][k] != 0.0 ){
 									//Sys_Printf( "init plane %6.8f %6.8f %6.8f %6.8f\n", p[j][0], p[j][1], p[j][2], p[j][3]);
 									p[j][k] = 0.0;
-									snpd = qtrue;
+									snpd = true;
 								}
 							}
 							if ( snpd ){
@@ -1138,13 +1129,13 @@ void InsertModel( const char *name, int skin, int frame, m4x4_t transform, remap
 							VectorNormalize( p[ j ], p[ j ] );
 							p[j][3] = DotProduct( points[j], p[j] );
 							//snap nearly axial side planes
-							snpd = qfalse;
+							snpd = false;
 							for ( k = 0; k < 3; k++ )
 							{
 								if ( fabs(p[j][k]) < 0.00025 && p[j][k] != 0.0 ){
 									//Sys_Printf( "init plane %6.8f %6.8f %6.8f %6.8f\n", p[j][0], p[j][1], p[j][2], p[j][3]);
 									p[j][k] = 0.0;
-									snpd = qtrue;
+									snpd = true;
 								}
 							}
 							if ( snpd ){
@@ -1358,151 +1349,93 @@ void InsertModel( const char *name, int skin, int frame, m4x4_t transform, remap
    adds misc_model surfaces to the bsp
  */
 
-void AddTriangleModels( entity_t *e ){
-	int num, frame, skin, castShadows, recvShadows, spawnFlags;
-	entity_t        *e2;
-	const char      *targetName;
-	const char      *target, *model, *value;
-	char shader[ MAX_QPATH ];
-	shaderInfo_t    *celShader;
-	float temp, baseLightmapScale, lightmapScale, clipDepth;
-	float shadeAngle;
-	int lightmapSampleSize;
-	vec3_t origin, scale, angles;
-	m4x4_t transform;
-	epair_t         *ep;
-	remap_t         *remap, *remap2;
-	char            *split;
-
-
+void AddTriangleModels( entity_t *eparent ){
 	/* note it */
 	Sys_FPrintf( SYS_VRB, "--- AddTriangleModels ---\n" );
 
-
 	/* get current brush entity targetname */
-	if ( e == entities ) {
+	const char *targetName;
+	if ( eparent == entities ) {
 		targetName = "";
 	}
-	else
-	{
-		targetName = ValueForKey( e, "targetname" );
-
-		/* misc_model entities target non-worldspawn brush model entities */
-		if ( targetName[ 0 ] == '\0' ) {
+	else{  /* misc_model entities target non-worldspawn brush model entities */
+		if ( !ENT_READKV( &targetName, eparent, "targetname" ) ) {
 			return;
 		}
 	}
 
-	/* get lightmap scale */
-	/* vortex: added _ls key (short name of lightmapscale) */
-	baseLightmapScale = 0.0f;
-	if ( strcmp( "", ValueForKey( e, "lightmapscale" ) ) ||
-		 strcmp( "", ValueForKey( e, "_lightmapscale" ) ) ||
-		 strcmp( "", ValueForKey( e, "_ls" ) ) ) {
-		baseLightmapScale = FloatForKey( e, "lightmapscale" );
-		if ( baseLightmapScale <= 0.0f ) {
-			baseLightmapScale = FloatForKey( e, "_lightmapscale" );
-		}
-		if ( baseLightmapScale <= 0.0f ) {
-			baseLightmapScale = FloatForKey( e, "_ls" );
-		}
-		if ( baseLightmapScale < 0.0f ) {
-			baseLightmapScale = 0.0f;
-		}
-		if ( baseLightmapScale > 0.0f ) {
-			Sys_Printf( "World Entity has lightmap scale of %.4f\n", baseLightmapScale );
-		}
-	}
-
-
 	/* walk the entity list */
-	for ( num = 1; num < numEntities; num++ )
+	for ( int num = 1; num < numEntities; num++ )
 	{
-		/* get e2 */
-		e2 = &entities[ num ];
+		/* get entity */
+		entity_t *e = &entities[ num ];
 
 		/* convert misc_models into raw geometry */
-		if ( Q_stricmp( "misc_model", ValueForKey( e2, "classname" ) ) ) {
+		if ( !ent_class_is( e, "misc_model" ) ) {
 			continue;
 		}
 
 		/* ydnar: added support for md3 models on non-worldspawn models */
-		target = ValueForKey( e2, "target" );
-		if ( strcmp( target, targetName ) ) {
+		if ( !strEqual( ValueForKey( e, "target" ), targetName ) ) {
 			continue;
 		}
 
 		/* get model name */
-		model = ValueForKey( e2, "model" );
-		if ( model[ 0 ] == '\0' ) {
-			Sys_Warning( "misc_model at %i %i %i without a model key\n",
-						(int) origin[ 0 ], (int) origin[ 1 ], (int) origin[ 2 ] );
+		const char *model;
+		if ( !ENT_READKV( &model, e, "model" ) ) {
+			Sys_Warning( "entity#%d misc_model without a model key\n", e->mapEntityNum );
 			continue;
 		}
 
 		/* get model frame */
-		frame = 0;
-		if ( strcmp( "", ValueForKey( e2, "_frame" ) ) ) {
-			frame = IntForKey( e2, "_frame" );
-		}
-		else if ( strcmp( "", ValueForKey( e2, "frame" ) ) ) {
-			frame = IntForKey( e2, "frame" );
-		}
+		const int frame = IntForKey( e, "_frame", "frame" );
 
-		/* worldspawn (and func_groups) default to cast/recv shadows in worldspawn group */
-		if ( e == entities ) {
+		int castShadows, recvShadows;
+		if ( eparent == entities ) {    /* worldspawn (and func_groups) default to cast/recv shadows in worldspawn group */
 			castShadows = WORLDSPAWN_CAST_SHADOWS;
 			recvShadows = WORLDSPAWN_RECV_SHADOWS;
 		}
-
-		/* other entities don't cast any shadows, but recv worldspawn shadows */
-		else
-		{
+		else{                   /* other entities don't cast any shadows, but recv worldspawn shadows */
 			castShadows = ENTITY_CAST_SHADOWS;
 			recvShadows = ENTITY_RECV_SHADOWS;
 		}
 
 		/* get explicit shadow flags */
-		GetEntityShadowFlags( e2, e, &castShadows, &recvShadows );
+		GetEntityShadowFlags( e, eparent, &castShadows, &recvShadows );
 
 		/* get spawnflags */
-		spawnFlags = IntForKey( e2, "spawnflags" );
+		const int spawnFlags = IntForKey( e, "spawnflags" );
 
 		/* get origin */
-		GetVectorForKey( e2, "origin", origin );
-		VectorSubtract( origin, e->origin, origin );    /* offset by parent */
+		vec3_t origin;
+		GetVectorForKey( e, "origin", origin );
+		VectorSubtract( origin, eparent->origin, origin );    /* offset by parent */
 
 		/* get scale */
-		scale[ 0 ] = scale[ 1 ] = scale[ 2 ] = 1.0f;
-		temp = FloatForKey( e2, "modelscale" );
-		if ( temp != 0.0f ) {
-			scale[ 0 ] = scale[ 1 ] = scale[ 2 ] = temp;
-		}
-		value = ValueForKey( e2, "modelscale_vec" );
-		if ( value[ 0 ] != '\0' ) {
-			sscanf( value, "%f %f %f", &scale[ 0 ], &scale[ 1 ], &scale[ 2 ] );
-		}
+		vec3_t scale = { 1.f, 1.f, 1.f };
+		if( !ENT_READKV( &scale, e, "modelscale_vec" ) )
+			if( ENT_READKV( &scale[0], e, "modelscale" ) )
+				scale[1] = scale[2] = scale[0];
 
-		/* get "angle" (yaw) or "angles" (pitch yaw roll) */
-		angles[ 0 ] = angles[ 1 ] = angles[ 2 ] = 0.0f;
-		angles[ 2 ] = FloatForKey( e2, "angle" );
-		value = ValueForKey( e2, "angles" );
-		if ( value[ 0 ] != '\0' ) {
-			sscanf( value, "%f %f %f", &angles[ 1 ], &angles[ 2 ], &angles[ 0 ] );
-		}
+		/* get "angle" (yaw) or "angles" (pitch yaw roll), store as (roll pitch yaw) */
+		const char *value;
+		vec3_t angles = { 0.f, 0.f, 0.f };
+		if ( !ENT_READKV( &value, e, "angles" ) ||
+			3 != sscanf( value, "%f %f %f", &angles[ 1 ], &angles[ 2 ], &angles[ 0 ] ) )
+			ENT_READKV( &angles[ 2 ], e, "angle" );
 
 		/* set transform matrix (thanks spog) */
+		m4x4_t transform;
 		m4x4_identity( transform );
 		m4x4_pivoted_transform_by_vec3( transform, origin, angles, eXYZ, scale, vec3_origin );
 
 		/* get shader remappings */
-		remap = NULL;
-		for ( ep = e2->epairs; ep != NULL; ep = ep->next )
+		remap_t *remap = NULL, *remap2;
+		for ( epair_t *ep = e->epairs; ep != NULL; ep = ep->next )
 		{
 			/* look for keys prefixed with "_remap" */
-			if ( ep->key != NULL && ep->value != NULL &&
-				 ep->key[ 0 ] != '\0' && ep->value[ 0 ] != '\0' &&
-				 !Q_strncasecmp( ep->key, "_remap", 6 ) ) {
+			if ( !strEmptyOrNull( ep->key ) && !strEmptyOrNull( ep->value ) &&
+				 striEqualPrefix( ep->key, "_remap" ) ) {
 				/* create new remapping */
 				remap2 = remap;
 				remap = safe_malloc( sizeof( *remap ) );
@@ -1510,7 +1443,7 @@ void AddTriangleModels( entity_t *e ){
 				strcpy( remap->from, ep->value );
 
 				/* split the string */
-				split = strchr( remap->from, ';' );
+				char *split = strchr( remap->from, ';' );
 				if ( split == NULL ) {
 					Sys_Warning( "Shader _remap key found in misc_model without a ; character: '%s'\n", remap->from );
 				}
@@ -1518,7 +1451,7 @@ void AddTriangleModels( entity_t *e ){
 					Sys_Warning( "_remap FROM is empty in '%s'\n", remap->from );
 					split = NULL;
 				}
-				else if( *( split + 1 ) == '\0' ){
+				else if( strEmpty( split + 1 ) ){
 					Sys_Warning( "_remap TO is empty in '%s'\n", remap->from );
 					split = NULL;
 				}
@@ -1534,7 +1467,7 @@ void AddTriangleModels( entity_t *e ){
 				}
 
 				/* store the split */
-				*split = '\0';
+				strClear( split );
 				strcpy( remap->to, ( split + 1 ) );
 
 				/* note it */
@@ -1543,99 +1476,44 @@ void AddTriangleModels( entity_t *e ){
 		}
 
 		/* ydnar: cel shader support */
-		value = ValueForKey( e2, "_celshader" );
-		if ( value[ 0 ] == '\0' ) {
-			value = ValueForKey( &entities[ 0 ], "_celshader" );
-		}
-		if ( value[ 0 ] != '\0' ) {
+		shaderInfo_t *celShader;
+		if( ENT_READKV( &value, e, "_celshader" ) ||
+			ENT_READKV( &value, &entities[ 0 ], "_celshader" ) ){
+			char shader[ MAX_QPATH ];
 			sprintf( shader, "textures/%s", value );
 			celShader = ShaderInfoForShader( shader );
 		}
 		else{
-			celShader = *globalCelShader ? ShaderInfoForShader( globalCelShader ) : NULL;
+			celShader = !strEmpty( globalCelShader ) ? ShaderInfoForShader( globalCelShader ) : NULL;
 		}
 
 		/* jal : entity based _samplesize */
-		lightmapSampleSize = 0;
-		if ( strcmp( "", ValueForKey( e2, "_lightmapsamplesize" ) ) ) {
-			lightmapSampleSize = IntForKey( e2, "_lightmapsamplesize" );
-		}
-		else if ( strcmp( "", ValueForKey( e2, "_samplesize" ) ) ) {
-			lightmapSampleSize = IntForKey( e2, "_samplesize" );
-		}
-		else if ( strcmp( "", ValueForKey( e2, "_ss" ) ) ) {
-			lightmapSampleSize = IntForKey( e2, "_ss" );
-		}
-
-		if ( lightmapSampleSize < 0 ) {
+		int lightmapSampleSize = IntForKey( e, "_lightmapsamplesize", "_samplesize", "_ss" );
+		if ( lightmapSampleSize < 0 )
 			lightmapSampleSize = 0;
-		}
-
-		if ( lightmapSampleSize > 0.0f ) {
+		if ( lightmapSampleSize > 0 )
 			Sys_Printf( "misc_model has lightmap sample size of %.d\n", lightmapSampleSize );
-		}
 
 		/* get lightmap scale */
-		/* vortex: added _ls key (short name of lightmapscale) */
-		lightmapScale = 0.0f;
-		if ( strcmp( "", ValueForKey( e2, "lightmapscale" ) ) ||
-			 strcmp( "", ValueForKey( e2, "_lightmapscale" ) ) ||
-			 strcmp( "", ValueForKey( e2, "_ls" ) ) ) {
-			lightmapScale = FloatForKey( e2, "lightmapscale" );
-			if ( lightmapScale <= 0.0f ) {
-				lightmapScale = FloatForKey( e2, "_lightmapscale" );
-			}
-			if ( lightmapScale <= 0.0f ) {
-				lightmapScale = FloatForKey( e2, "_ls" );
-			}
-			if ( lightmapScale < 0.0f ) {
-				lightmapScale = 0.0f;
-			}
-			if ( lightmapScale > 0.0f ) {
-				Sys_Printf( "misc_model has lightmap scale of %.4f\n", lightmapScale );
-			}
-		}
+		float lightmapScale = FloatForKey( e, "lightmapscale", "_lightmapscale", "_ls" );
+		if ( lightmapScale < 0.0f )
+			lightmapScale = 0.0f;
+		else if ( lightmapScale > 0.0f )
+			Sys_Printf( "misc_model has lightmap scale of %.4f\n", lightmapScale );
 
 		/* jal : entity based _shadeangle */
-		shadeAngle = 0.0f;
-		if ( strcmp( "", ValueForKey( e2, "_shadeangle" ) ) ) {
-			shadeAngle = FloatForKey( e2, "_shadeangle" );
-		}
-		/* vortex' aliases */
-		else if ( strcmp( "", ValueForKey( e2, "_smoothnormals" ) ) ) {
-			shadeAngle = FloatForKey( e2, "_smoothnormals" );
-		}
-		else if ( strcmp( "", ValueForKey( e2, "_sn" ) ) ) {
-			shadeAngle = FloatForKey( e2, "_sn" );
-		}
-		else if ( strcmp( "", ValueForKey( e2, "_sa" ) ) ) {
-			shadeAngle = FloatForKey( e2, "_sa" );
-		}
-		else if ( strcmp( "", ValueForKey( e2, "_smooth" ) ) ) {
-			shadeAngle = FloatForKey( e2, "_smooth" );
-		}
-
-		if ( shadeAngle < 0.0f ) {
+		float shadeAngle = FloatForKey( e, "_shadeangle",
+							"_smoothnormals", "_sn", "_sa", "_smooth" ); /* vortex' aliases */
+		if ( shadeAngle < 0.0f )
 			shadeAngle = 0.0f;
-		}
-
-		if ( shadeAngle > 0.0f ) {
+		else if ( shadeAngle > 0.0f )
 			Sys_Printf( "misc_model has shading angle of %.4f\n", shadeAngle );
-		}
 
-		skin = 0;
-		if ( strcmp( "", ValueForKey( e2, "_skin" ) ) ) {
-			skin = IntForKey( e2, "_skin" );
-		}
-		else if ( strcmp( "", ValueForKey( e2, "skin" ) ) ) {
-			skin = IntForKey( e2, "skin" );
-		}
+		const int skin = IntForKey( e, "_skin", "skin" );
 
-		clipDepth = clipDepthGlobal;
-		if ( strcmp( "", ValueForKey( e2, "_clipdepth" ) ) ) {
-			clipDepth = FloatForKey( e2, "_clipdepth" );
-			Sys_Printf( "misc_model has autoclip depth of %.3f\n", clipDepth );
-		}
+		float clipDepth = clipDepthGlobal;
+		if ( ENT_READKV( &clipDepth, e, "_clipdepth" ) )
+			Sys_Printf( "misc_model %s has autoclip depth of %.3f\n", model, clipDepth );
 
 
 		/* insert the model */

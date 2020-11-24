@@ -106,7 +106,7 @@ void FindNextChunk( char *name ){
 //			Sys_Error ("FindNextChunk: %i length is past the 1 meg sanity limit", iff_chunk_len);
 		data_p -= 8;
 		last_chunk = data_p + 8 + ( ( iff_chunk_len + 1 ) & ~1 );
-		if ( !strncmp( data_p, name, 4 ) ) {
+		if ( strEqualPrefix( (const char*)data_p, name ) ) {
 			return;
 		}
 	}
@@ -155,7 +155,7 @@ wavinfo_t GetWavinfo( char *name, byte *wav, int wavlength ){
 
 // find "RIFF" chunk
 	FindChunk( "RIFF" );
-	if ( !( data_p && !strncmp( data_p + 8, "WAVE", 4 ) ) ) {
+	if ( !( data_p && strEqualPrefix( (const char*)( data_p + 8 ), "WAVE" ) ) ) {
 		printf( "Missing RIFF/WAVE chunks\n" );
 		return info;
 	}
@@ -191,7 +191,7 @@ wavinfo_t GetWavinfo( char *name, byte *wav, int wavlength ){
 		// if the next chunk is a LIST chunk, look for a cue length marker
 		FindNextChunk( "LIST" );
 		if ( data_p ) {
-			if ( !strncmp( data_p + 28, "mark", 4 ) ) { // this is not a proper parse, but it works with cooledit...
+			if ( strEqualPrefix( (const char*)( data_p + 28 ), "mark" ) ) { // this is not a proper parse, but it works with cooledit...
 				data_p += 24;
 				i = GetLittleLong();    // samples in loop
 				info.samples = info.loopstart + i;
@@ -514,7 +514,7 @@ static void BTCFindEndpoints( float inBlock[4][4][3], unsigned int endPoints[2][
 	}
 }
 
-static float BTCQuantizeBlock( float inBlock[4][4][3], unsigned long endPoints[2][2], int btcQuantizedBlock[4][4], float bestError ){
+static float BTCQuantizeBlock( float inBlock[4][4][3], unsigned int endPoints[2][2], int btcQuantizedBlock[4][4], float bestError ){
 	int i;
 	int blockY, blockX;
 	float dR, dG, dB;
@@ -910,7 +910,7 @@ void Cmd_Video( void ){
 	unsigned long *compressed;
 	clock_t start, stop;
 
-	GetToken( qfalse );
+	GetToken( false );
 	strcpy( s_base, token );
 	if ( g_release ) {
 //		sprintf (savename, "video/%s.cin", token);
@@ -918,13 +918,13 @@ void Cmd_Video( void ){
 		return;
 	}
 
-	GetToken( qfalse );
+	GetToken( false );
 	strcpy( s_output_base, token );
 
-	GetToken( qfalse );
+	GetToken( false );
 	digits = atoi( token );
 
-	GetToken( qfalse );
+	GetToken( false );
 
 	if ( !strcmp( token, "btc" ) ) {
 		s_compression_method = BTC_COMPRESSION;
@@ -939,10 +939,10 @@ void Cmd_Video( void ){
 		Error( "Uknown compression method '%s'\n", token );
 	}
 
-	GetToken( qfalse );
+	GetToken( false );
 	s_resample_width = atoi( token );
 
-	GetToken( qfalse );
+	GetToken( false );
 	s_resample_height = atoi( token );
 
 	resampled = malloc( sizeof( unsigned char ) * 4 * s_resample_width * s_resample_height );
@@ -953,7 +953,7 @@ void Cmd_Video( void ){
 
 	// optionally skip frames
 	if ( TokenAvailable() ) {
-		GetToken( qfalse );
+		GetToken( false );
 		startframe = atoi( token );
 	}
 	else{
@@ -1107,7 +1107,7 @@ void Cmd_Video( void ){
 
 	printf( "\n" );
 
-	printf( "Total size: %i\n", ftell( output ) );
+	printf( "Total size: %ld\n", ftell( output ) );
 	printf( "Average error: %f\n", sumError / ( frame - startframe ) );
 	printf( "Max error: %f\n", maxError );
 

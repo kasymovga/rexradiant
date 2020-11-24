@@ -27,8 +27,8 @@
 int numportals;
 int portalclusters;
 
-char inbase[32];
-char outbase[32];
+extern char inbase[32];
+extern char outbase[32];
 
 portal_t    *portals;
 leaf_t      *leafs;
@@ -123,10 +123,10 @@ void prl( leaf_t *l ){
    =============
  */
 int PComp( const void *a, const void *b ){
-	if ( ( *(portal_t **)a )->nummightsee == ( *(portal_t **)b )->nummightsee ) {
+	if ( ( *(portal_t * const *)a )->nummightsee == ( *(portal_t * const *)b )->nummightsee ) {
 		return 0;
 	}
-	if ( ( *(portal_t **)a )->nummightsee < ( *(portal_t **)b )->nummightsee ) {
+	if ( ( *(portal_t * const *)a )->nummightsee < ( *(portal_t * const *)b )->nummightsee ) {
 		return -1;
 	}
 	return 1;
@@ -386,8 +386,8 @@ void LoadPortals( char *name ){
 		if ( numpoints > MAX_POINTS_ON_WINDING ) {
 			Error( "LoadPortals: portal %i has too many points", i );
 		}
-		if ( (unsigned)leafnums[0] > portalclusters
-			 || (unsigned)leafnums[1] > portalclusters ) {
+		if ( leafnums[0] > portalclusters
+			 || leafnums[1] > portalclusters ) {
 			Error( "LoadPortals: reading portal %i", i );
 		}
 

@@ -113,7 +113,7 @@ GetInfoDialog::GetInfoDialog(const std::string& key,
    // Widgets for specifying the reference row if any.
 
    button = gtk_check_button_new();
-   gtk_object_set_data(GTK_OBJECT(_dialog), "s_apply", button);
+   g_object_set_data(G_OBJECT(_dialog), "s_apply", button);
    gtk_table_attach_defaults(GTK_TABLE(table), button, 0, 1, 0, 1);
    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(button), TRUE);
    gtk_widget_show(button);
@@ -124,10 +124,10 @@ GetInfoDialog::GetInfoDialog(const std::string& key,
    gtk_widget_show(label);
 
    entry = gtk_entry_new();
-   gtk_object_set_data(GTK_OBJECT(_dialog), "s_ref_row", entry);
+   g_object_set_data(G_OBJECT(_dialog), "s_ref_row", entry);
    gtk_entry_set_text(GTK_ENTRY(entry), "0");
    gtk_table_attach_defaults(GTK_TABLE(table), entry, 2, 3, 0, 1);
-   gtk_widget_set_usize(entry, 50, -2);
+   gtk_widget_set_size_request(entry, 50, -1);
    gtk_widget_show(entry);
 
    UIInstance().RegisterWidgetDependence(button, label);
@@ -136,7 +136,7 @@ GetInfoDialog::GetInfoDialog(const std::string& key,
    // Widgets for specifying the reference column if any.
 
    button = gtk_check_button_new();
-   gtk_object_set_data(GTK_OBJECT(_dialog), "t_apply", button);
+   g_object_set_data(G_OBJECT(_dialog), "t_apply", button);
    gtk_table_attach_defaults(GTK_TABLE(table), button, 0, 1, 1, 2);
    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(button), TRUE);
    gtk_widget_show(button);
@@ -147,10 +147,10 @@ GetInfoDialog::GetInfoDialog(const std::string& key,
    gtk_widget_show(label);
 
    entry = gtk_entry_new();
-   gtk_object_set_data(GTK_OBJECT(_dialog), "t_ref_col", entry);
+   g_object_set_data(G_OBJECT(_dialog), "t_ref_col", entry);
    gtk_entry_set_text(GTK_ENTRY(entry), "0");
    gtk_table_attach_defaults(GTK_TABLE(table), entry, 2, 3, 1, 2);
-   gtk_widget_set_usize(entry, 50, -2);
+   gtk_widget_set_size_request(entry, 50, -1);
    gtk_widget_show(entry);
 
    UIInstance().RegisterWidgetDependence(button, label);
@@ -159,7 +159,7 @@ GetInfoDialog::GetInfoDialog(const std::string& key,
    // Checkbox to enable the callbacks to Set S/T Scale.
 
    button = gtk_check_button_new_with_label(DIALOG_GET_INFO_XFER_OPT_LABEL);
-   gtk_object_set_data(GTK_OBJECT(_dialog), "transfer", button);
+   g_object_set_data(G_OBJECT(_dialog), "transfer", button);
    gtk_table_attach(GTK_TABLE(table), button, 0, 3, 2, 3, GTK_EXPAND, GTK_EXPAND, 0, 0);
    gtk_widget_show(button);
 
@@ -171,7 +171,7 @@ GetInfoDialog::GetInfoDialog(const std::string& key,
 
    button = gtk_button_new_with_label(DIALOG_CANCEL_BUTTON);
    gtk_box_pack_end(GTK_BOX(hbox), button, FALSE, FALSE, 0);
-   gtk_widget_set_usize(button, 60, -2);
+   gtk_widget_set_size_request(button, 60, -1);
    gtk_widget_show(button);
 
    CreateCancelButtonCallback(button);
@@ -180,7 +180,7 @@ GetInfoDialog::GetInfoDialog(const std::string& key,
 
    button = gtk_button_new_with_label(DIALOG_APPLY_BUTTON);
    gtk_box_pack_end(GTK_BOX(hbox), button, FALSE, FALSE, 10);
-   gtk_widget_set_usize (button, 60, -2);
+   gtk_widget_set_size_request (button, 60, -1);
    gtk_widget_show(button);
 
    CreateApplyButtonCallback(button);
@@ -189,7 +189,7 @@ GetInfoDialog::GetInfoDialog(const std::string& key,
 
    button = gtk_button_new_with_label(DIALOG_OK_BUTTON);
    gtk_box_pack_end(GTK_BOX(hbox), button, FALSE, FALSE, 0);
-   gtk_widget_set_usize (button, 60, -2);
+   gtk_widget_set_size_request (button, 60, -1);
    gtk_widget_show(button);
 
    CreateOkButtonCallback(button);

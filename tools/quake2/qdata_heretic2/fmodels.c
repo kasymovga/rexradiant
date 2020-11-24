@@ -148,18 +148,7 @@ void GetOneGroup( trigroup_t *tris, int grp, triangle_t* triangles );
 void ScaleTris( vec3_t min, vec3_t max, int Width, int Height, float* u, float* v, int verts );
 void NewDrawLine( int x1, int y1, int x2, int y2, unsigned char* picture, int width, int height );
 
-#ifndef _WIN32
 
-void strupr( char *string ){
-	int i;
-
-	for ( i = 0 ; i < strlen( string ); i++ )
-		toupper( string[i] );
-
-	return;
-}
-
-#endif
 //==============================================================
 
 /*
@@ -237,7 +226,6 @@ static void WriteModelFile( FILE *modelouthandle ){
 	fmaliasframe_t  *out;
 	byte buffer[MAX_FM_VERTS * 4 + 128];
 	float v;
-	int c_on, c_off;
 	IntListNode_t   *current, *toFree;
 	qboolean framesWritten = false;
 	size_t temp,size = 0;
@@ -267,7 +255,6 @@ static void WriteModelFile( FILE *modelouthandle ){
 	//
 	// write out the texture coordinates
 	//
-	c_on = c_off = 0;
 	for ( i = 0 ; i < fmheader.num_st ; i++ )
 	{
 		base_st[i].s = LittleShort( base_st[i].s );
@@ -1098,7 +1085,7 @@ void FMFinishModel( void ){
 		for ( i = 0; i < fmheader.num_mesh_nodes; i++ )
 		{
 			strcpy( name, pmnodes[i].name );
-			strupr( name );
+			strUpper( name );
 			length = strlen( name );
 			for ( j = 0; j < length; j++ )
 			{
@@ -1333,7 +1320,7 @@ static void BuildGlCmds( void ){
 	int best_st[1024];
 	int best_tris[1024];
 	int type;
-	int trans_check;
+	unsigned trans_check;
 	int bit,pos;
 
 	//

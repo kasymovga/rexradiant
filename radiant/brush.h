@@ -835,6 +835,17 @@ void copy( const Vector3& p0, const Vector3& p1, const Vector3& p2 ){
 		updateSource();
 	}
 }
+void copy( const PlanePoints planepoints ){
+	if ( !isDoom3Plane() ) {
+		planepts_assign( m_planepts, planepoints );
+		MakePlane();
+	}
+	else
+	{
+		m_planeCached = plane3_for_points( planepoints );
+		updateSource();
+	}
+}
 };
 
 inline void Winding_testSelect( Winding& winding, SelectionTest& test, SelectionIntersection& best, const DoubleVector3 planepoints[3] ){
@@ -1136,7 +1147,7 @@ void transform( const Matrix4& matrix, bool mirror ){
 }
 
 void assign_planepts( const PlanePoints planepts ){
-	m_planeTransformed.copy( planepts[0], planepts[1], planepts[2] );
+	m_planeTransformed.copy( planepts );
 	m_observer->planeChanged();
 }
 
@@ -1194,7 +1205,7 @@ void testSelect( SelectionTest& test, SelectionIntersection& best ){
 	Winding_testSelect( m_winding, test, best, m_plane.getPlanePoints() );
 }
 
-void testSelect_centroid( SelectionTest& test, SelectionIntersection& best ){
+void testSelect_centroid( SelectionTest& test, SelectionIntersection& best ) const {
 	test.TestPoint( m_centroid, best );
 }
 
@@ -1491,12 +1502,12 @@ inline FaceVertexId next_vertex( const Faces& faces, FaceVertexId faceVertex ){
 
 class SelectableEdge
 {
+public:
 Vector3 getEdge() const {
 	const Winding& winding = getFace().getWinding();
 	return vector3_mid( winding[m_faceVertex.getVertex()].vertex, winding[Winding_next( winding, m_faceVertex.getVertex() )].vertex );
 }
 
-public:
 Faces& m_faces;
 FaceVertexId m_faceVertex;
 
@@ -1519,11 +1530,11 @@ void testSelect( SelectionTest& test, SelectionIntersection& best ){
 
 class SelectableVertex
 {
+public:
 Vector3 getVertex() const {
 	return getFace().getWinding()[m_faceVertex.getVertex()].vertex;
 }
 
-public:
 Faces& m_faces;
 FaceVertexId m_faceVertex;
 
@@ -2848,7 +2859,7 @@ void render( Renderer& renderer, const VolumeTest& volume, const Matrix4& localT
 	}
 }
 
-void testSelect( SelectionTest& test, SelectionIntersection& best ){
+void testSelect( SelectionTest& test, SelectionIntersection& best ) const {
 	if ( !m_face->isFiltered() ) {
 		m_face->testSelect( test, best );
 	}
@@ -3206,29 +3217,48 @@ void testSelect( Selector& selector, SelectionTest& test ){
 		Selector_add( selector, *this, best );
 	}
 }
+void gatherComponentsHighlight( std::vector<std::vector<Vector3>>& polygons, SelectionIntersection& intersection, SelectionTest& test ) const {
+	SelectionIntersection best;
+	m_edge->testSelect( test, best );
+	if ( SelectionIntersection_closer( best, intersection ) ) {
+		intersection = best;
+		polygons.clear();
+		polygons.emplace_back( std::initializer_list<Vector3>( { m_edge->getEdge() } ) );
+	}
+}
 
-void bestPlaneIndirect( const SelectionTest& test, Plane3& plane, Vector3& intersection, float& dist ) const {
+void bestPlaneIndirect( const SelectionTest& test, Plane3& plane, Vector3& intersection, float& dist, float& dot ) const {
 	const Winding& winding = m_edge->getFace().getWinding();
 	FaceVertexId faceVertex = m_edge->m_faceVertex;
 	Line line( winding[faceVertex.getVertex()].vertex, winding[Winding_next( winding, faceVertex.getVertex() )].vertex );
 	if( matrix4_clip_line_by_nearplane( test.getVolume().GetViewMatrix(), line ) == 2 ){
 		const Vector3 intersection_new = line_closest_point( line, g_vector3_identity );
 		const float dist_new = vector3_length_squared( intersection_new );
-		if( dist_new < dist ){
+		const float dot_new = fabs( vector3_dot( vector3_normalised( intersection_new ), vector3_normalised( line.end - line.start ) ) );
+		if( dist - dist_new > 1e-6f // new dist noticeably smaller
+				|| ( float_equal_epsilon( dist_new, dist, 1e-6f ) && dot_new < dot ) ){ // or ambiguous case. Resolve it by dot comparison
 			const Plane3& plane1 = m_faceInstances[faceVertex.getFace()].getFace().plane3();
-			if( plane3_distance_to_point( plane1, test.getVolume().getViewer() ) <= 0 ){
-				plane = plane1;
-				intersection = intersection_new;
-				dist = dist_new;
-			}
-			else{
-				faceVertex = next_edge( m_edge->m_faces, faceVertex );
-				const Plane3& plane2 = m_faceInstances[faceVertex.getFace()].getFace().plane3();
-				if( plane3_distance_to_point( plane2, test.getVolume().getViewer() ) <= 0 ){
-					plane = plane2;
+			faceVertex = next_edge( m_edge->m_faces, faceVertex );
+			const Plane3& plane2 = m_faceInstances[faceVertex.getFace()].getFace().plane3();
+
+			auto assign_plane = [&plane, &intersection, intersection_new, &dist, dist_new, &dot, dot_new]( const Plane3& plane_new ){
+					plane = plane_new;
 					intersection = intersection_new;
 					dist = dist_new;
-				}
+					dot = dot_new;
+			};
+
+			if( test.getVolume().fill() ){
+				if( plane3_distance_to_point( plane1, test.getVolume().getViewer() ) <= 0 )
+					assign_plane( plane1 );
+				else if( plane3_distance_to_point( plane2, test.getVolume().getViewer() ) <= 0 )
+					assign_plane( plane2 );
+			}
+			else if( fabs( vector3_length_squared( line.end - line.start ) ) > 1e-3 ){
+				if( fabs( vector3_dot( plane1.normal(), test.getVolume().getViewDir() ) ) < fabs( vector3_dot( plane2.normal(), test.getVolume().getViewDir() ) ) )
+					assign_plane( plane1 );
+				else
+					assign_plane( plane2 );
 			}
 		}
 	}
@@ -3285,20 +3315,30 @@ void testSelect( Selector& selector, SelectionTest& test ){
 		Selector_add( selector, *this, best );
 	}
 }
+void gatherComponentsHighlight( std::vector<std::vector<Vector3>>& polygons, SelectionIntersection& intersection, SelectionTest& test ) const {
+	SelectionIntersection best;
+	m_vertex->testSelect( test, best );
+	if ( SelectionIntersection_closer( best, intersection ) ) {
+		intersection = best;
+		polygons.clear();
+		polygons.emplace_back( std::initializer_list<Vector3>( { m_vertex->getVertex() } ) );
+	}
+}
 
-void selectVerticesOnFaces( const FaceInstances_ptrs& faceinstances ){
+void selectVerticesOfFace( const FaceInstance& faceinstance ){
 	FaceVertexId faceVertex = m_vertex->m_faceVertex;
 	do
 	{
-		if( std::find( faceinstances.begin(), faceinstances.end(), &m_faceInstances[faceVertex.getFace()] ) != faceinstances.end() ){
+		if( &faceinstance == &m_faceInstances[faceVertex.getFace()] ){
 			setSelected( true );
+			return;
 		}
 		faceVertex = next_vertex( m_vertex->m_faces, faceVertex );
 	}
 	while ( faceVertex.getFace() != m_vertex->m_faceVertex.getFace() );
 }
 void gather( Brush::VertexModeVertices& vertexModeVertices ) const {
-	vertexModeVertices.emplace_back( m_vertex->getFace().getWinding()[m_vertex->m_faceVertex.getVertex()].vertex, isSelected() );
+	vertexModeVertices.emplace_back( m_vertex->getVertex(), isSelected() );
 	FaceVertexId faceVertex = m_vertex->m_faceVertex;
 	do
 	{
@@ -3308,7 +3348,7 @@ void gather( Brush::VertexModeVertices& vertexModeVertices ) const {
 	while ( faceVertex.getFace() != m_vertex->m_faceVertex.getFace() );
 }
 bool vertex_select( const Vector3& vertex ){
-	if( vector3_length_squared( vertex - m_vertex->getFace().getWinding()[m_vertex->m_faceVertex.getVertex()].vertex ) < ( 0.1 * 0.1 ) ){
+	if( vector3_length_squared( vertex - m_vertex->getVertex() ) < ( 0.1 * 0.1 ) ){
 		setSelected( true );
 		return true;
 	}
@@ -3750,6 +3790,71 @@ void testSelectComponents( Selector& selector, SelectionTest& test, SelectionSys
 		break;
 	}
 }
+void gatherComponentsHighlight( std::vector<std::vector<Vector3>>& polygons, SelectionIntersection& intersection, SelectionTest& test, SelectionSystem::EComponentMode mode ) const {
+	test.BeginMesh( localToWorld() );
+
+	switch ( mode )
+	{
+	case SelectionSystem::eVertex:
+	{
+		for ( const VertexInstance& i : m_vertexInstances )
+		{
+			i.gatherComponentsHighlight( polygons, intersection, test );
+		}
+	}
+	break;
+	case SelectionSystem::eEdge:
+	{
+		for ( const EdgeInstance& i : m_edgeInstances )
+		{
+			i.gatherComponentsHighlight( polygons, intersection, test );
+		}
+	}
+	break;
+	case SelectionSystem::eFace:
+	{
+		if ( test.getVolume().fill() ) {
+			const Plane3* plane = nullptr;
+			bool newint = false;
+			for ( const FaceInstance& i : m_faceInstances )
+			{
+				SelectionIntersection best;
+				i.testSelect( test, best );
+				if( best.valid() && intersection.equalEpsilon( best, 0.25f, 2e-6f ) ){
+					plane = &i.getFace().plane3();
+				}
+				else if ( SelectionIntersection_closer( best, intersection ) ) {
+					intersection = best;
+					newint = true;
+					plane = &i.getFace().plane3();
+				}
+			}
+			if( plane ){
+				if( newint || ( !polygons.empty() && polygons.back().size() >= 3 && !plane3_equal( *plane, plane3_for_points( polygons.back().data() ) ) ) ){
+					polygons.clear();
+				}
+				gatherPolygonsByPlane( *plane, polygons, false );
+			}
+		}
+		else
+		{
+			for ( const FaceInstance& i : m_faceInstances )
+			{
+				SelectionIntersection best;
+				i.getFace().testSelect_centroid( test, best );
+				if ( SelectionIntersection_closer( best, intersection ) ) {
+					intersection = best;
+					polygons.clear();
+					polygons.emplace_back( std::initializer_list<Vector3>( { i.getFace().centroid() } ) );
+				}
+			}
+		}
+	}
+	break;
+	default:
+		break;
+	}
+}
 
 void invertComponentSelection( SelectionSystem::EComponentMode mode ){
 	switch ( mode )
@@ -3825,63 +3930,52 @@ void selectReversedPlanes( Selector& selector, const SelectedPlanes& selectedPla
 	}
 }
 
-void bestPlaneDirect( SelectionTest& test, Plane3& plane, SelectionIntersection& intersection ){
+void bestPlaneDirect( SelectionTest& test, Plane3& plane, SelectionIntersection& intersection ) const {
 	test.BeginMesh( localToWorld() );
-	for ( FaceInstances::iterator i = m_faceInstances.begin(); i != m_faceInstances.end(); ++i )
+	for ( const FaceInstance& fi : m_faceInstances )
 	{
 		SelectionIntersection intersection_new;
-		( *i ).testSelect( test, intersection_new );
+		fi.testSelect( test, intersection_new );
 		if( SelectionIntersection_closer( intersection_new, intersection ) ){
 			intersection = intersection_new;
-			plane = ( *i ).getFace().plane3();
+			plane = fi.getFace().plane3();
 		}
 	}
 }
-void bestPlaneIndirect( SelectionTest& test, Plane3& plane, Vector3& intersection, float& dist ){
+void bestPlaneIndirect( SelectionTest& test, Plane3& plane, Vector3& intersection, float& dist ) const {
 	test.BeginMesh( localToWorld() );
-	for ( EdgeInstances::iterator i = m_edgeInstances.begin(); i != m_edgeInstances.end(); ++i )
+	float dot = 1;
+	for ( const EdgeInstance& ei : m_edgeInstances )
 	{
-		( *i ).bestPlaneIndirect( test, plane, intersection, dist );
+		ei.bestPlaneIndirect( test, plane, intersection, dist, dot );
 	}
 }
 void selectByPlane( const Plane3& plane ){
-	for ( FaceInstances::iterator i = m_faceInstances.begin(); i != m_faceInstances.end(); ++i )
-		if( plane3_equal( plane, ( *i ).getFace().plane3() ) || plane3_equal( plane, plane3_flipped( ( *i ).getFace().plane3() ) ) )
-			( *i ).setSelected( SelectionSystem::eFace, true );
+	for ( FaceInstance& fi : m_faceInstances )
+		if( plane3_equal( plane, fi.getFace().plane3() ) || plane3_equal( plane, plane3_flipped( fi.getFace().plane3() ) ) )
+			fi.setSelected( SelectionSystem::eFace, true );
+}
+void gatherPolygonsByPlane( const Plane3& plane, std::vector<std::vector<Vector3>>& polygons ) const {
+	gatherPolygonsByPlane( plane, polygons, true );
+}
+void gatherPolygonsByPlane( const Plane3& plane, std::vector<std::vector<Vector3>>& polygons, const bool reversed_plane_also ) const {
+	for ( const FaceInstance& fi : m_faceInstances )
+		if( plane3_equal( plane, fi.getFace().plane3() ) || ( reversed_plane_also && plane3_equal( plane, plane3_flipped( fi.getFace().plane3() ) ) ) )
+			if( fi.getFace().contributes() ){
+				const Winding& winding = fi.getFace().getWinding();
+				polygons.emplace_back( winding.numpoints );
+				for( std::size_t i = 0; i < winding.numpoints; ++i ){
+					polygons.back()[i] = winding[i].vertex;
+				}
+			}
 }
 
-
-void selectVerticesOnPlanes( SelectionTest& test ){
-	FaceInstances_ptrs bestInstances;
-	selectPlanes( test, bestInstances );
-
-	if( test.getVolume().fill() && !bestInstances.empty() ) // select only plane in camera
-		for( FaceInstances_ptrs::iterator i = bestInstances.end() - 1; i != bestInstances.begin(); --i )
-			bestInstances.pop_back();
-	for ( VertexInstances::iterator i = m_vertexInstances.begin(); i != m_vertexInstances.end(); ++i )
-		( *i ).selectVerticesOnFaces( bestInstances );
+void selectVerticesOnPlane( const Plane3& plane ){
+	for ( FaceInstance& fi : m_faceInstances )
+		if( plane3_equal( plane, fi.getFace().plane3() ) || plane3_equal( plane, plane3_flipped( fi.getFace().plane3() ) ) )
+			for ( VertexInstance& vi : m_vertexInstances )
+				vi.selectVerticesOfFace( fi );
 }
-
-void selectVerticesOnTestedFaces( SelectionTest& test ){
-	test.BeginMesh( localToWorld() );
-
-	FaceInstances::iterator f;
-	SelectionIntersection si;
-	for ( f = m_faceInstances.begin(); f != m_faceInstances.end(); ++f ){
-		( *f ).testSelect( test, si );
-		if( si.valid() ){
-			break;
-		}
-	}
-	if( f != m_faceInstances.end() ){
-		FaceInstances_ptrs bestInstances;
-		bestInstances.push_back( &( *f ) );
-		for ( VertexInstances::iterator i = m_vertexInstances.begin(); i != m_vertexInstances.end(); ++i ){
-			( *i ).selectVerticesOnFaces( bestInstances );
-		}
-	}
-}
-
 
 void transformComponents( const Matrix4& matrix );
 
@@ -4193,8 +4287,9 @@ bool pre( const scene::Path& path, scene::Instance& instance ) const {
 		if ( brush != 0 ) {
 			m_functor( *brush );
 		}
+		return true;
 	}
-	return true;
+	return false;
 }
 };
 

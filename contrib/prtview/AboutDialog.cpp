@@ -19,7 +19,6 @@
 
 #include "AboutDialog.h"
 #include <gtk/gtk.h>
-#include <gtkutil/pointer.h>
 #include "version.h"
 #include "gtkutil/pointer.h"
 
@@ -57,10 +56,10 @@ void DoAboutDlg(){
 	gtk_window_set_position( GTK_WINDOW( dlg ),GTK_WIN_POS_CENTER_ON_PARENT );
 	gtk_window_set_modal( GTK_WINDOW( dlg ), TRUE );
 	gtk_window_set_title( GTK_WINDOW( dlg ), "About Portal Viewer" );
-	gtk_signal_connect( GTK_OBJECT( dlg ), "delete_event",
-						GTK_SIGNAL_FUNC( dialog_delete_callback ), NULL );
-	gtk_signal_connect( GTK_OBJECT( dlg ), "destroy",
-						GTK_SIGNAL_FUNC( gtk_widget_destroy ), NULL );
+	g_signal_connect( G_OBJECT( dlg ), "delete_event",
+						G_CALLBACK( dialog_delete_callback ), NULL );
+	g_signal_connect( G_OBJECT( dlg ), "destroy",
+						G_CALLBACK( gtk_widget_destroy ), NULL );
 	g_object_set_data( G_OBJECT( dlg ), "loop", &loop );
 	g_object_set_data( G_OBJECT( dlg ), "ret", &ret );
 
@@ -86,17 +85,15 @@ void DoAboutDlg(){
 	button = gtk_button_new_with_label( "OK" );
 	gtk_widget_show( button );
 	gtk_box_pack_start( GTK_BOX( vbox ), button, FALSE, FALSE, 0 );
-	gtk_signal_connect( GTK_OBJECT( button ), "clicked",
-						GTK_SIGNAL_FUNC( dialog_button_callback ), GINT_TO_POINTER( IDOK ) );
-	gtk_widget_set_usize( button, 60, -2 );
+	g_signal_connect( G_OBJECT( button ), "clicked",
+						G_CALLBACK( dialog_button_callback ), GINT_TO_POINTER( IDOK ) );
+	gtk_widget_set_size_request( button, 60, -1 );
 
-	gtk_grab_add( dlg );
 	gtk_widget_show( dlg );
 
 	while ( loop )
 		gtk_main_iteration();
 
-	gtk_grab_remove( dlg );
 	gtk_widget_destroy( dlg );
 }
 

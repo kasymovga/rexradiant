@@ -48,7 +48,7 @@
 socket_t *brdcst_socket;
 netmessage_t msg;
 
-qboolean verbose = qfalse;
+bool verbose = false;
 
 // our main document
 // is streamed through the network to Radiant
@@ -63,8 +63,8 @@ xmlNodePtr xml_NodeForVec( vec3_t v ){
 	char buf[1024];
 
 	sprintf( buf, "%f %f %f", v[0], v[1], v[2] );
-	ret = xmlNewNode( NULL, (xmlChar*)"point" );
-	xmlNodeAddContent( ret, (xmlChar*)buf );
+	ret = xmlNewNode( NULL, (const xmlChar*)"point" );
+	xmlNodeAddContent( ret, (const xmlChar*)buf );
 	return ret;
 }
 
@@ -140,22 +140,22 @@ void xml_SendNode( xmlNodePtr node ){
 	}
 }
 
-void xml_Select( char *msg, int entitynum, int brushnum, qboolean bError ){
+void xml_Select( char *msg, int entitynum, int brushnum, bool bError ){
 	xmlNodePtr node, select;
 	char buf[1024];
 	char level[2];
 
 	// now build a proper "select" XML node
 	sprintf( buf, "Entity %i, Brush %i: %s", entitynum, brushnum, msg );
-	node = xmlNewNode( NULL, (xmlChar*)"select" );
-	xmlNodeAddContent( node, (xmlChar*)buf );
+	node = xmlNewNode( NULL, (const xmlChar*)"select" );
+	xmlNodeAddContent( node, (const xmlChar*)buf );
 	level[0] = (int)'0' + ( bError ? SYS_ERR : SYS_WRN )  ;
 	level[1] = 0;
-	xmlSetProp( node, (xmlChar*)"level", (xmlChar *)&level );
+	xmlSetProp( node, (const xmlChar*)"level", (const xmlChar *)level );
 	// a 'select' information
 	sprintf( buf, "%i %i", entitynum, brushnum );
-	select = xmlNewNode( NULL, (xmlChar*)"brush" );
-	xmlNodeAddContent( select, (xmlChar*)buf );
+	select = xmlNewNode( NULL, (const xmlChar*)"brush" );
+	xmlNodeAddContent( select, (const xmlChar*)buf );
 	xmlAddChild( node, select );
 	xml_SendNode( node );
 
@@ -173,15 +173,15 @@ void xml_Point( char *msg, vec3_t pt ){
 	char buf[1024];
 	char level[2];
 
-	node = xmlNewNode( NULL, (xmlChar*)"pointmsg" );
-	xmlNodeAddContent( node, (xmlChar*)msg );
+	node = xmlNewNode( NULL, (const xmlChar*)"pointmsg" );
+	xmlNodeAddContent( node, (const xmlChar*)msg );
 	level[0] = (int)'0' + SYS_ERR;
 	level[1] = 0;
-	xmlSetProp( node, (xmlChar*)"level", (xmlChar *)&level );
+	xmlSetProp( node, (const xmlChar*)"level", (const xmlChar *)level );
 	// a 'point' node
 	sprintf( buf, "%g %g %g", pt[0], pt[1], pt[2] );
-	point = xmlNewNode( NULL, (xmlChar*)"point" );
-	xmlNodeAddContent( point, (xmlChar*)buf );
+	point = xmlNewNode( NULL, (const xmlChar*)"point" );
+	xmlNodeAddContent( point, (const xmlChar*)buf );
 	xmlAddChild( node, point );
 	xml_SendNode( node );
 
@@ -190,18 +190,18 @@ void xml_Point( char *msg, vec3_t pt ){
 }
 
 #define WINDING_BUFSIZE 2048
-void xml_Winding( char *msg, vec3_t p[], int numpoints, qboolean die ){
+void xml_Winding( char *msg, vec3_t p[], int numpoints, bool die ){
 	xmlNodePtr node, winding;
 	char buf[WINDING_BUFSIZE];
 	char smlbuf[128];
 	char level[2];
 	int i;
 
-	node = xmlNewNode( NULL, (xmlChar*)"windingmsg" );
-	xmlNodeAddContent( node, (xmlChar*)msg );
+	node = xmlNewNode( NULL, (const xmlChar*)"windingmsg" );
+	xmlNodeAddContent( node, (const xmlChar*)msg );
 	level[0] = (int)'0' + SYS_ERR;
 	level[1] = 0;
-	xmlSetProp( node, (xmlChar*)"level", (xmlChar *)&level );
+	xmlSetProp( node, (xmlChar*)"level", (const xmlChar *)level );
 	// a 'winding' node
 	sprintf( buf, "%i ", numpoints );
 	for ( i = 0; i < numpoints; i++ )
@@ -214,8 +214,8 @@ void xml_Winding( char *msg, vec3_t p[], int numpoints, qboolean die ){
 		strcat( buf, smlbuf );
 	}
 
-	winding = xmlNewNode( NULL, (xmlChar*)"winding" );
-	xmlNodeAddContent( winding, (xmlChar*)buf );
+	winding = xmlNewNode( NULL, (const xmlChar*)"winding" );
+	xmlNodeAddContent( winding, (const xmlChar*)buf );
 	xmlAddChild( node, winding );
 	xml_SendNode( node );
 
@@ -232,8 +232,8 @@ void xml_Winding( char *msg, vec3_t p[], int numpoints, qboolean die ){
 void set_console_colour_for_flag( int flag ){
 #ifdef WIN32
 	static int curFlag = SYS_STD;
-	static qboolean ok = qtrue;
-	static qboolean initialized = qfalse;
+	static bool ok = true;
+	static bool initialized = false;
 	static HANDLE hConsole;
 	static WORD colour_saved;
 	if( !ok )
@@ -242,11 +242,11 @@ void set_console_colour_for_flag( int flag ){
 		hConsole = GetStdHandle( STD_OUTPUT_HANDLE );
 		CONSOLE_SCREEN_BUFFER_INFO consoleInfo;
 		if( hConsole == INVALID_HANDLE_VALUE || !GetConsoleScreenBufferInfo( hConsole, &consoleInfo ) ){
-			ok = qfalse;
+			ok = false;
 			return;
 		}
 		colour_saved = consoleInfo.wAttributes;
-		initialized = qtrue;
+		initialized = true;
 	}
 	if( curFlag != flag ){
 		curFlag = flag;
@@ -295,18 +295,18 @@ void xml_message_flush(){
 	if( mesege_len == 0 )
 		return;
 	xmlNodePtr node;
-	node = xmlNewNode( NULL, (xmlChar*)"message" );
+	node = xmlNewNode( NULL, (const xmlChar*)"message" );
 	{
 		mesege[mesege_len] = '\0';
 		mesege_len = 0;
 		gchar* utf8 = g_locale_to_utf8( mesege, -1, NULL, NULL, NULL );
-		xmlNodeAddContent( node, (xmlChar*)utf8 );
+		xmlNodeAddContent( node, (const xmlChar*)utf8 );
 		g_free( utf8 );
 	}
 	char level[2];
 	level[0] = (int)'0' + mesege_flag;
 	level[1] = 0;
-	xmlSetProp( node, (xmlChar*)"level", (xmlChar *)&level );
+	xmlSetProp( node, (const xmlChar*)"level", (const xmlChar *)level );
 
 	xml_SendNode( node );
 }
@@ -336,7 +336,7 @@ void xml_message_push( int flag, const char* characters, size_t length ){
 
 // all output ends up through here
 void FPrintf( int flag, char *buf ){
-	static qboolean bGotXML = qfalse;
+	static bool bGotXML = false;
 
 	set_console_colour_for_flag( flag & ~( SYS_NOXMLflag | SYS_VRBflag ) );
 	printf( "%s", buf );
@@ -356,9 +356,9 @@ void FPrintf( int flag, char *buf ){
 	 */
 	if ( !bGotXML ) {
 		// initialize
-		doc = xmlNewDoc( (xmlChar*)"1.0" );
-		doc->children = xmlNewDocRawNode( doc, NULL, (xmlChar*)"q3map_feedback", NULL );
-		bGotXML = qtrue;
+		doc = xmlNewDoc( (const xmlChar*)"1.0" );
+		doc->children = xmlNewDocRawNode( doc, NULL, (const xmlChar*)"q3map_feedback", NULL );
+		bGotXML = true;
 	}
 	xml_message_push( flag & ~( SYS_NOXMLflag | SYS_VRBflag ), buf, strlen( buf ) );
 }
@@ -373,7 +373,7 @@ void Sys_FPrintf( int flag, const char *format, ... ){
 	char out_buffer[4096];
 	va_list argptr;
 
-	if ( ( flag & SYS_VRBflag ) && ( verbose == qfalse ) ) {
+	if ( ( flag & SYS_VRBflag ) && !verbose ) {
 		return;
 	}
 

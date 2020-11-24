@@ -35,18 +35,7 @@
 
 #include <stdlib.h>
 
-#include <gtk/gtkmain.h>
-#include <gtk/gtkvbox.h>
-#include <gtk/gtkhbox.h>
-#include <gtk/gtktogglebutton.h>
-#include <gtk/gtkspinbutton.h>
-#include <gtk/gtkradiobutton.h>
-#include <gtk/gtkentry.h>
-#include <gtk/gtkcombobox.h>
-#include <gtk/gtklabel.h>
-#include <gtk/gtktable.h>
-#include <gtk/gtkhscale.h>
-#include <gtk/gtkalignment.h>
+#include <gtk/gtk.h>
 
 #include "stream/stringstream.h"
 #include "convert.h"
@@ -148,7 +137,7 @@ void BoolToggleImport( GtkToggleButton& widget, bool value ){
 	gtk_toggle_button_set_active( &widget, value );
 }
 void BoolToggleExport( GtkToggleButton& widget, const BoolImportCallback& importCallback ){
-	importCallback( gtk_toggle_button_get_active( &widget ) != FALSE );
+	importCallback( gtk_toggle_button_get_active( &widget ) );
 }
 typedef ImportExport<GtkToggleButton, bool, BoolToggleImport, BoolToggleExport> BoolToggleImportExport;
 
@@ -205,7 +194,7 @@ void FloatSpinnerImport( GtkSpinButton& widget, float value ){
 	gtk_spin_button_set_value( &widget, value );
 }
 void FloatSpinnerExport( GtkSpinButton& widget, const FloatImportCallback& importCallback ){
-	importCallback( float(gtk_spin_button_get_value_as_float( &widget ) ) );
+	importCallback( static_cast<float>( gtk_spin_button_get_value( &widget ) ) );
 }
 typedef ImportExport<GtkSpinButton, float, FloatSpinnerImport, FloatSpinnerExport> FloatSpinnerImportExport;
 
@@ -497,11 +486,11 @@ void Dialog::addCombo( GtkWidget* vbox, const char* name, StringArrayRange value
 	GtkWidget* alignment = gtk_alignment_new( 0.0, 0.5, 0.0, 0.0 );
 	gtk_widget_show( alignment );
 	{
-		GtkWidget* combo = gtk_combo_box_new_text();
+		GtkWidget* combo = gtk_combo_box_text_new();
 
 		for ( StringArrayRange::Iterator i = values.first; i != values.last; ++i )
 		{
-			gtk_combo_box_append_text( GTK_COMBO_BOX( combo ), *i );
+			gtk_combo_box_text_append_text( GTK_COMBO_BOX_TEXT( combo ), *i );
 		}
 
 		AddIntComboData( *GTK_COMBO_BOX( combo ), importViewer, exportViewer );
@@ -520,7 +509,7 @@ void Dialog::addCombo( GtkWidget* vbox, const char* name, int& data, StringArray
 
 void addSlider_( GtkAdjustment* adj, GtkWidget* vbox, const char* name, gboolean draw_value, const char* low, const char* high, int digits ){
 #if 0
-	if ( draw_value == FALSE ) {
+	if ( !draw_value ) {
 		GtkWidget* hbox2 = gtk_hbox_new( FALSE, 0 );
 		gtk_widget_show( hbox2 );
 		gtk_box_pack_start( GTK_BOX( vbox ), GTK_WIDGET( hbox2 ), FALSE, FALSE, 0 );
@@ -592,7 +581,6 @@ void Dialog::addRadioIcons( GtkWidget* vbox, const char* name, StringArrayRange 
 	gtk_table_set_row_spacings( GTK_TABLE( table ), 5 );
 	gtk_table_set_col_spacings( GTK_TABLE( table ), 5 );
 
-	GSList* group = 0;
 	GtkWidget* radio = 0;
 	for ( StringArrayRange::Iterator icon = icons.first; icon != icons.last; ++icon )
 	{
@@ -603,13 +591,11 @@ void Dialog::addRadioIcons( GtkWidget* vbox, const char* name, StringArrayRange 
 						  (GtkAttachOptions) ( 0 ),
 						  (GtkAttachOptions) ( 0 ), 0, 0 );
 
-		radio = gtk_radio_button_new( group );
+		radio = gtk_radio_button_new_from_widget( GTK_RADIO_BUTTON( radio ) );
 		gtk_widget_show( radio );
 		gtk_table_attach( GTK_TABLE( table ), radio, pos, pos + 1, 1, 2,
 						  (GtkAttachOptions) ( 0 ),
 						  (GtkAttachOptions) ( 0 ), 0, 0 );
-
-		group = gtk_radio_button_get_group( GTK_RADIO_BUTTON( radio ) );
 	}
 
 	AddIntRadioData( *GTK_RADIO_BUTTON( radio ), importViewer, exportViewer );
@@ -640,6 +626,18 @@ GtkWidget* Dialog::addFloatEntry( GtkWidget* vbox, const char* name, const Float
 	AddFloatEntryData( *row.m_entry, importViewer, exportViewer );
 	DialogVBox_packRow( GTK_VBOX( vbox ), row.m_row );
 	return row.m_row;
+}
+
+GtkWidget* Dialog::addTextEntry( GtkWidget* vbox, const char* name, const StringImportCallback& importViewer, const StringExportCallback& exportViewer ){
+	GtkEntry* entry = DialogEntry_new();
+	gtk_widget_set_size_request( GTK_WIDGET( entry ), -1, -1 ); // unset
+
+	AddTextEntryData( *entry, importViewer, exportViewer );
+
+	GtkTable* row = DialogRow_new( name, GTK_WIDGET( entry ) );
+	DialogVBox_packRow( GTK_VBOX( vbox ), GTK_WIDGET( row ) );
+
+	return GTK_WIDGET( row );
 }
 
 GtkWidget* Dialog::addPathEntry( GtkWidget* vbox, const char* name, bool browse_directory, const StringImportCallback& importViewer, const StringExportCallback& exportViewer ){

@@ -29,9 +29,6 @@
 
 #define MAX_POLYSETS 64
 
-#if defined ( __linux__ ) || defined ( __APPLE__ )
-#define strlwr strlower
-#endif
 typedef struct
 {
 	long len;
@@ -99,7 +96,7 @@ int CharIsTokenDelimiter( int ch ){
 int P3DSkipToToken( const char *name ){
 	while ( P3DGetToken( 0 ) )
 	{
-		if ( !Q_stricmp( s_token, name ) ) {
+		if ( striEqual( s_token, name ) ) {
 			return 1;
 		}
 	}
@@ -164,14 +161,14 @@ int P3DSkipToTokenInBlock( const char *name ){
 
 	while ( P3DGetToken( 0 ) )
 	{
-		if ( !Q_stricmp( s_token, "}" ) ) {
+		if ( strEqual( s_token, "}" ) ) {
 			iLevel--;
 		}
-		else if ( !Q_stricmp( s_token, "{" ) ) {
+		else if ( strEqual( s_token, "{" ) ) {
 			iLevel++;
 		}
 
-		if ( !Q_stricmp( s_token, name ) ) {
+		if ( striEqual( s_token, name ) ) {
 			return 1;
 		}
 
@@ -198,13 +195,11 @@ int P3DProcess(){
 	// skip to the first Obj declaration
 	while ( P3DGetToken( 0 ) )
 	{
-		if ( !Q_stricmp( s_token, "Obj" ) ) {
+		if ( striEqual( s_token, "Obj" ) ) {
 			int j = 0, k = 0;
 
 			if ( P3DSkipToToken( "Text" ) ) {
 				if ( P3DSkipToTokenInBlock( "TMap" ) ) {
-					char *p;
-
 					if ( !P3DSkipToToken( "Path" ) ) {
 						return 0;
 					}
@@ -228,19 +223,7 @@ int P3DProcess(){
 					}
 					p3d.shaders[p3d.numPairs][k] = 0;
 
-					//
-					// strip off any explicit extensions
-					//
-					if ( ( p = strrchr( p3d.shaders[p3d.numPairs], '/' ) ) != 0 ) {
-						while ( *p )
-						{
-							if ( *p == '.' ) {
-								*p = 0;
-								break;
-							}
-							p++;
-						}
-					}
+					StripExtension( p3d.shaders[p3d.numPairs] );
 
 					//
 					// skip to the end of the Object and grab its name
@@ -307,7 +290,7 @@ void SkinFromP3D( const char *file ){
 		// corresponds to and append the shader to it
 		for ( i = 0; i < g_data.model.numSurfaces; i++ )
 		{
-			if ( !Q_stricmp( g_data.surfData[i].header.name, psetName ) ) {
+			if ( striEqual( g_data.surfData[i].header.name, psetName ) ) {
 				char *p;
 
 				if ( strstr( associatedShader, gamedir + 1 ) ) {

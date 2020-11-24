@@ -43,7 +43,6 @@
 #include "patchmanip.h"
 #include "patchdialog.h"
 #include "texwindow.h"
-#include "gtkmisc.h"
 #include "mainframe.h"
 #include "grid.h"
 #include "map.h"
@@ -80,9 +79,7 @@ void visit( scene::Instance& instance ) const {
 		return;
 	}
 
-	Selectable* selectable = Instance_getSelectable( instance );
-	if ( ( selectable != 0 )
-		 && instance.isSelected() ) {
+	if ( Instance_isSelected( instance ) ) {
 		// brushes only
 		if ( Instance_getBrush( instance ) != 0 ) {
 			m_bounds[m_count] = instance.worldAABB();
@@ -226,9 +223,7 @@ DeleteSelected()
 bool pre( const scene::Path& path, scene::Instance& instance ) const {
 	m_removedChild = false;
 
-	Selectable* selectable = Instance_getSelectable( instance );
-	if ( selectable != 0
-		 && selectable->isSelected()
+	if ( Instance_isSelected( instance )
 		 && path.size() > 1
 		 && !path.top().get().isRoot() ) {
 		m_remove = true;
@@ -730,14 +725,14 @@ bool propertyvalues_contain( const PropertyValues& propertyvalues, const char *s
 	return false;
 }
 
+template<typename EntityMatcher>
 class EntityFindByPropertyValueWalker : public scene::Graph::Walker
 {
-const PropertyValues& m_propertyvalues;
-const char *m_prop;
+const EntityMatcher& m_entityMatcher;
 const scene::Node* m_world;
 public:
-EntityFindByPropertyValueWalker( const char *prop, const PropertyValues& propertyvalues )
-	: m_propertyvalues( propertyvalues ), m_prop( prop ), m_world( Map_FindWorldspawn( g_map ) ){
+EntityFindByPropertyValueWalker( const EntityMatcher& entityMatcher )
+	: m_entityMatcher( entityMatcher ), m_world( Map_FindWorldspawn( g_map ) ){
 }
 bool pre( const scene::Path& path, scene::Instance& instance ) const {
 	if( !path.top().get().visible() ){
@@ -750,7 +745,7 @@ bool pre( const scene::Path& path, scene::Instance& instance ) const {
 
 	Entity* entity = Node_getEntity( path.top() );
 	if ( entity != 0 ){
-		if( propertyvalues_contain( m_propertyvalues, entity->getKeyValue( m_prop ) ) ) {
+		if( m_entityMatcher( entity ) ) {
 			Instance_getSelectable( instance )->setSelected( true );
 			return true;
 		}
@@ -765,8 +760,15 @@ bool pre( const scene::Path& path, scene::Instance& instance ) const {
 }
 };
 
+template<typename EntityMatcher>
+void Scene_EntitySelectByPropertyValues( scene::Graph& graph, const EntityMatcher& entityMatcher ){
+	graph.traverse( EntityFindByPropertyValueWalker<EntityMatcher>( entityMatcher ) );
+}
+
 void Scene_EntitySelectByPropertyValues( scene::Graph& graph, const char *prop, const PropertyValues& propertyvalues ){
-	graph.traverse( EntityFindByPropertyValueWalker( prop, propertyvalues ) );
+	Scene_EntitySelectByPropertyValues( GlobalSceneGraph(), [prop, &propertyvalues]( const Entity* entity )->bool{
+		return propertyvalues_contain( propertyvalues, entity->getKeyValue( prop ) );
+	} );
 }
 
 class EntityGetSelectedPropertyValuesWalker : public scene::Graph::Walker
@@ -782,8 +784,7 @@ bool pre( const scene::Path& path, scene::Instance& instance ) const {
 	Entity* entity = Node_getEntity( path.top() );
 	if ( entity != 0 ){
 		if( path.top().get_pointer() != m_world ){
-			Selectable* selectable = Instance_getSelectable( instance );
-			if ( ( selectable != 0 && selectable->isSelected() ) || instance.childSelected() ) {
+			if ( Instance_isSelected( instance ) || instance.childSelected() ) {
 				if ( !propertyvalues_contain( m_propertyvalues, entity->getKeyValue( m_prop ) ) ) {
 					m_propertyvalues.push_back( entity->getKeyValue( m_prop ) );
 				}
@@ -806,9 +807,7 @@ EntityGetSelectedPropertyValuesWalker( const char *prop, PropertyValues& propert
 	: m_propertyvalues( propertyvalues ), m_prop( prop ), m_selected_children( false ), m_world( Map_FindWorldspawn( g_map ) ){
 }
 bool pre( const scene::Path& path, scene::Instance& instance ) const {
-	Selectable* selectable = Instance_getSelectable( instance );
-	if ( selectable != 0
-		 && selectable->isSelected() ) {
+	if ( Instance_isSelected( instance ) ) {
 		Entity* entity = Node_getEntity( path.top() );
 		if ( entity != 0 ) {
 			if ( !propertyvalues_contain( m_propertyvalues, entity->getKeyValue( m_prop ) ) ) {
@@ -849,10 +848,7 @@ void Select_AllOfType(){
 	else
 	{
 		PropertyValues propertyvalues;
-		const char *prop = EntityInspector_getCurrentKey();
-		if ( !prop || !*prop ) {
-			prop = "classname";
-		}
+		const char *prop = "classname";
 		Scene_EntityGetPropertyValues( GlobalSceneGraph(), prop, propertyvalues );
 		GlobalSelectionSystem().setSelectedAll( false );
 		if ( !propertyvalues.empty() ) {
@@ -862,6 +858,45 @@ void Select_AllOfType(){
 		{
 			Scene_BrushSelectByShader( GlobalSceneGraph(), TextureBrowser_GetSelectedShader() );
 			Scene_PatchSelectByShader( GlobalSceneGraph(), TextureBrowser_GetSelectedShader() );
+		}
+	}
+}
+
+void Select_EntitiesByKeyValue( const char* key, const char* value ){
+	GlobalSelectionSystem().setSelectedAll( false );
+	if( key != nullptr && value != nullptr ){
+		if( !string_empty( key ) && !string_empty( value ) ){
+			Scene_EntitySelectByPropertyValues( GlobalSceneGraph(), [key, value]( const Entity* entity )->bool{
+				return string_equal_nocase( entity->getKeyValue( key ), value );
+			} );
+		}
+	}
+	else if( key != nullptr ){
+		if( !string_empty( key ) ){
+			Scene_EntitySelectByPropertyValues( GlobalSceneGraph(), [key]( const Entity* entity )->bool{
+				return !string_empty( entity->getKeyValue( key ) );
+			} );
+		}
+	}
+	else if( value != nullptr ){
+		if( !string_empty( value ) ){
+			Scene_EntitySelectByPropertyValues( GlobalSceneGraph(), [value]( const Entity* entity )->bool{
+				class Visitor : public Entity::Visitor
+				{
+					const char* const m_value;
+				public:
+					bool m_found = false;
+					Visitor( const char* value ) : m_value( value ){
+					}
+					void visit( const char* key, const char* value ){
+						if ( string_equal_nocase( m_value, value ) ) {
+							m_found = true;
+						}
+					}
+				} visitor( value );
+				entity->forEachKeyValue( visitor );
+				return visitor.m_found;
+			} );
 		}
 	}
 }
@@ -931,9 +966,7 @@ HideSelectedWalker( bool hide )
 	: m_hide( hide ){
 }
 bool pre( const scene::Path& path, scene::Instance& instance ) const {
-	Selectable* selectable = Instance_getSelectable( instance );
-	if ( selectable != 0
-		 && selectable->isSelected() ) {
+	if ( Instance_isSelected( instance ) ) {
 		g_nodes_be_hidden = m_hide;
 		hide_node( path.top(), m_hide );
 	}
@@ -1080,7 +1113,7 @@ void Selection_RotateAnticlockwise(){
 
 
 void Select_registerCommands(){
-	GlobalCommands_insert( "ShowHidden", FreeCaller<Select_ShowAllHidden>(), Accelerator( 'H', (GdkModifierType)GDK_SHIFT_MASK ) );
+	GlobalCommands_insert( "ShowHidden", FreeCaller<Select_ShowAllHidden>(), Accelerator( 'H', GDK_SHIFT_MASK ) );
 	GlobalToggles_insert( "HideSelected", FreeCaller<HideSelected>(), ToggleItem::AddCallbackCaller( g_hidden_item ), Accelerator( 'H' ) );
 
 	GlobalCommands_insert( "MirrorSelectionX", FreeCaller<Selection_Flipx>() );
@@ -1144,10 +1177,7 @@ void Selection_destroy(){
 
 
 #include "gtkdlgs.h"
-#include <gtk/gtkbox.h>
-#include <gtk/gtkspinbutton.h>
-#include <gtk/gtktable.h>
-#include <gtk/gtklabel.h>
+#include <gtk/gtk.h>
 #include <gdk/gdkkeysyms.h>
 
 
@@ -1313,12 +1343,12 @@ void DoRotateDlg(){
 					GtkButton* button = create_dialog_button( "OK", G_CALLBACK( rotatedlg_ok ), &g_rotate_dialog );
 					gtk_box_pack_start( GTK_BOX( vbox ), GTK_WIDGET( button ), FALSE, FALSE, 0 );
 					widget_make_default( GTK_WIDGET( button ) );
-					gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel, GDK_Return, (GdkModifierType)0, (GtkAccelFlags)0 );
+					gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel, GDK_KEY_Return, (GdkModifierType)0, (GtkAccelFlags)0 );
 				}
 				{
 					GtkButton* button = create_dialog_button( "Cancel", G_CALLBACK( rotatedlg_cancel ), &g_rotate_dialog );
 					gtk_box_pack_start( GTK_BOX( vbox ), GTK_WIDGET( button ), FALSE, FALSE, 0 );
-					gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel, GDK_Escape, (GdkModifierType)0, (GtkAccelFlags)0 );
+					gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel, GDK_KEY_Escape, (GdkModifierType)0, (GtkAccelFlags)0 );
 				}
 				{
 					GtkButton* button = create_dialog_button( "Apply", G_CALLBACK( rotatedlg_apply ), &g_rotate_dialog );
@@ -1459,12 +1489,12 @@ void DoScaleDlg(){
 					GtkButton* button = create_dialog_button( "OK", G_CALLBACK( scaledlg_ok ), &g_scale_dialog );
 					gtk_box_pack_start( GTK_BOX( vbox ), GTK_WIDGET( button ), FALSE, FALSE, 0 );
 					widget_make_default( GTK_WIDGET( button ) );
-					gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel, GDK_Return, (GdkModifierType)0, (GtkAccelFlags)0 );
+					gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel, GDK_KEY_Return, (GdkModifierType)0, (GtkAccelFlags)0 );
 				}
 				{
 					GtkButton* button = create_dialog_button( "Cancel", G_CALLBACK( scaledlg_cancel ), &g_scale_dialog );
 					gtk_box_pack_start( GTK_BOX( vbox ), GTK_WIDGET( button ), FALSE, FALSE, 0 );
-					gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel, GDK_Escape, (GdkModifierType)0, (GtkAccelFlags)0 );
+					gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel, GDK_KEY_Escape, (GdkModifierType)0, (GtkAccelFlags)0 );
 				}
 				{
 					GtkButton* button = create_dialog_button( "Apply", G_CALLBACK( scaledlg_apply ), &g_scale_dialog );
@@ -1491,8 +1521,7 @@ bool pre( const scene::Path& path, scene::Instance& instance ) const {
 	Entity* entity = Node_getEntity( path.top() );
 	if ( entity != 0 ){
 		if( path.top().get_pointer() != m_world ){
-			Selectable* selectable = Instance_getSelectable( instance );
-			if ( ( selectable != 0 && selectable->isSelected() ) || instance.childSelected() ) {
+			if ( Instance_isSelected( instance ) || instance.childSelected() ) {
 				const char* keyvalue = entity->getKeyValue( m_prop );
 				if ( !string_empty( keyvalue ) && !propertyvalues_contain( m_propertyvalues, keyvalue ) ) {
 					m_propertyvalues.push_back( keyvalue );

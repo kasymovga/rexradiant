@@ -98,11 +98,11 @@ void Clipper_modeChanged( bool isClipper ){
 
 	if( g_pParentWnd ){
 		g_pParentWnd->forEachXYWnd( [&cursor]( XYWnd* xywnd ){
-			gdk_window_set_cursor( xywnd->GetWidget()->window, cursor );
+			gdk_window_set_cursor( gtk_widget_get_window( xywnd->GetWidget() ), cursor );
 		} );
 		if( g_pParentWnd->GetCamWnd() )
-			if( !isClipper || gdk_pointer_is_grabbed() == FALSE ) /* prevent cursor change `GDK_BLANK_CURSOR->g_clipper_cursor` during freelook */
-				gdk_window_set_cursor( CamWnd_getWidget( *g_pParentWnd->GetCamWnd() )->window, cursor );
+			if( !isClipper || !gdk_pointer_is_grabbed() ) /* prevent cursor change `GDK_BLANK_CURSOR->g_clipper_cursor` during freelook */
+				gdk_window_set_cursor( gtk_widget_get_window( CamWnd_getWidget( *g_pParentWnd->GetCamWnd() ) ), cursor );
 	}
 
 	if( g_clipper_resetFlip )
@@ -196,9 +196,9 @@ void Clipper_registerPreferencesPage(){
 }
 
 void Clipper_registerCommands(){
-	GlobalCommands_insert( "ClipperClip", FreeCaller<Clipper_doClip>(), Accelerator( GDK_Return ) );
-	GlobalCommands_insert( "ClipperSplit", FreeCaller<Clipper_doSplit>(), Accelerator( GDK_Return, (GdkModifierType)GDK_SHIFT_MASK ) );
-	GlobalCommands_insert( "ClipperFlip", FreeCaller<Clipper_doFlip>(), Accelerator( GDK_Return, (GdkModifierType)GDK_CONTROL_MASK ) );
+	GlobalCommands_insert( "ClipperClip", FreeCaller<Clipper_doClip>(), Accelerator( GDK_KEY_Return ) );
+	GlobalCommands_insert( "ClipperSplit", FreeCaller<Clipper_doSplit>(), Accelerator( GDK_KEY_Return, GDK_SHIFT_MASK ) );
+	GlobalCommands_insert( "ClipperFlip", FreeCaller<Clipper_doFlip>(), Accelerator( GDK_KEY_Return, GDK_CONTROL_MASK ) );
 }
 
 SignalHandlerId ClipperTool_boundsChanged;

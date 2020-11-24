@@ -65,12 +65,12 @@ int EmitShader( const char *shader, int *contentFlags, int *surfaceFlags ){
 		}
 		if ( !doingBSP ){
 			si = ShaderInfoForShader( shader );
-			if ( si->remapShader && si->remapShader[ 0 ] ) {
+			if ( !strEmptyOrNull( si->remapShader ) ) {
 				shader = si->remapShader;
 			}
 		}
 		/* compare name */
-		if ( !Q_stricmp( shader, bspShaders[ i ].shader ) ) {
+		if ( striEqual( shader, bspShaders[ i ].shader ) ) {
 			return i;
 		}
 	}
@@ -84,7 +84,7 @@ int EmitShader( const char *shader, int *contentFlags, int *surfaceFlags ){
 	AUTOEXPAND_BY_REALLOC_BSP( Shaders, 1024 );
 
 	numBSPShaders++;
-	strcpy( bspShaders[ i ].shader, shader );
+	strncpy( bspShaders[ i ].shader, shader, sizeof( bspShaders[ i ].shader ) ); // copy and clear the rest of memory
 	bspShaders[ i ].surfaceFlags = si->surfaceFlags;
 	bspShaders[ i ].contentFlags = si->contentFlags;
 
@@ -97,7 +97,7 @@ int EmitShader( const char *shader, int *contentFlags, int *surfaceFlags ){
 	}
 
 	/* recursively emit any damage shaders */
-	if ( si->damageShader != NULL && si->damageShader[ 0 ] != '\0' ) {
+	if ( !strEmptyOrNull( si->damageShader ) ) {
 		Sys_FPrintf( SYS_VRB, "Shader %s has damage shader %s\n", si->shader, si->damageShader );
 		EmitShader( si->damageShader, NULL, NULL );
 	}
@@ -283,8 +283,7 @@ void SetModelNumbers( void ){
  */
 
 void SetLightStyles( void ){
-	int i, j, style, numStyles;
-	const char  *t;
+	int i, j, numStyles;
 	entity_t    *e;
 	epair_t     *ep, *next;
 	char value[ 10 ];
@@ -297,10 +296,7 @@ void SetLightStyles( void ){
 	}
 
 	/* ydnar: determine if we keep lights in the bsp */
-	if ( KeyExists( &entities[ 0 ], "_keepLights" ) == qtrue ) {
-		t = ValueForKey( &entities[ 0 ], "_keepLights" );
-		keepLights = ( t[ 0 ] == '1' ) ? qtrue : qfalse;
-	}
+	ENT_READKV( &keepLights, &entities[ 0 ], "_keepLights" );
 
 	/* any light that is controlled (has a targetname) must have a unique style number generated for it */
 	numStyles = 0;
@@ -308,14 +304,13 @@ void SetLightStyles( void ){
 	{
 		e = &entities[ i ];
 
-		t = ValueForKey( e, "classname" );
-		if ( Q_strncasecmp( t, "light", 5 ) ) {
+		if ( !ent_class_prefixed( e, "light" ) ) {
 			continue;
 		}
-		t = ValueForKey( e, "targetname" );
-		if ( t[ 0 ] == '\0' ) {
+		const char *t;
+		if ( !ENT_READKV( &t, e, "targetname" ) ) {
 			/* ydnar: strip the light from the BSP file */
-			if ( keepLights == qfalse ) {
+			if ( !keepLights ) {
 				ep = e->epairs;
 				while ( ep != NULL )
 				{
@@ -334,14 +329,14 @@ void SetLightStyles( void ){
 		}
 
 		/* get existing style */
-		style = IntForKey( e, "style" );
+		const int style = IntForKey( e, "style" );
 		if ( style < LS_NORMAL || style > LS_NONE ) {
 			Error( "Invalid lightstyle (%d) on entity %d", style, i );
 		}
 
 		/* find this targetname */
 		for ( j = 0; j < numStyles; j++ )
-			if ( lightStyles[ j ] == style && !strcmp( lightTargets[ j ], t ) ) {
+			if ( lightStyles[ j ] == style && strEqual( lightTargets[ j ], t ) ) {
 				break;
 			}
 
@@ -407,7 +402,7 @@ void BeginBSPFile( void ){
    finishes a new bsp and writes to disk
  */
 
-void EndBSPFile( qboolean do_write ){
+void EndBSPFile( bool do_write ){
 	char path[ 1024 ];
 
 

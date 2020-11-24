@@ -635,16 +635,7 @@ void build_commands_write( const char* filename ){
 
 
 #include <gdk/gdkkeysyms.h>
-#include <gtk/gtkmain.h>
-#include <gtk/gtkbox.h>
-#include <gtk/gtktable.h>
-#include <gtk/gtktreeview.h>
-#include <gtk/gtkcellrenderertext.h>
-#include <gtk/gtktreeselection.h>
-#include <gtk/gtkliststore.h>
-#include <gtk/gtkscrolledwindow.h>
-#include <gtk/gtkexpander.h>
-#include <gtk/gtklabel.h>
+#include <gtk/gtk.h>
 
 #include "gtkutil/dialog.h"
 #include "gtkutil/closure.h"
@@ -678,7 +669,7 @@ void BSPCommandList_Construct( GtkListStore* store, Project& project ){
 }
 
 static void project_cell_editing_started( GtkCellRenderer* cell, GtkCellEditable* editable, const gchar* path, gpointer data ) {
-	ASSERT_MESSAGE( GTK_IS_ENTRY( editable ) == TRUE, "editable is not GtkEntry" );
+	ASSERT_MESSAGE( GTK_IS_ENTRY( editable ), "editable is not GtkEntry" );
 	GtkEntry* entry = GTK_ENTRY( editable );
 	if( string_equal( LAST_ITER_STRING, gtk_entry_get_text( entry ) ) )
 		gtk_entry_set_text( entry, "" );
@@ -740,15 +731,15 @@ BuildPair g_buildpair_copied;
 BuildCommand g_buildcommand_copied;
 
 inline bool event_is_del( const GdkEventKey* event ){
-	return accelerator_for_event_key( event ) == Accelerator( GDK_Delete );
+	return accelerator_for_event_key( event ) == Accelerator( GDK_KEY_Delete );
 }
 inline bool event_is_copy( const GdkEventKey* event ){
 	return ( accelerator_for_event_key( event ) == Accelerator( 'C', GDK_CONTROL_MASK ) )
-		|| ( accelerator_for_event_key( event ) == Accelerator( GDK_Insert, GDK_CONTROL_MASK ) );
+		|| ( accelerator_for_event_key( event ) == Accelerator( GDK_KEY_Insert, GDK_CONTROL_MASK ) );
 }
 inline bool event_is_paste( const GdkEventKey* event ){
 	return ( accelerator_for_event_key( event ) == Accelerator( 'V', GDK_CONTROL_MASK ) )
-		|| ( accelerator_for_event_key( event ) == Accelerator( GDK_Insert, GDK_SHIFT_MASK ) );
+		|| ( accelerator_for_event_key( event ) == Accelerator( GDK_KEY_Insert, GDK_SHIFT_MASK ) );
 }
 
 gboolean project_key_press( GtkWidget* widget, GdkEventKey* event, ProjectList* projectList ){

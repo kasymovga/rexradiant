@@ -40,6 +40,7 @@
 
 class Selector;
 class SelectionTest;
+class SelectionIntersection;
 
 class ComponentSelectionTestable
 {
@@ -49,6 +50,7 @@ STRING_CONSTANT( Name, "ComponentSelectionTestable" );
 virtual bool isSelectedComponents() const = 0;
 virtual void setSelectedComponents( bool select, SelectionSystem::EComponentMode mode ) = 0;
 virtual void testSelectComponents( Selector& selector, SelectionTest& test, SelectionSystem::EComponentMode mode ) = 0;
+virtual void gatherComponentsHighlight( std::vector<std::vector<Vector3>>& polygons, SelectionIntersection& intersection, SelectionTest& test, SelectionSystem::EComponentMode mode ) const = 0;
 };
 
 typedef std::function<void( const Vector3& )> Vector3Callback;
@@ -869,6 +871,12 @@ inline void Instance_setSelected( scene::Instance& instance, bool selected ){
 inline bool Instance_isSelected( const scene::Instance& instance ){
 	const Selectable* selectable = Instance_getSelectable( instance );
 	return selectable != 0 && selectable->isSelected();
+}
+
+inline bool Instance_isSelectedComponents( scene::Instance& instance ){
+	ComponentSelectionTestable* componentSelectionTestable = Instance_getComponentSelectionTestable( instance );
+	return componentSelectionTestable != 0
+		   && componentSelectionTestable->isSelectedComponents();
 }
 
 inline scene::Instance& findInstance( const scene::Path& path ){

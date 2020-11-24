@@ -75,7 +75,7 @@ bool pre( const scene::Path& path, scene::Instance& instance ) const {
 void post( const scene::Path& path, scene::Instance& instance ) const {
 	Entity* entity = Node_getEntity( path.top() );
 	if ( entity != 0
-		 && ( instance.childSelected() || Instance_getSelectable( instance )->isSelected() ) ) {
+		 && ( instance.childSelected() || Instance_isSelected( instance ) ) ) {
 		entity->setKeyValue( m_key, m_value );
 	}
 }
@@ -95,7 +95,7 @@ bool pre( const scene::Path& path, scene::Instance& instance ) const {
 }
 void post( const scene::Path& path, scene::Instance& instance ) const {
 	Entity* entity = Node_getEntity( path.top() );
-	if ( entity != 0 && ( instance.childSelected() || Instance_getSelectable( instance )->isSelected() ) ) {
+	if ( entity != 0 && ( instance.childSelected() || Instance_isSelected( instance ) ) ) {
 		if( path.top().get_pointer() == m_world ){ /* do not want to convert whole worldspawn entity */
 			if( instance.childSelected() && !m_2world ){ /* create an entity from world brushes instead */
 				EntityClass* entityClass = GlobalEntityClassManager().findOrInsert( m_classname, true );
@@ -230,7 +230,7 @@ bool pre( const scene::Path& path, scene::Instance& instance ) const {
 void post( const scene::Path& path, scene::Instance& instance ) const {
 	Entity* entity = Node_getEntity( path.top() );
 	if ( entity != 0
-		 && Instance_getSelectable( instance )->isSelected()
+		 && Instance_isSelected( instance )
 		 && node_is_group( path.top() )
 		 && !groupPath ) {
 		groupPath = &path;
@@ -251,8 +251,7 @@ bool pre( const scene::Path& path, scene::Instance& instance ) const {
 	return true;
 }
 void post( const scene::Path& path, scene::Instance& instance ) const {
-	Selectable *selectable = Instance_getSelectable( instance );
-	if ( selectable && selectable->isSelected() ) {
+	if ( Instance_isSelected( instance ) ) {
 		Entity* entity = Node_getEntity( path.top() );
 		if ( entity == 0 && Node_isPrimitive( path.top() ) ) {
 			NodeSmartReference child( path.top().get() );
@@ -433,6 +432,8 @@ void Entity_createFromSelection( const char* name, const Vector3& origin ){
 	entitypath.push( makeReference( node.get() ) );
 	scene::Instance& instance = findInstance( entitypath );
 
+	Entity* entity = Node_getEntity( node );
+
 	if ( entityClass->fixedsize || ( isModel && !brushesSelected ) ) {
 		//Select_Delete();
 
@@ -450,7 +451,7 @@ void Entity_createFromSelection( const char* name, const Vector3& origin ){
 	else
 	{
 		if ( g_pGameDescription->mGameType == "doom3" ) {
-			Node_getEntity( node )->setKeyValue( "model", Node_getEntity( node )->getKeyValue( "name" ) );
+			entity->setKeyValue( "model", entity->getKeyValue( "name" ) );
 		}
 
 		Scene_parentSelectedBrushesToEntity( GlobalSceneGraph(), node );
@@ -471,7 +472,7 @@ void Entity_createFromSelection( const char* name, const Vector3& origin ){
 				g_iLastLightIntensity = intensity;
 				char buf[30];
 				sprintf( buf, "255 255 255 %d", intensity );
-				Node_getEntity( node )->setKeyValue( "_light", buf );
+				entity->setKeyValue( "_light", buf );
 			}
 		}
 	}
@@ -483,24 +484,24 @@ void Entity_createFromSelection( const char* name, const Vector3& origin ){
 				g_iLastLightIntensity = intensity;
 				char buf[10];
 				sprintf( buf, "%d", intensity );
-				Node_getEntity( node )->setKeyValue( "light", buf );
+				entity->setKeyValue( "light", buf );
 			}
 		}
 		else if ( brushesSelected ) { // use workzone to set light position/size for doom3 lights, if there are brushes selected
 			AABB bounds( Doom3Light_getBounds( workzone ) );
 			StringOutputStream key( 64 );
 			key << bounds.origin[0] << " " << bounds.origin[1] << " " << bounds.origin[2];
-			Node_getEntity( node )->setKeyValue( "origin", key.c_str() );
+			entity->setKeyValue( "origin", key.c_str() );
 			key.clear();
 			key << bounds.extents[0] << " " << bounds.extents[1] << " " << bounds.extents[2];
-			Node_getEntity( node )->setKeyValue( "light_radius", key.c_str() );
+			entity->setKeyValue( "light_radius", key.c_str() );
 		}
 	}
 
 	if ( isModel ) {
 		const char* model = misc_model_dialog( GTK_WIDGET( MainFrame_getWindow() ) );
 		if ( model != 0 ) {
-			Node_getEntity( node )->setKeyValue( entityClass->miscmodel_key() , model );
+			entity->setKeyValue( entityClass->miscmodel_key(), model );
 		}
 	}
 }
@@ -585,18 +586,25 @@ void Entity_setColour(){
 	}
 }
 
-const char* misc_model_dialog( GtkWidget* parent ){
+const char* misc_model_dialog( GtkWidget* parent, const char* filepath ){
 	StringOutputStream buffer( 1024 );
 
-	buffer << g_qeglobals.m_userGamePath.c_str() << "models/";
+	if( !string_empty( filepath ) ){
+		const char* root = GlobalFileSystem().findFile( filepath );
+		if( !string_empty( root ) && file_is_directory( root ) )
+			buffer << root << filepath;
+	}
+	if( buffer.empty() ){
+		buffer << g_qeglobals.m_userGamePath.c_str() << "models/";
 
-	if ( !file_readable( buffer.c_str() ) ) {
-		// just go to fsmain
-		buffer.clear();
-		buffer << g_qeglobals.m_userGamePath.c_str();
+		if ( !file_readable( buffer.c_str() ) ) {
+			// just go to fsmain
+			buffer.clear();
+			buffer << g_qeglobals.m_userGamePath.c_str();
+		}
 	}
 
-	const char *filename = file_dialog( parent, TRUE, "Choose Model", buffer.c_str(), ModelLoader::Name() );
+	const char *filename = file_dialog( parent, true, "Choose Model", buffer.c_str(), ModelLoader::Name() );
 	if ( filename != 0 ) {
 		// use VFS to get the correct relative path
 		const char* relative = path_make_relative( filename, GlobalFileSystem().findRoot( filename ) );
@@ -721,10 +729,10 @@ void Entity_registerShortcuts(){
 void Entity_Construct(){
 	GlobalCommands_insert( "EntityColorSet", FreeCaller<Entity_setColour>(), Accelerator( 'K' ) );
 	GlobalCommands_insert( "EntityColorNormalize", FreeCaller<Entity_normalizeColor>() );
-	GlobalCommands_insert( "EntitiesConnect", FreeCaller<Entity_connectSelected>(), Accelerator( 'K', (GdkModifierType)GDK_CONTROL_MASK ) );
+	GlobalCommands_insert( "EntitiesConnect", FreeCaller<Entity_connectSelected>(), Accelerator( 'K', GDK_CONTROL_MASK ) );
 	if ( g_pGameDescription->mGameType == "nexuiz" || g_pGameDescription->mGameType == "q1" )
-		GlobalCommands_insert( "EntitiesKillConnect", FreeCaller<Entity_killconnectSelected>(), Accelerator( 'K', (GdkModifierType)GDK_SHIFT_MASK ) );
-	GlobalCommands_insert( "EntityMovePrimitivesToLast", FreeCaller<Entity_moveSelectedPrimitivesToLast>(), Accelerator( 'M', (GdkModifierType)GDK_CONTROL_MASK ) );
+		GlobalCommands_insert( "EntitiesKillConnect", FreeCaller<Entity_killconnectSelected>(), Accelerator( 'K', GDK_SHIFT_MASK ) );
+	GlobalCommands_insert( "EntityMovePrimitivesToLast", FreeCaller<Entity_moveSelectedPrimitivesToLast>(), Accelerator( 'M', GDK_CONTROL_MASK ) );
 	GlobalCommands_insert( "EntityMovePrimitivesToFirst", FreeCaller<Entity_moveSelectedPrimitivesToFirst>() );
 	GlobalCommands_insert( "EntityUngroup", FreeCaller<Entity_ungroup>() );
 	GlobalCommands_insert( "EntityUngroupPrimitives", FreeCaller<Entity_ungroupSelectedPrimitives>() );

@@ -170,7 +170,7 @@ inline const char* path_get_extension( const char* path ){
 /// \brief Returns true if \p extension is of the same type as \p other.
 /// O(n)
 inline bool extension_equal( const char* extension, const char* other ){
-	return path_equal( extension, other );
+	return string_equal_nocase( extension, other );
 }
 
 template<typename Functor>
@@ -232,19 +232,21 @@ DirectoryCleaned( const char* path ) : m_path( path ){
 template<typename TextOutputStreamType>
 TextOutputStreamType& ostream_write( TextOutputStreamType& ostream, const DirectoryCleaned& path ){
 	const char* i = path.m_path;
-	for (; *i != '\0'; ++i )
-	{
-		if ( *i == '\\' ) {
+	if( !string_empty( i ) ){
+		for (; *i != '\0'; ++i )
+		{
+			if ( *i == '\\' ) {
+				ostream << '/';
+			}
+			else
+			{
+				ostream << *i;
+			}
+		}
+		--i;
+		if ( *i != '/' && *i != '\\' ) {
 			ostream << '/';
 		}
-		else
-		{
-			ostream << *i;
-		}
-	}
-	char c = *( i - 1 );
-	if ( c != '/' && c != '\\' && !string_empty( path.m_path ) ) {
-		ostream << '/';
 	}
 	return ostream;
 }

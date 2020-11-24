@@ -31,14 +31,7 @@
 #if !defined( INCLUDED_GTKMISC_H )
 #define INCLUDED_GTKMISC_H
 
-#include <gtk/gtkmain.h>
-
-inline void process_gui(){
-	while ( gtk_events_pending() )
-	{
-		gtk_main_iteration();
-	}
-}
+void process_gui();
 
 void command_connect_accelerator( const char* commandName );
 void command_disconnect_accelerator( const char* commandName );
@@ -54,16 +47,16 @@ GtkMenuItem* create_menu_item_with_mnemonic( GtkMenu *menu, const char *mnemonic
 // this also sets up the shortcut using command_connect_accelerator
 GtkCheckMenuItem* create_check_menu_item_with_mnemonic( GtkMenu* menu, const char* mnemonic, const char* commandName );
 
-typedef struct _GtkButton GtkButton;
-typedef struct _GtkToggleButton GtkToggleButton;
+typedef struct _GtkToolButton GtkToolButton;
+typedef struct _GtkToggleToolButton GtkToggleToolButton;
 typedef struct _GtkToolbar GtkToolbar;
 
 // this DOES NOT set up the shortcut using command_connect_accelerator
-GtkButton* toolbar_append_button( GtkToolbar* toolbar, const char* description, const char* icon, const char* commandName );
+GtkToolButton* toolbar_append_button( GtkToolbar* toolbar, const char* description, const char* icon, const char* commandName );
 // this DOES NOT set up the shortcut using command_connect_accelerator
-GtkToggleButton* toolbar_append_toggle_button( GtkToolbar* toolbar, const char* description, const char* icon, const char* commandName );
+GtkToggleToolButton* toolbar_append_toggle_button( GtkToolbar* toolbar, const char* description, const char* icon, const char* commandName );
 
-
+typedef struct _GtkWidget GtkWidget;
 template<typename Element> class BasicVector3;
 typedef BasicVector3<float> Vector3;
 bool color_dialog( GtkWidget *parent, Vector3& color, const char* title = "Choose Color" );

@@ -43,17 +43,7 @@
 #include <ctime>
 
 #include <gdk/gdkkeysyms.h>
-#include <gtk/gtkhbox.h>
-#include <gtk/gtkvbox.h>
-#include <gtk/gtkframe.h>
-#include <gtk/gtklabel.h>
-#include <gtk/gtkhpaned.h>
-#include <gtk/gtkvpaned.h>
-#include <gtk/gtktoolbar.h>
-#include <gtk/gtkmenubar.h>
-#include <gtk/gtkimage.h>
-#include <gtk/gtktable.h>
-
+#include <gtk/gtk.h>
 
 #include "cmdlib.h"
 #include "scenelib.h"
@@ -72,6 +62,7 @@
 #include "gtkutil/image.h"
 #include "gtkutil/menu.h"
 #include "gtkutil/paned.h"
+#include "gtkutil/toolbar.h"
 #include "gtkutil/widget.h"
 
 #include "autosave.h"
@@ -110,6 +101,7 @@
 #include "surfacedialog.h"
 #include "textures.h"
 #include "texwindow.h"
+#include "modelwindow.h"
 #include "url.h"
 #include "xywindow.h"
 #include "windowobservers.h"
@@ -671,6 +663,10 @@ void Exit(){
 #include <process.h>
 #else
 #include <spawn.h>
+/* According to the Single Unix Specification, environ is not
+ * in any system header, although unistd.h often declares it.
+ */
+extern char **environ;
 #endif
 void Radiant_Restart(){
 	ConfirmModified( "Restart Radiant" ); // user can choose to not save, it's ok
@@ -1084,6 +1080,12 @@ void EntityInspector_ToggleShow(){
 	GroupDialog_showPage( g_page_entity );
 }
 
+GtkWidget* g_page_models;
+
+void ModelBrowser_ToggleShow(){
+	GroupDialog_showPage( g_page_models );
+}
+
 
 
 void SetClipMode( bool enable );
@@ -1246,9 +1248,7 @@ bool pre( const scene::Path& path, scene::Instance& instance ) const {
 	}
 
 	if ( !path.top().get().isRoot() ) {
-		Selectable* selectable = Instance_getSelectable( instance );
-		if ( selectable != 0
-			 && selectable->isSelected() ) {
+		if ( Instance_isSelected( instance ) ) {
 			return false;
 		}
 		if( m_makeUnique && instance.childSelected() ){ /* clone group entity primitives to new group entity */
@@ -1271,9 +1271,7 @@ void post( const scene::Path& path, scene::Instance& instance ) const {
 	}
 
 	if ( !path.top().get().isRoot() ) {
-		Selectable* selectable = Instance_getSelectable( instance );
-		if ( selectable != 0
-			 && selectable->isSelected() ) {
+		if ( Instance_isSelected( instance ) ) {
 			NodeSmartReference clone( Node_Clone( path.top() ) );
 			Map_gatherNamespaced( clone );
 			Node_getTraversable( path.parent().get() )->insert( clone );
@@ -1748,7 +1746,7 @@ bool pre( const scene::Path& path, scene::Instance& instance ) const {
 	if ( path.top().get().visible() ) {
 		Snappable* snappable = Node_getSnappable( path.top() );
 		if ( snappable != 0
-			 && Instance_getSelectable( instance )->isSelected() ) {
+			 && Instance_isSelected( instance ) ) {
 			snappable->snapto( m_snap );
 		}
 	}
@@ -1771,7 +1769,7 @@ bool pre( const scene::Path& path, scene::Instance& instance ) const {
 	if ( path.top().get().visible() ) {
 		ComponentSnappable* componentSnappable = Instance_getComponentSnappable( instance );
 		if ( componentSnappable != 0
-			 && Instance_getSelectable( instance )->isSelected() ) {
+			 && Instance_isSelected( instance ) ) {
 			componentSnappable->snapComponents( m_snap );
 		}
 	}
@@ -1798,7 +1796,7 @@ void Selection_SnapToGrid(){
 }
 
 
-static gint qe_every_second( gpointer data ){
+static gboolean qe_every_second( gpointer data ){
 	GdkModifierType mask;
 
 	gdk_window_get_pointer( 0, 0, 0, &mask );
@@ -1814,20 +1812,19 @@ guint s_qe_every_second_id = 0;
 
 void EverySecondTimer_enable(){
 	if ( s_qe_every_second_id == 0 ) {
-		s_qe_every_second_id = gtk_timeout_add( 1000, qe_every_second, 0 );
+		s_qe_every_second_id = g_timeout_add( 1000, qe_every_second, 0 );
 	}
 }
 
 void EverySecondTimer_disable(){
 	if ( s_qe_every_second_id != 0 ) {
-		gtk_timeout_remove( s_qe_every_second_id );
+		g_source_remove( s_qe_every_second_id );
 		s_qe_every_second_id = 0;
 	}
 }
 
-gint window_realize_remove_decoration( GtkWidget* widget, gpointer data ){
-	gdk_window_set_decorations( widget->window, (GdkWMDecoration)( GDK_DECOR_ALL | GDK_DECOR_MENU | GDK_DECOR_MINIMIZE | GDK_DECOR_MAXIMIZE ) );
-	return FALSE;
+void window_realize_remove_decoration( GtkWidget* widget, gpointer data ){
+	gdk_window_set_decorations( gtk_widget_get_window( widget ), (GdkWMDecoration)( GDK_DECOR_ALL | GDK_DECOR_MENU | GDK_DECOR_MINIMIZE | GDK_DECOR_MAXIMIZE ) );
 }
 
 class WaitDialog
@@ -1837,10 +1834,11 @@ GtkWindow* m_window;
 GtkLabel* m_label;
 };
 
-WaitDialog create_wait_dialog( const char* title, const char* text ){
+WaitDialog create_wait_dialog( const char* title, const char* text, bool modal ){
 	WaitDialog dialog;
 
 	dialog.m_window = create_floating_window( title, MainFrame_getWindow() );
+	gtk_window_set_modal( dialog.m_window, modal );
 	gtk_window_set_resizable( dialog.m_window, FALSE );
 	gtk_container_set_border_width( GTK_CONTAINER( dialog.m_window ), 0 );
 	gtk_window_set_position( dialog.m_window, GTK_WIN_POS_CENTER_ON_PARENT );
@@ -1904,7 +1902,7 @@ bool ScreenUpdates_Enabled(){
 }
 
 void ScreenUpdates_process(){
-	if ( redrawRequired() && GTK_WIDGET_VISIBLE( g_wait.m_window ) ) {
+	if ( redrawRequired() && gtk_widget_get_visible( GTK_WIDGET( g_wait.m_window ) ) ) {
 		process_gui();
 	}
 }
@@ -1918,18 +1916,15 @@ void ScreenUpdates_Disable( const char* message, const char* title ){
 
 		bool isActiveApp = MainFrame_isActiveApp();
 
-		g_wait = create_wait_dialog( title, message );
-		if( !XYWnd::m_mnuDrop || gtk_widget_get_visible( GTK_WIDGET( XYWnd::m_mnuDrop ) ) != TRUE ){
-			gtk_grab_add( GTK_WIDGET( g_wait.m_window ) );
-			//globalOutputStream() << "grab grab grab\n";
-		}
+		g_wait = create_wait_dialog( title, message,
+				!XYWnd::m_mnuDrop || !gtk_widget_get_visible( GTK_WIDGET( XYWnd::m_mnuDrop ) ) ); //hack: avoid hiding entity menu, clicked with ctrl, by tex/model loading popup
 
 		if ( isActiveApp ) {
 			gtk_widget_show( GTK_WIDGET( g_wait.m_window ) );
 			ScreenUpdates_process();
 		}
 	}
-	else if ( GTK_WIDGET_VISIBLE( g_wait.m_window ) ) {
+	else if ( gtk_widget_get_visible( GTK_WIDGET( g_wait.m_window ) ) ) {
 		gtk_label_set_text( g_wait.m_label, message );
 		ScreenUpdates_process();
 	}
@@ -1943,13 +1938,12 @@ void ScreenUpdates_Enable(){
 		EverySecondTimer_enable();
 		//gtk_widget_set_sensitive(GTK_WIDGET(MainFrame_getWindow()), TRUE);
 
-		gtk_grab_remove( GTK_WIDGET( g_wait.m_window ) );
 		destroy_floating_window( g_wait.m_window );
 		g_wait.m_window = 0;
 
 		//gtk_window_present(MainFrame_getWindow());
 	}
-	else if ( GTK_WIDGET_VISIBLE( g_wait.m_window ) ) {
+	else if ( gtk_widget_get_visible( GTK_WIDGET( g_wait.m_window ) ) ) {
 		gtk_label_set_text( g_wait.m_label, g_wait_stack.back().c_str() );
 		ScreenUpdates_process();
 	}
@@ -2095,6 +2089,7 @@ GtkMenuItem* create_view_menu( MainFrame::EViewStyle style ){
 		create_menu_item_with_mnemonic( menu, "Console", "ToggleConsole" );
 		create_menu_item_with_mnemonic( menu, "Texture Browser", "ToggleTextures" );
 	}
+	create_menu_item_with_mnemonic( menu, "Model Browser", "ToggleModelBrowser" );
 	create_menu_item_with_mnemonic( menu, "Entity Inspector", "ToggleEntityInspector" );
 	create_menu_item_with_mnemonic( menu, "_Surface Inspector", "SurfaceInspector" );
 	create_menu_item_with_mnemonic( menu, "_Patch Inspector", "PatchInspector" );
@@ -2529,8 +2524,8 @@ void RotateFlip_constructToolbar( GtkToolbar* toolbar ){
 	toolbar_append_button( toolbar, "Flip Horizontally", "brush_flip_hor.png", "MirrorSelectionHorizontally" );
 	toolbar_append_button( toolbar, "Flip Vertically", "brush_flip_vert.png", "MirrorSelectionVertically" );
 
-	toolbar_append_button( toolbar, "Rotate Clockwise", "brush_rotate_clock.png", "RotateSelectionClockwise" );
 	toolbar_append_button( toolbar, "Rotate Anticlockwise", "brush_rotate_anti.png", "RotateSelectionAnticlockwise" );
+	toolbar_append_button( toolbar, "Rotate Clockwise", "brush_rotate_clock.png", "RotateSelectionClockwise" );
 }
 
 void Select_constructToolbar( GtkToolbar* toolbar ){
@@ -2567,51 +2562,45 @@ void Manipulators_constructToolbar( GtkToolbar* toolbar ){
 }
 
 GtkToolbar* create_main_toolbar( MainFrame::EViewStyle style ){
-	GtkToolbar* toolbar = GTK_TOOLBAR( gtk_toolbar_new() );
-	gtk_toolbar_set_orientation( toolbar, GTK_ORIENTATION_HORIZONTAL );
-	gtk_toolbar_set_style( toolbar, GTK_TOOLBAR_ICONS );
-//	gtk_toolbar_set_show_arrow( toolbar, TRUE );
-	//gtk_orientable_set_orientation( GTK_ORIENTABLE( toolbar ), GTK_ORIENTATION_HORIZONTAL );
-	//toolbar_append_space( toolbar );
-	gtk_widget_show( GTK_WIDGET( toolbar ) );
+	GtkToolbar* toolbar = toolbar_new();
 
 	File_constructToolbar( toolbar );
-	gtk_toolbar_append_space( toolbar );
+	toolbar_append_space( toolbar );
 
 	UndoRedo_constructToolbar( toolbar );
-	gtk_toolbar_append_space( toolbar );
+	toolbar_append_space( toolbar );
 
 	RotateFlip_constructToolbar( toolbar );
-	gtk_toolbar_append_space( toolbar );
+	toolbar_append_space( toolbar );
 
 	Select_constructToolbar( toolbar );
-	gtk_toolbar_append_space( toolbar );
+	toolbar_append_space( toolbar );
 
 	CSG_constructToolbar( toolbar );
-	gtk_toolbar_append_space( toolbar );
+	toolbar_append_space( toolbar );
 
 	ComponentModes_constructToolbar( toolbar );
-	gtk_toolbar_append_space( toolbar );
+	toolbar_append_space( toolbar );
 
 	if ( style != MainFrame::eSplit ) {
 		XYWnd_constructToolbar( toolbar );
-		gtk_toolbar_append_space( toolbar );
+		toolbar_append_space( toolbar );
 	}
 
 	CamWnd_constructToolbar( toolbar );
-	gtk_toolbar_append_space( toolbar );
+	toolbar_append_space( toolbar );
 
 	Manipulators_constructToolbar( toolbar );
-	gtk_toolbar_append_space( toolbar );
+	toolbar_append_space( toolbar );
 
 	if ( g_Layout_enablePatchToolbar.m_value ) {
 		Patch_constructToolbar( toolbar );
-		gtk_toolbar_append_space( toolbar );
+		toolbar_append_space( toolbar );
 	}
 
 	toolbar_append_toggle_button( toolbar, "Texture Lock (SHIFT + T)", "texture_lock.png", "TogTexLock" );
 	toolbar_append_toggle_button( toolbar, "Texture Vertex Lock", "texture_vertexlock.png", "TogTexVertexLock" );
-	gtk_toolbar_append_space( toolbar );
+	toolbar_append_space( toolbar );
 
 	toolbar_append_button( toolbar, "Entities (N)", "entities.png", "ToggleEntityInspector" );
 	// disable the console and texture button in the regular layouts
@@ -2621,9 +2610,9 @@ GtkToolbar* create_main_toolbar( MainFrame::EViewStyle style ){
 	}
 
 	// TODO: call light inspector
-	//GtkButton* g_view_lightinspector_button = toolbar_append_button(toolbar, "Light Inspector", "lightinspector.png", "ToggleLightInspector");
+	//GtkToolButton* g_view_lightinspector_button = toolbar_append_button(toolbar, "Light Inspector", "lightinspector.png", "ToggleLightInspector");
 
-	gtk_toolbar_append_space( toolbar );
+	toolbar_append_space( toolbar );
 	toolbar_append_button( toolbar, "Refresh Models", "refresh_models.png", "RefreshReferences" );
 
 	return toolbar;
@@ -2735,7 +2724,7 @@ WindowFocusPrinter g_mainframeFocusPrinter( "mainframe" );
 class MainWindowActive
 {
 static gboolean notify( GtkWindow* window, gpointer dummy, MainWindowActive* self ){
-	if ( g_wait.m_window != 0 && gtk_window_is_active( window ) && !GTK_WIDGET_VISIBLE( g_wait.m_window ) ) {
+	if ( g_wait.m_window != 0 && gtk_window_is_active( window ) && !gtk_widget_get_visible( GTK_WIDGET( g_wait.m_window ) ) ) {
 		gtk_widget_show( GTK_WIDGET( g_wait.m_window ) );
 	}
 
@@ -2824,9 +2813,9 @@ void MainFrame::SetActiveXY( XYWnd* p ){
 
 void MainFrame_toggleFullscreen(){
 	GtkWindow* wnd = MainFrame_getWindow();
-	if( gdk_window_get_state( GTK_WIDGET( wnd )->window ) & GDK_WINDOW_STATE_FULLSCREEN ){
+	if( gdk_window_get_state( gtk_widget_get_window( GTK_WIDGET( wnd ) ) ) & GDK_WINDOW_STATE_FULLSCREEN ){
 		//some portion of buttsex, because gtk_window_unfullscreen doesn't work correctly after calling some modal window
-		bool maximized = ( gdk_window_get_state( GTK_WIDGET( wnd )->window ) & GDK_WINDOW_STATE_MAXIMIZED );
+		bool maximized = ( gdk_window_get_state( gtk_widget_get_window( GTK_WIDGET( wnd ) ) ) & GDK_WINDOW_STATE_MAXIMIZED );
 		gtk_window_unfullscreen( wnd );
 		if( maximized ){
 			gtk_window_unmaximize( wnd );
@@ -2873,9 +2862,9 @@ private:
 		m_hSplitPos = gtk_paned_get_position( GTK_PANED( g_pParentWnd->m_hSplit ) );
 
 		int vSplitX, vSplitY, vSplit2X, vSplit2Y, hSplitX, hSplitY;
-		gdk_window_get_origin( g_pParentWnd->m_vSplit->window, &vSplitX, &vSplitY );
-		gdk_window_get_origin( g_pParentWnd->m_vSplit2->window, &vSplit2X, &vSplit2Y );
-		gdk_window_get_origin( g_pParentWnd->m_hSplit->window, &hSplitX, &hSplitY );
+		gdk_window_get_origin( gtk_widget_get_window( g_pParentWnd->m_vSplit ), &vSplitX, &vSplitY );
+		gdk_window_get_origin( gtk_widget_get_window( g_pParentWnd->m_vSplit2 ), &vSplit2X, &vSplit2Y );
+		gdk_window_get_origin( gtk_widget_get_window( g_pParentWnd->m_hSplit ), &hSplitX, &hSplitY );
 
 		vSplitY += m_vSplitPos;
 		vSplit2Y += m_vSplit2Pos;
@@ -3002,7 +2991,7 @@ void MainFrame::Create(){
 	{
 		GdkPixbuf* pixbuf = pixbuf_new_from_file_with_mask( "bitmaps/icon.png" );
 		if ( pixbuf != 0 ) {
-			gtk_window_set_icon( window, pixbuf );
+			gtk_window_set_default_icon( pixbuf );
 			g_object_unref( pixbuf );
 		}
 	}
@@ -3117,6 +3106,19 @@ void MainFrame::Create(){
 
 	if ( FloatingGroupDialog() ) {
 		g_page_console = GroupDialog_addPage( "Console", Console_constructWindow( GroupDialog_getWindow() ), RawStringExportCaller( "Console" ) );
+		{
+			GtkFrame* frame = create_framed_widget( TextureBrowser_constructWindow( GroupDialog_getWindow() ) );
+			g_page_textures = GroupDialog_addPage( "Textures", GTK_WIDGET( frame ), TextureBrowserExportTitleCaller() );
+			/* workaround for gtk 2.24 issue: not displayed glwidget after toggle */
+			g_object_set_data( G_OBJECT( g_page_textures ), "glwidget", TextureBrowser_getGLWidget() );
+		}
+	}
+
+	{
+		GtkFrame* frame = create_framed_widget( ModelBrowser_constructWindow( GroupDialog_getWindow() ) );
+		g_page_models = GroupDialog_addPage( "Models", GTK_WIDGET( frame ), RawStringExportCaller( "Models" ) );
+		/* workaround for gtk 2.24 issue: not displayed glwidget after toggle */
+		g_object_set_data( G_OBJECT( g_page_models ), "glwidget", ModelBrowser_getGLWidget() );
 	}
 
 #ifdef WIN32
@@ -3131,49 +3133,47 @@ void MainFrame::Create(){
 	gtk_widget_show( GTK_WIDGET( window ) );
 
 	if ( CurrentStyle() == eRegular || CurrentStyle() == eRegularLeft ) {
+		GtkWidget* hsplit = gtk_hpaned_new();
+		m_hSplit = hsplit;
+		gtk_box_pack_start( GTK_BOX( vbox ), hsplit, TRUE, TRUE, 0 );
+		gtk_widget_show( hsplit );
 		{
-			GtkWidget* hsplit = gtk_hpaned_new();
-			m_hSplit = hsplit;
-			gtk_box_pack_start( GTK_BOX( vbox ), hsplit, TRUE, TRUE, 0 );
-			gtk_widget_show( hsplit );
+			GtkWidget* vsplit = gtk_vpaned_new();
+			gtk_widget_show( vsplit );
+			m_vSplit = vsplit;
+			GtkWidget* vsplit2 = gtk_vpaned_new();
+			gtk_widget_show( vsplit2 );
+			m_vSplit2 = vsplit2;
+			if ( CurrentStyle() == eRegular ){
+				gtk_paned_pack1( GTK_PANED( hsplit ), vsplit, TRUE, TRUE );
+				gtk_paned_pack2( GTK_PANED( hsplit ), vsplit2, TRUE, TRUE );
+			}
+			else{
+				gtk_paned_pack2( GTK_PANED( hsplit ), vsplit, TRUE, TRUE );
+				gtk_paned_pack1( GTK_PANED( hsplit ), vsplit2, TRUE, TRUE );
+			}
+			// console
+			GtkWidget* console_window = Console_constructWindow( window );
+			gtk_paned_pack2( GTK_PANED( vsplit ), console_window, TRUE, TRUE );
+
+			// xy
+			m_pXYWnd = new XYWnd();
+			m_pXYWnd->SetViewType( XY );
+			GtkWidget* xy_window = GTK_WIDGET( create_framed_widget( m_pXYWnd->GetWidget() ) );
+			gtk_paned_pack1( GTK_PANED( vsplit ), xy_window, TRUE, TRUE );
 			{
-				GtkWidget* vsplit = gtk_vpaned_new();
-				gtk_widget_show( vsplit );
-				m_vSplit = vsplit;
-				GtkWidget* vsplit2 = gtk_vpaned_new();
-				gtk_widget_show( vsplit2 );
-				m_vSplit2 = vsplit2;
-				if ( CurrentStyle() == eRegular ){
-					gtk_paned_pack1( GTK_PANED( hsplit ), vsplit, TRUE, TRUE );
-					gtk_paned_pack2( GTK_PANED( hsplit ), vsplit2, TRUE, TRUE );
-				}
-				else{
-					gtk_paned_pack2( GTK_PANED( hsplit ), vsplit, TRUE, TRUE );
-					gtk_paned_pack1( GTK_PANED( hsplit ), vsplit2, TRUE, TRUE );
-				}
-				// console
-				GtkWidget* console_window = Console_constructWindow( window );
-				gtk_paned_pack2( GTK_PANED( vsplit ), console_window, TRUE, TRUE );
+				// camera
+				m_pCamWnd = NewCamWnd();
+				GlobalCamera_setCamWnd( *m_pCamWnd );
+				CamWnd_setParent( *m_pCamWnd, window );
+				GtkFrame* camera_window = create_framed_widget( CamWnd_getWidget( *m_pCamWnd ) );
 
-				// xy
-				m_pXYWnd = new XYWnd();
-				m_pXYWnd->SetViewType( XY );
-				GtkWidget* xy_window = GTK_WIDGET( create_framed_widget( m_pXYWnd->GetWidget() ) );
-				gtk_paned_pack1( GTK_PANED( vsplit ), xy_window, TRUE, TRUE );
-				{
-					// camera
-					m_pCamWnd = NewCamWnd();
-					GlobalCamera_setCamWnd( *m_pCamWnd );
-					CamWnd_setParent( *m_pCamWnd, window );
-					GtkFrame* camera_window = create_framed_widget( CamWnd_getWidget( *m_pCamWnd ) );
+				gtk_paned_pack1( GTK_PANED( vsplit2 ), GTK_WIDGET( camera_window ), TRUE, TRUE );
 
-					gtk_paned_pack1( GTK_PANED( vsplit2 ), GTK_WIDGET( camera_window ), TRUE, TRUE );
+				// textures
+				GtkFrame* texture_window = create_framed_widget( TextureBrowser_constructWindow( window ) );
 
-					// textures
-					GtkFrame* texture_window = create_framed_widget( TextureBrowser_constructWindow( window ) );
-
-					gtk_paned_pack2( GTK_PANED( vsplit2 ), GTK_WIDGET( texture_window ), TRUE, TRUE );
-				}
+				gtk_paned_pack2( GTK_PANED( vsplit2 ), GTK_WIDGET( texture_window ), TRUE, TRUE );
 			}
 		}
 	}
@@ -3262,13 +3262,6 @@ void MainFrame::Create(){
 			g_floating_windows.push_back( GTK_WIDGET( window ) );
 		}
 
-		{
-			GtkFrame* frame = create_framed_widget( TextureBrowser_constructWindow( GroupDialog_getWindow() ) );
-			g_page_textures = GroupDialog_addPage( "Textures", GTK_WIDGET( frame ), TextureBrowserExportTitleCaller() );
-			/* workaround for gtk 2.24 issue: not displayed glwidget after toggle */
-			g_object_set_data( G_OBJECT( GroupDialog_getWindow() ), "glwidget", TextureBrowser_getGLWidget() );
-		}
-
 		m_vSplit = 0;
 		m_hSplit = 0;
 		m_vSplit2 = 0;
@@ -3300,13 +3293,6 @@ void MainFrame::Create(){
 
 		m_hSplit = create_split_views( camera, yz, xy, xz, m_vSplit, m_vSplit2 );
 		gtk_box_pack_start( GTK_BOX( vbox ), m_hSplit, TRUE, TRUE, 0 );
-
-		{
-			GtkFrame* frame = create_framed_widget( TextureBrowser_constructWindow( GroupDialog_getWindow() ) );
-			g_page_textures = GroupDialog_addPage( "Textures", GTK_WIDGET( frame ), TextureBrowserExportTitleCaller() );
-			/* workaround for gtk 2.24 issue: not displayed glwidget after toggle */
-			g_object_set_data( G_OBJECT( GroupDialog_getWindow() ), "glwidget", TextureBrowser_getGLWidget() );
-		}
 	}
 
 	EntityList_constructWindow( window );
@@ -3352,7 +3338,7 @@ void MainFrame::Create(){
 
 void MainFrame::SaveWindowInfo(){
 	//restore good state first
-	if( gdk_window_get_state( GTK_WIDGET( m_window )->window ) & GDK_WINDOW_STATE_ICONIFIED ){
+	if( gdk_window_get_state( gtk_widget_get_window( GTK_WIDGET( m_window ) ) ) & GDK_WINDOW_STATE_ICONIFIED ){
 		gtk_window_deiconify( m_window );
 	}
 	if( g_maximizeview.isMaximized() ){
@@ -3373,11 +3359,11 @@ void MainFrame::SaveWindowInfo(){
 		g_layout_globals.nCamHeight = gtk_paned_get_position( GTK_PANED( m_vSplit2 ) );
 	}
 
-	if( gdk_window_get_state( GTK_WIDGET( m_window )->window ) == 0 ){
+	if( gdk_window_get_state( gtk_widget_get_window( GTK_WIDGET( m_window ) ) ) == 0 ){
 		g_layout_globals.m_position = m_position_tracker.getPosition();
 	}
 
-	g_layout_globals.nState = gdk_window_get_state( GTK_WIDGET( m_window )->window );
+	g_layout_globals.nState = gdk_window_get_state( gtk_widget_get_window( GTK_WIDGET( m_window ) ) );
 }
 
 void MainFrame::Shutdown(){
@@ -3392,6 +3378,7 @@ void MainFrame::Shutdown(){
 	delete m_pXZWnd;
 	m_pXZWnd = 0;
 
+	ModelBrowser_destroyWindow();
 	TextureBrowser_destroyWindow();
 
 	DeleteCamWnd( m_pCamWnd );
@@ -3567,12 +3554,12 @@ void FocusAllViews(){
 #include "stringio.h"
 
 void MainFrame_Construct(){
-	GlobalCommands_insert( "OpenManual", FreeCaller<OpenHelpURL>(), Accelerator( GDK_F1 ) );
+	GlobalCommands_insert( "OpenManual", FreeCaller<OpenHelpURL>(), Accelerator( GDK_KEY_F1 ) );
 
 	GlobalCommands_insert( "NewMap", FreeCaller<NewMap>() );
-	GlobalCommands_insert( "OpenMap", FreeCaller<OpenMap>(), Accelerator( 'O', (GdkModifierType)GDK_CONTROL_MASK ) );
+	GlobalCommands_insert( "OpenMap", FreeCaller<OpenMap>(), Accelerator( 'O', GDK_CONTROL_MASK ) );
 	GlobalCommands_insert( "ImportMap", FreeCaller<ImportMap>() );
-	GlobalCommands_insert( "SaveMap", FreeCaller<SaveMap>(), Accelerator( 'S', (GdkModifierType)GDK_CONTROL_MASK ) );
+	GlobalCommands_insert( "SaveMap", FreeCaller<SaveMap>(), Accelerator( 'S', GDK_CONTROL_MASK ) );
 	GlobalCommands_insert( "SaveMapAs", FreeCaller<SaveMapAs>() );
 	GlobalCommands_insert( "SaveSelected", FreeCaller<ExportMap>() );
 	GlobalCommands_insert( "SaveRegion", FreeCaller<SaveRegion>() );
@@ -3581,33 +3568,34 @@ void MainFrame_Construct(){
 	GlobalCommands_insert( "CheckForUpdate", FreeCaller<OpenUpdateURL>() );
 	GlobalCommands_insert( "Exit", FreeCaller<Exit>() );
 
-	GlobalCommands_insert( "Undo", FreeCaller<Undo>(), Accelerator( 'Z', (GdkModifierType)GDK_CONTROL_MASK ) );
-	GlobalCommands_insert( "Redo", FreeCaller<Redo>(), Accelerator( 'Y', (GdkModifierType)GDK_CONTROL_MASK ) );
-	GlobalCommands_insert( "Copy", FreeCaller<Copy>(), Accelerator( 'C', (GdkModifierType)GDK_CONTROL_MASK ) );
-	GlobalCommands_insert( "Paste", FreeCaller<Paste>(), Accelerator( 'V', (GdkModifierType)GDK_CONTROL_MASK ) );
-	GlobalCommands_insert( "PasteToCamera", FreeCaller<PasteToCamera>(), Accelerator( 'V', (GdkModifierType)GDK_SHIFT_MASK ) );
+	GlobalCommands_insert( "Undo", FreeCaller<Undo>(), Accelerator( 'Z', GDK_CONTROL_MASK ) );
+	GlobalCommands_insert( "Redo", FreeCaller<Redo>(), Accelerator( 'Y', GDK_CONTROL_MASK ) );
+	GlobalCommands_insert( "Copy", FreeCaller<Copy>(), Accelerator( 'C', GDK_CONTROL_MASK ) );
+	GlobalCommands_insert( "Paste", FreeCaller<Paste>(), Accelerator( 'V', GDK_CONTROL_MASK ) );
+	GlobalCommands_insert( "PasteToCamera", FreeCaller<PasteToCamera>(), Accelerator( 'V', GDK_SHIFT_MASK ) );
 	GlobalCommands_insert( "MoveToCamera", FreeCaller<MoveToCamera>(), Accelerator( 'V', (GdkModifierType)( GDK_SHIFT_MASK | GDK_CONTROL_MASK ) ) );
-	GlobalCommands_insert( "CloneSelection", FreeCaller<Selection_Clone>(), Accelerator( GDK_space ) );
-	GlobalCommands_insert( "CloneSelectionAndMakeUnique", FreeCaller<Selection_Clone_MakeUnique>(), Accelerator( GDK_space, (GdkModifierType)GDK_SHIFT_MASK ) );
-	GlobalCommands_insert( "DeleteSelection2", FreeCaller<deleteSelection>(), Accelerator( GDK_BackSpace ) );
+	GlobalCommands_insert( "CloneSelection", FreeCaller<Selection_Clone>(), Accelerator( GDK_KEY_space ) );
+	GlobalCommands_insert( "CloneSelectionAndMakeUnique", FreeCaller<Selection_Clone_MakeUnique>(), Accelerator( GDK_KEY_space, GDK_SHIFT_MASK ) );
+	GlobalCommands_insert( "DeleteSelection2", FreeCaller<deleteSelection>(), Accelerator( GDK_KEY_BackSpace ) );
 	GlobalCommands_insert( "DeleteSelection", FreeCaller<deleteSelection>(), Accelerator( 'Z' ) );
-	GlobalCommands_insert( "RepeatTransforms", FreeCaller<RepeatTransforms>(), Accelerator( 'R', (GdkModifierType)GDK_CONTROL_MASK ) );
+	GlobalCommands_insert( "RepeatTransforms", FreeCaller<RepeatTransforms>(), Accelerator( 'R', GDK_CONTROL_MASK ) );
 //	GlobalCommands_insert( "ParentSelection", FreeCaller<Scene_parentSelected>() );
-	GlobalCommands_insert( "UnSelectSelection2", FreeCaller<Selection_Deselect>(), Accelerator( GDK_Escape ) );
+	GlobalCommands_insert( "UnSelectSelection2", FreeCaller<Selection_Deselect>(), Accelerator( GDK_KEY_Escape ) );
 	GlobalCommands_insert( "UnSelectSelection", FreeCaller<Selection_Deselect>(), Accelerator( 'C' ) );
 	GlobalCommands_insert( "InvertSelection", FreeCaller<Select_Invert>(), Accelerator( 'I' ) );
 	GlobalCommands_insert( "SelectInside", FreeCaller<Select_Inside>() );
 	GlobalCommands_insert( "SelectTouching", FreeCaller<Select_Touching>() );
-	GlobalCommands_insert( "ExpandSelectionToPrimitives", FreeCaller<Scene_ExpandSelectionToPrimitives>(), Accelerator( 'E', (GdkModifierType)GDK_CONTROL_MASK ) );
-	GlobalCommands_insert( "ExpandSelectionToEntities", FreeCaller<Scene_ExpandSelectionToEntities>(), Accelerator( 'E', (GdkModifierType)GDK_SHIFT_MASK ) );
+	GlobalCommands_insert( "ExpandSelectionToPrimitives", FreeCaller<Scene_ExpandSelectionToPrimitives>(), Accelerator( 'E', GDK_CONTROL_MASK ) );
+	GlobalCommands_insert( "ExpandSelectionToEntities", FreeCaller<Scene_ExpandSelectionToEntities>(), Accelerator( 'E', GDK_SHIFT_MASK ) );
 	GlobalCommands_insert( "SelectConnectedEntities", FreeCaller<SelectConnectedEntities>(), Accelerator( 'E', (GdkModifierType)( GDK_SHIFT_MASK | GDK_CONTROL_MASK ) ) );
 	GlobalCommands_insert( "Preferences", FreeCaller<PreferencesDialog_showDialog>(), Accelerator( 'P' ) );
 
 	GlobalCommands_insert( "ToggleConsole", FreeCaller<Console_ToggleShow>(), Accelerator( 'O' ) );
 	GlobalCommands_insert( "ToggleEntityInspector", FreeCaller<EntityInspector_ToggleShow>(), Accelerator( 'N' ) );
+	GlobalCommands_insert( "ToggleModelBrowser", FreeCaller<ModelBrowser_ToggleShow>(), Accelerator( '/' ) );
 	GlobalCommands_insert( "EntityList", FreeCaller<EntityList_toggleShown>(), Accelerator( 'L' ) );
 
-//	GlobalCommands_insert( "ShowHidden", FreeCaller<Select_ShowAllHidden>(), Accelerator( 'H', (GdkModifierType)GDK_SHIFT_MASK ) );
+//	GlobalCommands_insert( "ShowHidden", FreeCaller<Select_ShowAllHidden>(), Accelerator( 'H', GDK_SHIFT_MASK ) );
 //	GlobalCommands_insert( "HideSelected", FreeCaller<HideSelected>(), Accelerator( 'H' ) );
 	Select_registerCommands();
 
@@ -3615,11 +3603,11 @@ void MainFrame_Construct(){
 	GlobalToggles_insert( "DragEdges", FreeCaller<SelectEdgeMode>(), ToggleItem::AddCallbackCaller( g_edgeMode_button ), Accelerator( 'E' ) );
 	GlobalToggles_insert( "DragFaces", FreeCaller<SelectFaceMode>(), ToggleItem::AddCallbackCaller( g_faceMode_button ), Accelerator( 'F' ) );
 
-	GlobalCommands_insert( "ArbitraryRotation", FreeCaller<DoRotateDlg>(), Accelerator( 'R', (GdkModifierType)GDK_SHIFT_MASK ) );
+	GlobalCommands_insert( "ArbitraryRotation", FreeCaller<DoRotateDlg>(), Accelerator( 'R', GDK_SHIFT_MASK ) );
 	GlobalCommands_insert( "ArbitraryScale", FreeCaller<DoScaleDlg>(), Accelerator( 'S', (GdkModifierType)( GDK_SHIFT_MASK | GDK_CONTROL_MASK ) ) );
 
 	GlobalCommands_insert( "BuildMenuCustomize", FreeCaller<DoBuildMenu>() );
-	GlobalCommands_insert( "Build_runRecentExecutedBuild", FreeCaller<Build_runRecentExecutedBuild>(), Accelerator( GDK_F5 ) );
+	GlobalCommands_insert( "Build_runRecentExecutedBuild", FreeCaller<Build_runRecentExecutedBuild>(), Accelerator( GDK_KEY_F5 ) );
 
 	GlobalCommands_insert( "FindBrush", FreeCaller<DoFind>() );
 
@@ -3658,40 +3646,40 @@ void MainFrame_Construct(){
 	GlobalCommands_insert( "ChooseClipperColor", makeCallback( g_ColoursMenu.m_clipper ) );
 	GlobalCommands_insert( "ChooseOrthoViewNameColor", makeCallback( g_ColoursMenu.m_viewname ) );
 
-	GlobalCommands_insert( "Fullscreen", FreeCaller<MainFrame_toggleFullscreen>(), Accelerator( GDK_F11 ) );
-	GlobalCommands_insert( "MaximizeView", FreeCaller<Maximize_View>(), Accelerator( GDK_F12 ) );
+	GlobalCommands_insert( "Fullscreen", FreeCaller<MainFrame_toggleFullscreen>(), Accelerator( GDK_KEY_F11 ) );
+	GlobalCommands_insert( "MaximizeView", FreeCaller<Maximize_View>(), Accelerator( GDK_KEY_F12 ) );
 
 
-	GlobalCommands_insert( "CSGSubtract", FreeCaller<CSG_Subtract>(), Accelerator( 'U', (GdkModifierType)GDK_SHIFT_MASK ) );
+	GlobalCommands_insert( "CSGSubtract", FreeCaller<CSG_Subtract>(), Accelerator( 'U', GDK_SHIFT_MASK ) );
 	GlobalCommands_insert( "CSGMerge", FreeCaller<CSG_Merge>() );
-	GlobalCommands_insert( "CSGWrapMerge", FreeCaller<CSG_WrapMerge>(), Accelerator( 'U', (GdkModifierType)GDK_CONTROL_MASK ) );
+	GlobalCommands_insert( "CSGWrapMerge", FreeCaller<CSG_WrapMerge>(), Accelerator( 'U', GDK_CONTROL_MASK ) );
 	GlobalCommands_insert( "CSGroom", FreeCaller<CSG_MakeRoom>() );
 	GlobalCommands_insert( "CSGTool", FreeCaller<CSG_Tool>() );
 
 	Grid_registerCommands();
 
-	GlobalCommands_insert( "SnapToGrid", FreeCaller<Selection_SnapToGrid>(), Accelerator( 'G', (GdkModifierType)GDK_CONTROL_MASK ) );
+	GlobalCommands_insert( "SnapToGrid", FreeCaller<Selection_SnapToGrid>(), Accelerator( 'G', GDK_CONTROL_MASK ) );
 
-	GlobalCommands_insert( "SelectAllOfType", FreeCaller<Select_AllOfType>(), Accelerator( 'A', (GdkModifierType)GDK_SHIFT_MASK ) );
+	GlobalCommands_insert( "SelectAllOfType", FreeCaller<Select_AllOfType>(), Accelerator( 'A', GDK_SHIFT_MASK ) );
 
-	GlobalCommands_insert( "TexRotateClock", FreeCaller<Texdef_RotateClockwise>(), Accelerator( GDK_Next, (GdkModifierType)GDK_SHIFT_MASK ) );
-	GlobalCommands_insert( "TexRotateCounter", FreeCaller<Texdef_RotateAntiClockwise>(), Accelerator( GDK_Prior, (GdkModifierType)GDK_SHIFT_MASK ) );
-	GlobalCommands_insert( "TexScaleUp", FreeCaller<Texdef_ScaleUp>(), Accelerator( GDK_Up, (GdkModifierType)GDK_CONTROL_MASK ) );
-	GlobalCommands_insert( "TexScaleDown", FreeCaller<Texdef_ScaleDown>(), Accelerator( GDK_Down, (GdkModifierType)GDK_CONTROL_MASK ) );
-	GlobalCommands_insert( "TexScaleLeft", FreeCaller<Texdef_ScaleLeft>(), Accelerator( GDK_Left, (GdkModifierType)GDK_CONTROL_MASK ) );
-	GlobalCommands_insert( "TexScaleRight", FreeCaller<Texdef_ScaleRight>(), Accelerator( GDK_Right, (GdkModifierType)GDK_CONTROL_MASK ) );
-	GlobalCommands_insert( "TexShiftUp", FreeCaller<Texdef_ShiftUp>(), Accelerator( GDK_Up, (GdkModifierType)GDK_SHIFT_MASK ) );
-	GlobalCommands_insert( "TexShiftDown", FreeCaller<Texdef_ShiftDown>(), Accelerator( GDK_Down, (GdkModifierType)GDK_SHIFT_MASK ) );
-	GlobalCommands_insert( "TexShiftLeft", FreeCaller<Texdef_ShiftLeft>(), Accelerator( GDK_Left, (GdkModifierType)GDK_SHIFT_MASK ) );
-	GlobalCommands_insert( "TexShiftRight", FreeCaller<Texdef_ShiftRight>(), Accelerator( GDK_Right, (GdkModifierType)GDK_SHIFT_MASK ) );
+	GlobalCommands_insert( "TexRotateClock", FreeCaller<Texdef_RotateClockwise>(), Accelerator( GDK_KEY_Next, GDK_SHIFT_MASK ) );
+	GlobalCommands_insert( "TexRotateCounter", FreeCaller<Texdef_RotateAntiClockwise>(), Accelerator( GDK_KEY_Prior, GDK_SHIFT_MASK ) );
+	GlobalCommands_insert( "TexScaleUp", FreeCaller<Texdef_ScaleUp>(), Accelerator( GDK_KEY_Up, GDK_CONTROL_MASK ) );
+	GlobalCommands_insert( "TexScaleDown", FreeCaller<Texdef_ScaleDown>(), Accelerator( GDK_KEY_Down, GDK_CONTROL_MASK ) );
+	GlobalCommands_insert( "TexScaleLeft", FreeCaller<Texdef_ScaleLeft>(), Accelerator( GDK_KEY_Left, GDK_CONTROL_MASK ) );
+	GlobalCommands_insert( "TexScaleRight", FreeCaller<Texdef_ScaleRight>(), Accelerator( GDK_KEY_Right, GDK_CONTROL_MASK ) );
+	GlobalCommands_insert( "TexShiftUp", FreeCaller<Texdef_ShiftUp>(), Accelerator( GDK_KEY_Up, GDK_SHIFT_MASK ) );
+	GlobalCommands_insert( "TexShiftDown", FreeCaller<Texdef_ShiftDown>(), Accelerator( GDK_KEY_Down, GDK_SHIFT_MASK ) );
+	GlobalCommands_insert( "TexShiftLeft", FreeCaller<Texdef_ShiftLeft>(), Accelerator( GDK_KEY_Left, GDK_SHIFT_MASK ) );
+	GlobalCommands_insert( "TexShiftRight", FreeCaller<Texdef_ShiftRight>(), Accelerator( GDK_KEY_Right, GDK_SHIFT_MASK ) );
 
-	GlobalCommands_insert( "MoveSelectionDOWN", FreeCaller<Selection_MoveDown>(), Accelerator( GDK_KP_Subtract ) );
-	GlobalCommands_insert( "MoveSelectionUP", FreeCaller<Selection_MoveUp>(), Accelerator( GDK_KP_Add ) );
+	GlobalCommands_insert( "MoveSelectionDOWN", FreeCaller<Selection_MoveDown>(), Accelerator( GDK_KEY_KP_Subtract ) );
+	GlobalCommands_insert( "MoveSelectionUP", FreeCaller<Selection_MoveUp>(), Accelerator( GDK_KEY_KP_Add ) );
 
-	GlobalCommands_insert( "SelectNudgeLeft", FreeCaller<Selection_NudgeLeft>(), Accelerator( GDK_Left, (GdkModifierType)GDK_MOD1_MASK ) );
-	GlobalCommands_insert( "SelectNudgeRight", FreeCaller<Selection_NudgeRight>(), Accelerator( GDK_Right, (GdkModifierType)GDK_MOD1_MASK ) );
-	GlobalCommands_insert( "SelectNudgeUp", FreeCaller<Selection_NudgeUp>(), Accelerator( GDK_Up, (GdkModifierType)GDK_MOD1_MASK ) );
-	GlobalCommands_insert( "SelectNudgeDown", FreeCaller<Selection_NudgeDown>(), Accelerator( GDK_Down, (GdkModifierType)GDK_MOD1_MASK ) );
+	GlobalCommands_insert( "SelectNudgeLeft", FreeCaller<Selection_NudgeLeft>(), Accelerator( GDK_KEY_Left, GDK_MOD1_MASK ) );
+	GlobalCommands_insert( "SelectNudgeRight", FreeCaller<Selection_NudgeRight>(), Accelerator( GDK_KEY_Right, GDK_MOD1_MASK ) );
+	GlobalCommands_insert( "SelectNudgeUp", FreeCaller<Selection_NudgeUp>(), Accelerator( GDK_KEY_Up, GDK_MOD1_MASK ) );
+	GlobalCommands_insert( "SelectNudgeDown", FreeCaller<Selection_NudgeDown>(), Accelerator( GDK_KEY_Down, GDK_MOD1_MASK ) );
 
 	Patch_registerCommands();
 	XYShow_registerCommands();

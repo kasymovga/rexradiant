@@ -195,39 +195,32 @@ static void RadClipWindingEpsilon( radWinding_t *in, vec3_t normal, vec_t dist,
 
 
 
+float Modulo1IfNegative( float f ){
+	return f < 0.0f ? f - floor( f ) : f;
+}
 
 
 /*
    RadSampleImage()
    samples a texture image for a given color
-   returns qfalse if pixels are bad
+   returns false if pixels are bad
  */
 
-qboolean RadSampleImage( byte *pixels, int width, int height, float st[ 2 ], float color[ 4 ] ){
-	float sto[ 2 ];
+bool RadSampleImage( byte *pixels, int width, int height, float st[ 2 ], float color[ 4 ] ){
 	int x, y;
-
 
 	/* clear color first */
 	color[ 0 ] = color[ 1 ] = color[ 2 ] = color[ 3 ] = 255;
 
 	/* dummy check */
 	if ( pixels == NULL || width < 1 || height < 1 ) {
-		return qfalse;
+		return false;
 	}
 
-	/* bias st */
-	sto[ 0 ] = st[ 0 ];
-	while ( sto[ 0 ] < 0.0f )
-		sto[ 0 ] += 1.0f;
-	sto[ 1 ] = st[ 1 ];
-	while ( sto[ 1 ] < 0.0f )
-		sto[ 1 ] += 1.0f;
-
 	/* get offsets */
-	x = ( (float) width * sto[ 0 ] ) + 0.5f;
+	x = ( (float) width * Modulo1IfNegative( st[ 0 ] ) ) + 0.5f;
 	x %= width;
-	y = ( (float) height * sto[ 1 ] )  + 0.5f;
+	y = ( (float) height * Modulo1IfNegative( st[ 1 ] ) ) + 0.5f;
 	y %= height;
 
 	/* get pixel */
@@ -241,7 +234,7 @@ qboolean RadSampleImage( byte *pixels, int width, int height, float st[ 2 ], flo
 		color[2] = Image_LinearFloatFromsRGBFloat( color[2] * ( 1.0 / 255.0 ) ) * 255.0;
 	}
 
-	return qtrue;
+	return true;
 }
 
 
@@ -282,7 +275,7 @@ static void RadSample( int lightmapNum, bspDrawSurface_t *ds, rawLightmap_t *lm,
 	samples = 0;
 
 	/* sample vertex colors if no lightmap or this is the initial pass */
-	if ( lm == NULL || lm->radLuxels[ lightmapNum ] == NULL || bouncing == qfalse ) {
+	if ( lm == NULL || lm->radLuxels[ lightmapNum ] == NULL || !bouncing ) {
 		for ( samples = 0; samples < rw->numVerts; samples++ )
 		{
 			/* multiply by texture color */
@@ -750,7 +743,7 @@ void RadLightForPatch( int num, int lightmapNum, rawLightmap_t *lm, shaderInfo_t
 	float               *radVertexLuxel;
 	float dist;
 	vec4_t plane;
-	qboolean planar;
+	bool planar;
 	radWinding_t rw;
 
 
@@ -814,7 +807,7 @@ void RadLightForPatch( int num, int lightmapNum, rawLightmap_t *lm, shaderInfo_t
 			if ( planar ) {
 				dist = DotProduct( dv[ 1 ]->xyz, plane ) - plane[ 3 ];
 				if ( fabs( dist ) > PLANAR_EPSILON ) {
-					planar = qfalse;
+					planar = false;
 				}
 			}
 
@@ -969,7 +962,7 @@ void RadCreateDiffuseLights( void ){
 	numAreaLights = 0;
 
 	/* hit every surface (threaded) */
-	RunThreadsOnIndividual( numBSPDrawSurfaces, qtrue, RadLight );
+	RunThreadsOnIndividual( numBSPDrawSurfaces, true, RadLight );
 
 	/* dump the lights generated to a file */
 	if ( dump ) {
@@ -978,9 +971,8 @@ void RadCreateDiffuseLights( void ){
 		light_t *light;
 
 		strcpy( dumpName, source );
-		StripExtension( dumpName );
 		sprintf( ext, "_bounce_%03d.map", iterations );
-		strcat( dumpName, ext );
+		path_set_extension( dumpName, ext );
 		file = fopen( dumpName, "wb" );
 		Sys_Printf( "Writing %s...\n", dumpName );
 		if ( file ) {

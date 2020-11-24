@@ -21,16 +21,7 @@
 
 #include "dialog.h"
 
-#include <gtk/gtkmain.h>
-#include <gtk/gtkalignment.h>
-#include <gtk/gtkhbox.h>
-#include <gtk/gtkvbox.h>
-#include <gtk/gtkradiobutton.h>
-#include <gtk/gtkframe.h>
-#include <gtk/gtktable.h>
-#include <gtk/gtkentry.h>
-#include <gtk/gtkbutton.h>
-#include <gtk/gtklabel.h>
+#include <gtk/gtk.h>
 
 #include "button.h"
 #include "window.h"
@@ -95,7 +86,7 @@ gboolean modal_dialog_delete( GtkWidget *widget, GdkEvent* event, ModalDialog* d
 }
 
 EMessageBoxReturn modal_dialog_show( GtkWindow* window, ModalDialog& dialog ){
-	gtk_grab_add( GTK_WIDGET( window ) );
+	gtk_window_set_modal( GTK_WINDOW( window ), TRUE );
 	gtk_widget_show( GTK_WIDGET( window ) );
 
 	dialog.loop = true;
@@ -105,7 +96,6 @@ EMessageBoxReturn modal_dialog_show( GtkWindow* window, ModalDialog& dialog ){
 	}
 
 	gtk_widget_hide( GTK_WIDGET( window ) );
-	gtk_grab_remove( GTK_WIDGET( window ) );
 
 	return dialog.ret;
 }
@@ -185,8 +175,8 @@ GtkWindow* create_simple_modal_dialog_window( const char* title, ModalDialog& di
 
 	GtkButton* button = create_dialog_button( "OK", G_CALLBACK( dialog_button_ok ), &dialog );
 	gtk_container_add( GTK_CONTAINER( alignment ), GTK_WIDGET( button ) );
-	gtk_widget_grab_default( GTK_WIDGET( button ) );
-	gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel, GDK_Return, (GdkModifierType)0, (GtkAccelFlags)0 );
+	widget_make_default( GTK_WIDGET( button ) );
+	gtk_widget_add_accelerator( GTK_WIDGET( button ), "clicked", accel, GDK_KEY_Return, (GdkModifierType)0, (GtkAccelFlags)0 );
 
 	return window;
 }
@@ -195,15 +185,12 @@ RadioHBox RadioHBox_new( StringArrayRange names ){
 	GtkHBox* hbox = GTK_HBOX( gtk_hbox_new( TRUE, 4 ) );
 	gtk_widget_show( GTK_WIDGET( hbox ) );
 
-	GSList* group = 0;
 	GtkRadioButton* radio = 0;
 	for ( StringArrayRange::Iterator i = names.first; i != names.last; ++i )
 	{
-		radio = GTK_RADIO_BUTTON( gtk_radio_button_new_with_label( group, *i ) );
+		radio = GTK_RADIO_BUTTON( gtk_radio_button_new_with_label_from_widget( radio, *i ) );
 		gtk_widget_show( GTK_WIDGET( radio ) );
 		gtk_box_pack_start( GTK_BOX( hbox ), GTK_WIDGET( radio ), FALSE, FALSE, 0 );
-
-		group = gtk_radio_button_get_group( radio );
 	}
 
 	return RadioHBox( hbox, radio );

@@ -43,12 +43,7 @@
 #include <unistd.h>
 #endif
 
-#ifdef NeXT
-#include <libc.h>
-#endif
-
 #define BASEDIRNAME "quake"     // assumed to have a 2 or 3 following
-#define PATHSEPERATOR   '/'
 
 #ifdef SAFE_MALLOC
 // FIXME switch to -std=c99 or above to use proper %zu format specifier for size_t
@@ -85,16 +80,6 @@ void *safe_calloc_info( size_t size, const char* info ){
 }
 #endif
 
-// set these before calling CheckParm
-int myargc;
-char **myargv;
-
-char com_token[1024];
-qboolean com_eof;
-
-qboolean archive;
-char archivedir[1024];
-
 
 /*
    ===================
@@ -113,7 +98,7 @@ void ExpandWildcards( int *argc, char ***argv ){
 	int handle;
 	int i;
 	char filename[1024];
-	char filebase[1024];
+	char filepath[1024];
 	char    *path;
 
 	ex_argc = 0;
@@ -121,7 +106,7 @@ void ExpandWildcards( int *argc, char ***argv ){
 	{
 		path = ( *argv )[i];
 		if ( path[0] == '-'
-			 || ( !strstr( path, "*" ) && !strstr( path, "?" ) ) ) {
+			 || ( !strchr( path, '*' ) && !strchr( path, '?' ) ) ) {
 			ex_argv[ex_argc++] = path;
 			continue;
 		}
@@ -131,11 +116,11 @@ void ExpandWildcards( int *argc, char ***argv ){
 			return;
 		}
 
-		ExtractFilePath( path, filebase );
+		ExtractFilePath( path, filepath );
 
 		do
 		{
-			sprintf( filename, "%s%s", filebase, fileinfo.name );
+			sprintf( filename, "%s%s", filepath, fileinfo.name );
 			ex_argv[ex_argc++] = copystring( filename );
 		} while ( _findnext( handle, &fileinfo ) != -1 );
 
@@ -166,23 +151,18 @@ char gamedir[1024];
 char writedir[1024];
 
 void SetQdirFromPath( const char *path ){
-	char temp[1024];
 	const char  *c;
 	const char *sep;
 	int len, count;
 
-	if ( !( path[0] == '/' || path[0] == '\\' || path[1] == ':' ) ) { // path is partial
-		Q_getwd( temp );
-		strcat( temp, path );
-		path = temp;
-	}
+	path = ExpandArg( path );
 
 	// search for "quake2" in path
 
 	len = strlen( BASEDIRNAME );
 	for ( c = path + strlen( path ) - 1 ; c != path ; c-- )
 	{
-		if ( !Q_strncasecmp( c, BASEDIRNAME, len ) ) {
+		if ( strniEqual( c, BASEDIRNAME, len ) ) {
 			//
 			//strncpy (qdir, path, c+len+2-path);
 			// the +2 assumes a 2 or 3 following quake which is not the
@@ -190,7 +170,7 @@ void SetQdirFromPath( const char *path ){
 			// so we need to add up how much to the next separator
 			sep = c + len;
 			count = 1;
-			while ( *sep && *sep != '/' && *sep != '\\' )
+			while ( !strEmpty( sep ) && !path_separator( *sep ) )
 			{
 				sep++;
 				count++;
@@ -202,17 +182,16 @@ void SetQdirFromPath( const char *path ){
 			c += len + count;
 			while ( *c )
 			{
-				if ( *c == '/' || *c == '\\' ) {
+				if ( path_separator( *c ) ) {
 					strncpy( gamedir, path, c + 1 - path );
 					FixDOSName( gamedir );
 					Sys_Printf( "gamedir: %s\n", gamedir );
 
-					if ( !writedir[0] ) {
+					if ( strEmpty( writedir ) ) {
 						strcpy( writedir, gamedir );
 					}
-					else if ( writedir[strlen( writedir ) - 1] != '/' ) {
-						writedir[strlen( writedir )] = '/';
-						writedir[strlen( writedir ) + 1] = 0;
+					else{
+						path_add_slash( writedir );
 					}
 
 					return;
@@ -229,29 +208,25 @@ void SetQdirFromPath( const char *path ){
 char *ExpandArg( const char *path ){
 	static char full[1024];
 
-	if ( path[0] != '/' && path[0] != '\\' && path[1] != ':' ) {
-		Q_getwd( full );
-		strcat( full, path );
+	if ( path_is_absolute( path ) ) {
+		strcpy( full, path );
 	}
 	else{
-		strcpy( full, path );
+		Q_getwd( full );
+		strcat( full, path );
 	}
 	return full;
 }
 
 char *ExpandPath( const char *path ){
 	static char full[1024];
-	if ( path[0] == '/' || path[0] == '\\' || path[1] == ':' ) {
+	if ( path_is_absolute( path ) ) {
 		strcpy( full, path );
-		return full;
 	}
-	sprintf( full, "%s%s", qdir, path );
+	else{
+		sprintf( full, "%s%s", qdir, path );
+	}
 	return full;
-}
-
-char *copystring( const char *src ){
-	const size_t size = strlen( src ) + 1;
-	return memcpy( safe_malloc( size ), src, size );
 }
 
 
@@ -287,14 +262,13 @@ double I_FloatTime( void ){
 void Q_getwd( char *out ){
 #ifdef WIN32
 	_getcwd( out, 256 );
-	strcat( out, "\\" );
 #else
 	// Gef: Changed from getwd() to getcwd() to avoid potential buffer overflow
 	if ( !getcwd( out, 256 ) ) {
-		*out = 0;
+		strClear( out );
 	}
-	strcat( out, "/" );
 #endif
+	path_add_slash( out );
 	FixDOSName( out );
 }
 
@@ -306,29 +280,20 @@ void Q_mkdir( const char *path ){
 	while ( retry-- )
 	{
 #ifdef WIN32
-		const char *q = NULL;
 		if ( _mkdir( path ) != -1 ) {
 			return;
-		}
-		if ( errno == ENOENT ) {
-			p = strrchr( path, '/' );
-			q = strrchr( path, '\\' );
-			if ( q && ( !p || q < p ) ) {
-				p = q;
-			}
 		}
 #else
 		if ( mkdir( path, 0777 ) != -1 ) {
 			return;
 		}
-		if ( errno == ENOENT ) {
-			p = strrchr( path, '/' );
-		}
 #endif
-		if ( p ) {
-			strncpy( parentbuf, path, sizeof( parentbuf ) );
-			if ( (int) ( p - path ) < (int) sizeof( parentbuf ) ) {
-				parentbuf[p - path] = 0;
+		if ( errno == ENOENT ) {
+			p = path_get_last_separator( path );
+		}
+		if ( !strEmptyOrNull( p ) ) {
+			strcpyQ( parentbuf, path, p - path + 1 );
+			if ( ( p - path ) < (ptrdiff_t) sizeof( parentbuf ) ) {
 				Sys_Printf( "mkdir: %s: creating parent %s first\n", path, parentbuf );
 				Q_mkdir( parentbuf );
 				continue;
@@ -337,7 +302,7 @@ void Q_mkdir( const char *path ){
 		break;
 	}
 	if ( errno != EEXIST ) {
-		Error( "mkdir %s: %s",path, strerror( errno ) );
+		Error( "mkdir %s: %s", path, strerror( errno ) );
 	}
 }
 
@@ -360,91 +325,21 @@ int FileTime( const char *path ){
 
 
 
-/*
-   ==============
-   COM_Parse
-
-   Parse a token out of a string
-   ==============
- */
-char *COM_Parse( char *data ){
-	int c;
-	int len;
-
-	len = 0;
-	com_token[0] = 0;
-
-	if ( !data ) {
-		return NULL;
-	}
-
-// skip whitespace
-skipwhite:
-	while ( ( c = *data ) <= ' ' )
-	{
-		if ( c == 0 ) {
-			com_eof = qtrue;
-			return NULL;            // end of file;
+//http://stackoverflow.com/questions/27303062/strstr-function-like-that-ignores-upper-or-lower-case
+//chux: Somewhat tricky to match the corner cases of strstr() with inputs like "x","", "","x", "",""
+char *strIstr( const char* haystack, const char* needle ) {
+	do {
+		const char* h = haystack;
+		const char* n = needle;
+		while ( tolower( (unsigned char)*h ) == tolower( (unsigned char)*n ) && *n != '\0' ) {
+			h++;
+			n++;
 		}
-		data++;
-	}
-
-// skip // comments
-	if ( c == '/' && data[1] == '/' ) {
-		while ( *data && *data != '\n' )
-			data++;
-		goto skipwhite;
-	}
-
-
-// handle quoted strings specially
-	if ( c == '\"' ) {
-		data++;
-		do
-		{
-			c = *data++;
-			if ( c == '\"' ) {
-				com_token[len] = 0;
-				return data;
-			}
-			com_token[len] = c;
-			len++;
-		} while ( 1 );
-	}
-
-// parse single characters
-	if ( c == '{' || c == '}' || c == ')' || c == '(' || c == '\'' || c == ':' ) {
-		com_token[len] = c;
-		len++;
-		com_token[len] = 0;
-		return data + 1;
-	}
-
-// parse a regular word
-	do
-	{
-		com_token[len] = c;
-		data++;
-		len++;
-		c = *data;
-		if ( c == '{' || c == '}' || c == ')' || c == '(' || c == '\'' || c == ':' ) {
-			break;
+		if ( *n == '\0' ) {
+			return haystack;
 		}
-	} while ( c > 32 );
-
-	com_token[len] = 0;
-	return data;
-}
-
-char *strlower( char *start ){
-	char    *in;
-	in = start;
-	while ( *in )
-	{
-		*in = tolower( *in );
-		in++;
-	}
-	return start;
+	} while ( *haystack++ );
+	return NULL;
 }
 
 /*
@@ -490,29 +385,6 @@ size_t strncatQ( char* dest, const char* src, const size_t dest_size, const size
 
    =============================================================================
  */
-
-
-/*
-   =================
-   CheckParm
-
-   Checks for the given parameter in the program's command line arguments
-   Returns the argument number (1 to argc-1) or 0 if not present
-   =================
- */
-int CheckParm( const char *check ){
-	int i;
-
-	for ( i = 1; i < myargc; i++ )
-	{
-		if ( !Q_stricmp( check, myargv[i] ) ) {
-			return i;
-		}
-	}
-
-	return 0;
-}
-
 
 
 /*
@@ -577,15 +449,15 @@ void SafeWrite( FILE *f, const void *buffer, int count ){
    FileExists
    ==============
  */
-qboolean    FileExists( const char *filename ){
+bool    FileExists( const char *filename ){
 	FILE    *f;
 
 	f = fopen( filename, "r" );
 	if ( !f ) {
-		return qfalse;
+		return false;
 	}
 	fclose( f );
-	return qtrue;
+	return true;
 }
 
 /*
@@ -682,114 +554,124 @@ void    SaveFile( const char *filename, const void *buffer, int count ){
 }
 
 
-
-void DefaultExtension( char *path, const char *extension ){
-	char    *src;
-//
-// if path doesnt have a .EXT, append extension
-// (extension should include the .)
-//
-	src = path + strlen( path ) - 1;
-
-	while ( *src != '/' && *src != '\\' && src != path )
-	{
-		if ( *src == '.' ) {
-			return;                 // it has an extension
-		}
-		src--;
-	}
-
-	strcat( path, extension );
-}
-
-
-void DefaultPath( char *path, const char *basepath ){
-	char temp[128];
-
-	if ( path[ 0 ] == '/' || path[ 0 ] == '\\' ) {
-		return;                   // absolute path location
-	}
-	strcpy( temp,path );
-	strcpy( path,basepath );
-	strcat( path,temp );
-}
-
-
-void    StripFilename( char *path ){
-	int length;
-
-	length = strlen( path ) - 1;
-	while ( length > 0 && path[length] != '/' && path[ length ] != '\\' )
-		length--;
-	path[length] = 0;
-}
-
-void    StripExtension( char *path ){
-	int length;
-
-	length = strlen( path ) - 1;
-	while ( length > 0 && path[length] != '.' )
-	{
-		length--;
-		if ( path[length] == '/' || path[ length ] == '\\' ) {
-			return;     // no extension
-		}
-	}
-	if ( length ) {
-		path[length] = 0;
-	}
-}
-
-
 /*
    ====================
    Extract file parts
    ====================
  */
-// FIXME: should include the slash, otherwise
-// backing to an empty path will be wrong when appending a slash
-// hm: includes the slash rn
-void ExtractFilePath( const char *path, char *dest ){
-	const char *src = path + strlen( path );
-//
-// back up until a \ or the start
-//
-	while ( src != path && *( src - 1 ) != '\\' && *( src - 1 ) != '/' )
-		src--;
 
-	memcpy( dest, path, src - path );
-	dest[src - path] = 0;
+/// \brief Returns true if \p path is a fully qualified file-system path.
+bool path_is_absolute( const char* path ){
+#if defined( WIN32 )
+	return path[0] == '/'
+		   || ( path[0] != '\0' && path[1] == ':' ); // local drive
+#elif defined( POSIX )
+	return path[0] == '/';
+#endif
+}
+
+/// \brief Returns a pointer to the last slash or to terminating null character if not found.
+char* path_get_last_separator( const char* path ){
+	const char *end = path + strlen( path );
+	const char *src = end;
+
+	while ( src != path ){
+		if( path_separator( *--src ) )
+			return src;
+	}
+	return end;
+}
+
+/// \brief Returns a pointer to the first character of the filename component of \p path.
+char* path_get_filename_start( const char* path ){
+	const char *src = path + strlen( path );
+
+	while ( src != path && !path_separator( src[-1] ) ){
+		--src;
+	}
+	return src;
+}
+
+/// \brief Returns a pointer to the character after the end of the filename component of \p path - either the extension separator or the terminating null character.
+char* path_get_filename_base_end( const char* path ){
+	const char *end = path + strlen( path );
+	const char *src = end;
+
+	while ( src != path && !path_separator( *--src ) ){
+		if( *src == '.' )
+			return src;
+	}
+	return end;
+}
+
+
+/// \brief Returns a pointer to the first character of the file extension of \p path, or to terminating null character if not found.
+char* path_get_extension( const char* path ){
+	const char *end = path + strlen( path );
+	const char *src = end;
+
+	while ( src != path && !path_separator( *--src ) ){
+		if( *src == '.' )
+			return src + 1;
+	}
+	return end;
+}
+
+/// \brief Appends trailing slash, unless \p path is empty or already has slash.
+void path_add_slash( char *path ){
+	char* end = path + strlen( path );
+	if ( end != path && !path_separator( end[-1] ) )
+		strcat( end, "/" );
+}
+
+/// \brief Appends or replaces .EXT part of \p path with \p extension.
+void path_set_extension( char *path, const char *extension ){
+	strcpy( path_get_filename_base_end( path ), extension );
+}
+
+//
+// if path doesnt have a .EXT, append extension
+// (extension should include the .)
+//
+void DefaultExtension( char *path, const char *extension ){
+	char* ext = path_get_filename_base_end( path );
+	if( strEmpty( ext ) )
+		strcpy( ext, extension );
+}
+
+
+void DefaultPath( char *path, const char *basepath ){
+	if( !path_is_absolute( path ) ){
+		char* temp = strdup( path );
+		sprintf( path, "%s%s", basepath, temp );
+		free( temp );
+	}
+}
+
+
+void    StripFilename( char *path ){
+	strClear( path_get_filename_start( path ) );
+}
+
+void    StripExtension( char *path ){
+	strClear( path_get_filename_base_end( path ) );
+}
+
+
+// NOTE: includes the slash, otherwise
+// backing to an empty path will be wrong when appending a slash
+void ExtractFilePath( const char *path, char *dest ){
+	strcpyQ( dest, path, path_get_filename_start( path ) - path + 1 ); // +1 for '\0'
 }
 
 void ExtractFileBase( const char *path, char *dest ){
-	const char *src = path + strlen( path );
-	const char *end = src;
-//
-// back up until a \ or the start
-//
-	while ( src != path && *( src - 1 ) != '/' && *( src - 1 ) != '\\' ){
-		src--;
-		if( *end != '.' && *src == '.' )
-			end = src;
-	}
-
-	memcpy( dest, src, end - src );
-	dest[end - src] = 0;
+	const char* start = path_get_filename_start( path );
+	const char* end = path_get_filename_base_end( start );
+	strcpyQ( dest, start, end - start + 1 ); // +1 for '\0'
 }
 
 void ExtractFileExtension( const char *path, char *dest ){
-	const char *src = path + strlen( path );
-//
-// back up until a . or the start
-//
-	while ( src != path && *( src - 1 ) != '.' )
-		src--;
-	if ( src == path ) {
-		*dest = 0;  // no extension
-		return;
-	}
-
-	strcpy( dest, src );
+	strcpy( dest, path_get_extension( path ) );
 }
 
 
@@ -1020,7 +902,6 @@ unsigned short CRC_Value( unsigned short crcvalue ){
  */
 void    CreatePath( const char *path ){
 	const char  *ofs;
-	char c;
 	char dir[1024];
 
 #ifdef _WIN32
@@ -1038,8 +919,7 @@ void    CreatePath( const char *path ){
 
 	for ( ofs = path + 1 ; *ofs ; ofs++ )
 	{
-		c = *ofs;
-		if ( c == '/' || c == '\\' ) { // create the directory
+		if ( path_separator( *ofs ) ) { // create the directory
 			memcpy( dir, path, ofs - path );
 			dir[ ofs - path ] = 0;
 			Q_mkdir( dir );
