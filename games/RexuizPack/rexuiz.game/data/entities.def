@@ -1586,3 +1586,23 @@ FLOATING: the item will float in air, instead of aligning to the floor by fallin
 -------- MODEL FOR RADIANT ONLY - DO NOT SET THIS AS A KEY --------
 model="models/items/g_jetpack.md3"
 */
+
+/*QUAKED func_illusionary (0 .5 .8) ? 
+A non-solid brush entity.
+-------- KEYS --------
+targetname: when invoking it by a button etc., it changes the color to the initiator of the action (e.g. the one pressing a button).
+*/
+
+/*QUAKED func_clientillusionary (0 .5 .8) ? 
+A non-solid brush entity.
+-------- KEYS --------
+targetname: when invoking it by a button etc., it changes the color to the initiator of the action (e.g. the one pressing a button).
+*/
+
+/*QUAKED func_clientwall (0 .5 .8) ? 
+A solid brush entity.
+Behaves just like solid brushes, except that it is a separate entity (a submodel) and can be targeted.
+-------- KEYS --------
+targetname: when invoking it by a button etc., it changes the color to the initiator of the action (e.g. the one pressing a button).
+*/
+
