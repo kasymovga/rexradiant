@@ -1587,22 +1587,41 @@ FLOATING: the item will float in air, instead of aligning to the floor by fallin
 model="models/items/g_jetpack.md3"
 */
 
-/*QUAKED func_illusionary (0 .5 .8) ? 
+/*QUAKED func_illusionary (0 .5 .8) ?
 A non-solid brush entity.
 -------- KEYS --------
 targetname: when invoking it by a button etc., it changes the color to the initiator of the action (e.g. the one pressing a button).
 */
 
-/*QUAKED func_clientillusionary (0 .5 .8) ? 
+/*QUAKED func_clientillusionary (0 .5 .8) ?
 A non-solid brush entity.
 -------- KEYS --------
 targetname: when invoking it by a button etc., it changes the color to the initiator of the action (e.g. the one pressing a button).
 */
 
-/*QUAKED func_clientwall (0 .5 .8) ? 
+/*QUAKED func_clientwall (0 .5 .8) ?
 A solid brush entity.
 Behaves just like solid brushes, except that it is a separate entity (a submodel) and can be targeted.
 -------- KEYS --------
 targetname: when invoking it by a button etc., it changes the color to the initiator of the action (e.g. the one pressing a button).
 */
 
+/*QUAKED trigger_flipflop (.5 .5 .5) (-8 -8 -8) (8 8 8) START_ENABLED
+"Flip-flop" trigger gate... lets only every second trigger event through
+*/
+
+/*QUAKED trigger_monoflop (.5 .5 .5) (-8 -8 -8) (8 8 8)
+"Mono-flop" trigger gate... turns one trigger event into one "on" and one "off" event, separated by a delay of "wait"
+*/
+
+/*QUAKED trigger_multivibrator (.5 .5 .5) (-8 -8 -8) (8 8 8) START_ON
+"Multivibrator" trigger gate... repeatedly sends trigger events. When triggered, turns on or off.
+-------- KEYS --------
+target: trigger all entities with this targetname when it goes off
+targetname: name that identifies this entity so it can be triggered; when off, it always uses the OFF state
+phase: offset of the timing
+wait: "on" cycle time (default: 1)
+respawntime: "off" cycle time (default: same as wait)
+-------- SPAWNFLAGS --------
+START_ON: assume it is already turned on (when targeted)
+*/
