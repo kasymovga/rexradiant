@@ -1625,3 +1625,73 @@ respawntime: "off" cycle time (default: same as wait)
 -------- SPAWNFLAGS --------
 START_ON: assume it is already turned on (when targeted)
 */
+
+/*QUAKED ball_out (.5 .5 .5) ? TOUCH_PLAYER
+-------- KEYS --------
+noise: out sound
+*/
+
+/*QUAKED ball_fault (.5 .5 .5) ? TOUCH_PLAYER
+-------- KEYS --------
+noise: fault sound
+*/
+
+/*QUAKED ball_redgoal (.5 .5 .5) ? TOUCH_PLAYER
+Red team goal area
+-------- KEYS --------
+noise: goal sound
+*/
+
+/*QUAKED ball_bluegoal (.5 .5 .5) ? TOUCH_PLAYER
+Blue team goal area
+-------- KEYS --------
+noise: goal sound
+*/
+
+/*QUAKED ball_yellowgoal (.5 .5 .5) ? TOUCH_PLAYER
+Yellow team goal area
+-------- KEYS --------
+noise: goal sound
+*/
+
+/*QUAKED ball_pinkgoal (.5 .5 .5) ? TOUCH_PLAYER
+Yellow team goal area
+-------- KEYS --------
+noise: goal sound
+*/
+
+/*QUAKED ball_football (.5 .5 .5) (-16 -16 -16) (16 16 16)
+Football ball
+-------- KEYS --------
+model: ball model
+scale: ball model scale
+noise: bounce sound
+noise1: drop sound
+*/
+
+/*QUAKED ball_basketball (.5 .5 .5) (-16 -16 -16) (16 16 16)
+Basketball ball
+-------- KEYS --------
+model: ball model
+scale: ball model scale
+noise: bounce sound
+noise1: drop sound
+*/
+
+/*QUAKED ball_hockey (.5 .5 .5) (-16 -16 -16) (16 16 16)
+Hockey ball
+-------- KEYS --------
+model: ball model
+scale: ball model scale
+noise: bounce sound
+noise1: drop sound
+*/
+
+/*QUAKED ball_volleyball (.5 .5 .5) (-16 -16 -16) (16 16 16)
+Hockey ball
+-------- KEYS --------
+model: ball model
+scale: ball model scale
+noise: bounce sound
+noise1: drop sound
+*/
