@@ -69,7 +69,7 @@
 #define W_CONT_STRUCTURAL           0x10000000  /* brushes used for the bsp */
 #define W_CONT_TRANSLUCENT          0x20000000  /* don't consume surface fragments inside */
 #define W_CONT_TRIGGER              0x40000000
-#define W_CONT_NODROP               0x80000000  /* don't leave bodies or items (death fog, lava) */
+#define W_CONT_NODROP           int(0x80000000) /* don't leave bodies or items (death fog, lava) */
 
 #define W_SURF_NODAMAGE             0x1         /* never give falling damage */
 #define W_SURF_SLICK                0x2         /* effects game physics */
@@ -148,7 +148,7 @@
 	1.0f,               /* minimap sharpener */
 	0.0f,               /* minimap border */
 	true,               /* minimap keep aspect */
-	MINIMAP_MODE_GRAY,  /* minimap mode */
+	EMiniMapMode::Gray, /* minimap mode */
 	"%s.tga",           /* minimap name format */
 	"IBSP",             /* bsp file prefix */
 	47,                 /* bsp file version */

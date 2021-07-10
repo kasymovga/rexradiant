@@ -85,18 +85,18 @@ inline void arrow_draw( const Vector3& origin, const Vector3& direction_forward,
 
 class RenderableArrow : public OpenGLRenderable
 {
-const Vector3& m_origin;
-const Vector3& m_angles;
+	const Vector3& m_origin;
+	const Vector3& m_angles;
 
 public:
-RenderableArrow( const Vector3& origin, const Vector3& angles )
-	: m_origin( origin ), m_angles( angles ){
-}
+	RenderableArrow( const Vector3& origin, const Vector3& angles )
+		: m_origin( origin ), m_angles( angles ){
+	}
 
-void render( RenderStateFlags state ) const {
-	Matrix4 mat = matrix4_rotation_for_euler_xyz_degrees( m_angles );
-	arrow_draw( m_origin, matrix4_transformed_direction( mat, Vector3( 1, 0, 0 ) ), matrix4_transformed_direction( mat, Vector3( 0, 1, 0 ) ), matrix4_transformed_direction( mat, Vector3( 0, 0, 1 ) ) );
-}
+	void render( RenderStateFlags state ) const {
+		Matrix4 mat = matrix4_rotation_for_euler_xyz_degrees( m_angles );
+		arrow_draw( m_origin, matrix4_transformed_direction( mat, Vector3( 1, 0, 0 ) ), matrix4_transformed_direction( mat, Vector3( 0, 1, 0 ) ), matrix4_transformed_direction( mat, Vector3( 0, 0, 1 ) ) );
+	}
 };
 
 
@@ -283,24 +283,24 @@ inline void aabb_draw( const AABB& aabb, RenderStateFlags state ){
 
 class RenderableSolidAABB : public OpenGLRenderable
 {
-const AABB& m_aabb;
+	const AABB& m_aabb;
 public:
-RenderableSolidAABB( const AABB& aabb ) : m_aabb( aabb ){
-}
-void render( RenderStateFlags state ) const {
-	aabb_draw_solid( m_aabb, state );
-}
+	RenderableSolidAABB( const AABB& aabb ) : m_aabb( aabb ){
+	}
+	void render( RenderStateFlags state ) const {
+		aabb_draw_solid( m_aabb, state );
+	}
 };
 
 class RenderableWireframeAABB : public OpenGLRenderable
 {
-const AABB& m_aabb;
+	const AABB& m_aabb;
 public:
-RenderableWireframeAABB( const AABB& aabb ) : m_aabb( aabb ){
-}
-void render( RenderStateFlags state ) const {
-	aabb_draw_wire( m_aabb );
-}
+	RenderableWireframeAABB( const AABB& aabb ) : m_aabb( aabb ){
+	}
+	void render( RenderStateFlags state ) const {
+		aabb_draw_wire( m_aabb );
+	}
 };
 
 
@@ -310,80 +310,80 @@ void render( RenderStateFlags state ) const {
 /// - Provides undo support through the global undo system.
 class KeyValue final : public EntityKeyValue
 {
-typedef UnsortedSet<KeyObserver> KeyObservers;
+	typedef UnsortedSet<KeyObserver> KeyObservers;
 
-std::size_t m_refcount;
-KeyObservers m_observers;
-CopiedString m_string;
-const char* m_empty;
-ObservedUndoableObject<CopiedString> m_undo;
-static EntityCreator::KeyValueChangedFunc m_entityKeyValueChanged;
+	std::size_t m_refcount;
+	KeyObservers m_observers;
+	CopiedString m_string;
+	const char* m_empty;
+	ObservedUndoableObject<CopiedString> m_undo;
+	static EntityCreator::KeyValueChangedFunc m_entityKeyValueChanged;
 public:
 
-KeyValue( const char* string, const char* empty )
-	: m_refcount( 0 ), m_string( string ), m_empty( empty ), m_undo( m_string, UndoImportCaller( *this ) ){
-	notify();
-}
-~KeyValue(){
-	ASSERT_MESSAGE( m_observers.empty(), "KeyValue::~KeyValue: observers still attached" );
-}
-
-static void setKeyValueChangedFunc( EntityCreator::KeyValueChangedFunc func ){
-	m_entityKeyValueChanged = func;
-}
-
-void IncRef(){
-	++m_refcount;
-}
-void DecRef(){
-	if ( --m_refcount == 0 ) {
-		delete this;
-	}
-}
-
-void instanceAttach( MapFile* map ){
-	m_undo.instanceAttach( map );
-}
-void instanceDetach( MapFile* map ){
-	m_undo.instanceDetach( map );
-}
-
-void attach( const KeyObserver& observer ){
-	( *m_observers.insert ( observer ) )( c_str() );
-}
-void detach( const KeyObserver& observer ){
-	observer( m_empty );
-	m_observers.erase( observer );
-}
-const char* c_str() const {
-	if ( string_empty( m_string.c_str() ) ) {
-		return m_empty;
-	}
-	return m_string.c_str();
-}
-void assign( const char* other ){
-	if ( !string_equal( m_string.c_str(), other ) ) {
-		m_undo.save();
-		m_string = other;
+	KeyValue( const char* string, const char* empty )
+		: m_refcount( 0 ), m_string( string ), m_empty( empty ), m_undo( m_string, UndoImportCaller( *this ) ){
 		notify();
 	}
-}
-
-void notify(){
-	m_entityKeyValueChanged();
-	KeyObservers::reverse_iterator i = m_observers.rbegin();
-	while ( i != m_observers.rend() )
-	{
-		( *i++ )( c_str() );
+	~KeyValue(){
+		ASSERT_MESSAGE( m_observers.empty(), "KeyValue::~KeyValue: observers still attached" );
 	}
-}
 
-void importState( const CopiedString& string ){
-	m_string = string;
+	static void setKeyValueChangedFunc( EntityCreator::KeyValueChangedFunc func ){
+		m_entityKeyValueChanged = func;
+	}
 
-	notify();
-}
-typedef MemberCaller1<KeyValue, const CopiedString&, &KeyValue::importState> UndoImportCaller;
+	void IncRef(){
+		++m_refcount;
+	}
+	void DecRef(){
+		if ( --m_refcount == 0 ) {
+			delete this;
+		}
+	}
+
+	void instanceAttach( MapFile* map ){
+		m_undo.instanceAttach( map );
+	}
+	void instanceDetach( MapFile* map ){
+		m_undo.instanceDetach( map );
+	}
+
+	void attach( const KeyObserver& observer ){
+		( *m_observers.insert ( observer ) )( c_str() );
+	}
+	void detach( const KeyObserver& observer ){
+		observer( m_empty );
+		m_observers.erase( observer );
+	}
+	const char* c_str() const {
+		if ( string_empty( m_string.c_str() ) ) {
+			return m_empty;
+		}
+		return m_string.c_str();
+	}
+	void assign( const char* other ){
+		if ( !string_equal( m_string.c_str(), other ) ) {
+			m_undo.save();
+			m_string = other;
+			notify();
+		}
+	}
+
+	void notify(){
+		m_entityKeyValueChanged();
+		KeyObservers::reverse_iterator i = m_observers.rbegin();
+		while ( i != m_observers.rend() )
+		{
+			( *i++ )( c_str() );
+		}
+	}
+
+	void importState( const CopiedString& string ){
+		m_string = string;
+
+		notify();
+	}
+	typedef MemberCaller1<KeyValue, const CopiedString&, &KeyValue::importState> UndoImportCaller;
 };
 
 /// \brief An unsorted list of key/value pairs.
@@ -514,7 +514,7 @@ public:
 	~EntityKeyValues(){
 		for ( Observers::iterator i = m_observers.begin(); i != m_observers.end(); )
 		{
-            // post-increment to allow current element to be removed safely
+			// post-increment to allow current element to be removed safely
 			( *i++ )->clear();
 		}
 		ASSERT_MESSAGE( m_observers.empty(), "EntityKeyValues::~EntityKeyValues: observers still attached" );
@@ -543,7 +543,7 @@ public:
 	}
 	typedef MemberCaller1<EntityKeyValues, const KeyValues&, &EntityKeyValues::importState> UndoImportCaller;
 
-	void attach( Observer& observer ){
+	void attach( Observer& observer ) override {
 		ASSERT_MESSAGE( !m_observerMutex, "observer cannot be attached during iteration" );
 		m_observers.insert( &observer );
 		for ( KeyValues::const_iterator i = m_keyValues.begin(); i != m_keyValues.end(); ++i )
@@ -551,7 +551,7 @@ public:
 			observer.insert( ( *i ).first.c_str(), *( *i ).second );
 		}
 	}
-	void detach( Observer& observer ){
+	void detach( Observer& observer ) override {
 		ASSERT_MESSAGE( !m_observerMutex, "observer cannot be detached during iteration" );
 		m_observers.erase( &observer );
 		for ( KeyValues::const_iterator i = m_keyValues.begin(); i != m_keyValues.end(); ++i )
@@ -592,19 +592,22 @@ public:
 		m_instanced = false;
 	}
 
-    // entity
-	EntityClass& getEntityClass() const {
+	// entity
+	EntityClass& getEntityClass() const override {
 		return *m_eclass;
 	}
-	void forEachKeyValue( Visitor& visitor ) const {
+	const char* getClassName() const override {
+		return m_eclass->name();
+	}
+	void forEachKeyValue( Visitor& visitor ) const override {
 		for ( KeyValues::const_iterator i = m_keyValues.begin(); i != m_keyValues.end(); ++i )
 		{
 			visitor.visit( ( *i ).first.c_str(), ( *i ).second->c_str() );
 		}
 	}
-	void setKeyValue( const char* key, const char* value ){
-		if ( value[0] == '\0'
-             /*|| string_equal(EntityClass_valueForKey(*m_eclass, key), value)*/ ) { // don't delete values equal to default
+	void setKeyValue( const char* key, const char* value ) override {
+		if ( string_empty( value )
+		     /*|| string_equal(EntityClass_valueForKey(*m_eclass, key), value)*/ ) { // don't delete values equal to default
 			erase( key );
 		}
 		else
@@ -613,16 +616,20 @@ public:
 		}
 		m_entityKeyValueChanged();
 	}
-	const char* getKeyValue( const char* key ) const {
+	const char* getKeyValue( const char* key ) const override {
 		KeyValues::const_iterator i = m_keyValues.find( key );
 		if ( i != m_keyValues.end() ) {
 			return ( *i ).second->c_str();
 		}
 
-		return EntityClass_valueForKey( *m_eclass, key );
+		// return EntityClass_valueForKey( *m_eclass, key );
+		return "";
+	}
+	bool hasKeyValue( const char* key ) const override {
+		return m_keyValues.find( key ) != m_keyValues.end();
 	}
 
-	bool isContainer() const {
+	bool isContainer() const override {
 		return m_isContainer;
 	}
 };
@@ -685,19 +692,19 @@ public:
 
 namespace std
 {
-    /// \brief Swaps the values of \p self and \p other.
-    /// Overloads std::swap.
-	inline void swap( ResourceReference& self, ResourceReference& other ){
-		self.swap( other );
-	}
+/// \brief Swaps the values of \p self and \p other.
+/// Overloads std::swap.
+inline void swap( ResourceReference& self, ResourceReference& other ){
+	self.swap( other );
+}
 }
 
 /// this is only correct for radiant 2d views matrices
 inline bool aabb_fits_view( const AABB& aabb, const Matrix4& modelview, const Matrix4& viewport, int ratio ){
 	const AABB transformed_bounds = aabb_for_oriented_aabb(
-		AABB( aabb.origin, Vector3( std::max( aabb.extents[0], 8.f ), std::max( aabb.extents[1], 8.f ), std::max( aabb.extents[2], 8.f ) ) ),
-		modelview
-	);
+	                                    AABB( aabb.origin, Vector3( std::max( aabb.extents[0], 8.f ), std::max( aabb.extents[1], 8.f ), std::max( aabb.extents[2], 8.f ) ) ),
+	                                    modelview
+	                                );
 
 	//return ( aabb.extents[0] / viewport[0] ) > 0.25f || ( aabb.extents[1] / viewport[5] ) > 0.25f;
 	return ( viewport[0] + viewport[5] ) / ( transformed_bounds.extents[0] + transformed_bounds.extents[1] ) < ratio;

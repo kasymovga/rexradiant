@@ -26,7 +26,8 @@
 
 template<typename Element> class BasicVector3;
 typedef BasicVector3<float> Vector3;
-class Plane3;
+template<typename T> class Plane3___;
+typedef Plane3___<double> Plane3;
 class Matrix4;
 class AABB;
 class Segment;
@@ -40,35 +41,35 @@ class VolumeTest
 public:
 
 /// \brief Returns true if \p point intersects volume.
-virtual bool TestPoint( const Vector3& point ) const = 0;
+	virtual bool TestPoint( const Vector3& point ) const = 0;
 /// \brief Returns true if \p segment intersects volume.
-virtual bool TestLine( const Segment& segment ) const = 0;
+	virtual bool TestLine( const Segment& segment ) const = 0;
 /// \brief Returns true if \p plane faces towards volume.
-virtual bool TestPlane( const Plane3& plane ) const = 0;
+	virtual bool TestPlane( const Plane3& plane ) const = 0;
 /// \brief Returns true if \p plane transformed by \p localToWorld faces the viewer.
-virtual bool TestPlane( const Plane3& plane, const Matrix4& localToWorld ) const = 0;
+	virtual bool TestPlane( const Plane3& plane, const Matrix4& localToWorld ) const = 0;
 /// \brief Returns the intersection of \p aabb and volume.
-virtual VolumeIntersectionValue TestAABB( const AABB& aabb ) const = 0;
+	virtual VolumeIntersectionValue TestAABB( const AABB& aabb ) const = 0;
 /// \brief Returns the intersection of \p aabb transformed by \p localToWorld and volume.
-virtual VolumeIntersectionValue TestAABB( const AABB& aabb, const Matrix4& localToWorld ) const = 0;
+	virtual VolumeIntersectionValue TestAABB( const AABB& aabb, const Matrix4& localToWorld ) const = 0;
 
-virtual bool fill() const = 0;
+	virtual bool fill() const = 0;
 
-virtual const Matrix4& GetViewport() const = 0;
-virtual const Matrix4& GetProjection() const = 0;
-virtual const Matrix4& GetModelview() const = 0;
+	virtual const Matrix4& GetViewport() const = 0;
+	virtual const Matrix4& GetProjection() const = 0;
+	virtual const Matrix4& GetModelview() const = 0;
 
-virtual const Matrix4& GetViewMatrix() const = 0; //viewproj
-virtual const Vector3& getViewer() const = 0;
-virtual const Vector3& getViewDir() const = 0;
+	virtual const Matrix4& GetViewMatrix() const = 0; //viewproj
+	virtual const Vector3& getViewer() const = 0;
+	virtual const Vector3& getViewDir() const = 0;
 };
 
 class Cullable
 {
 public:
-STRING_CONSTANT( Name, "Cullable" );
+	STRING_CONSTANT( Name, "Cullable" );
 
-virtual VolumeIntersectionValue intersectVolume( const VolumeTest& test, const Matrix4& localToWorld ) const = 0;
+	virtual VolumeIntersectionValue intersectVolume( const VolumeTest& test, const Matrix4& localToWorld ) const = 0;
 };
 
 

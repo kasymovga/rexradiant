@@ -94,6 +94,8 @@ bool VectorCompare( const vec3_t v1, const vec3_t v2 );
 bool VectorIsOnAxis( vec3_t v );
 bool VectorIsOnAxialPlane( vec3_t v );
 
+void MakeNormalVectors( vec3_t forward, vec3_t right, vec3_t up );
+
 vec_t VectorLength( const vec3_t v );
 
 void VectorMA( const vec3_t va, vec_t scale, const vec3_t vb, vec3_t vc );
@@ -424,7 +426,7 @@ void bbox_update_radius( bbox_t* bbox );
 /*! Generate oriented bounding box from AABB and transformation matrix. */
 /*!\todo Remove need to specify eulerZYX/scale. */
 void bbox_for_oriented_aabb( bbox_t* bbox, const aabb_t* aabb,
-							 const m4x4_t matrix, const vec3_t eulerZYX, const vec3_t scale );
+                             const m4x4_t matrix, const vec3_t eulerZYX, const vec3_t scale );
 /*! Return 2 if bbox is behind plane, else return 1 if bbox intersects plane, else return 0. */
 int bbox_intersect_plane( const bbox_t* bbox, const vec_t* plane );
 

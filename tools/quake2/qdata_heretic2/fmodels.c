@@ -227,7 +227,7 @@ static void WriteModelFile( FILE *modelouthandle ){
 	byte buffer[MAX_FM_VERTS * 4 + 128];
 	float v;
 	IntListNode_t   *current, *toFree;
-	qboolean framesWritten = false;
+	int framesWritten = 0;
 	size_t temp,size = 0;
 
 	// probably should do this dynamically one of these days
@@ -465,7 +465,7 @@ static void WriteModelFile( FILE *modelouthandle ){
 		}
 
 		if ( !num_groups ) { // joints are stored with regular verts for compressed models
-			framesWritten = true;
+			framesWritten = 1;
 
 			temp = sizeof( int ); // change this to a byte
 			memcpy( data + size, &framesWritten, temp );
@@ -1075,7 +1075,7 @@ void FMFinishModel( void ){
 	// finish writing header file
 	H_printf( "\n" );
 
-	// scale_up is usefull to allow step distances to be adjusted
+	// scale_up is useful to allow step distances to be adjusted
 	H_printf( "#define MODEL_SCALE\t\t%f\n", scale_up );
 
 	// mesh nodes

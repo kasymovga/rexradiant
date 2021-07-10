@@ -588,7 +588,7 @@ void FinishModel( void ){
 	// finish writing header file
 	H_printf( "\n" );
 
-	// scale_up is usefull to allow step distances to be adjusted
+	// scale_up is useful to allow step distances to be adjusted
 	H_printf( "#define MODEL_SCALE\t\t%f\n", scale_up );
 
 	fclose( headerouthandle );
@@ -1320,7 +1320,7 @@ char    *FindFrameFile( char *frame ){
 	char            *s;
 
 	if ( strstr( frame, "." ) ) {
-		return frame;       // allready in dot format
+		return frame;       // already in dot format
 
 	}
 	// split 'run1' into 'run' and '1'
@@ -1555,7 +1555,6 @@ void GrabJointedFrame( char *frame ){
 void GrabGlobals( char *frame ){
 	char file1[1024];
 	char    *framefile;
-	frame_t     *fr;
 
 	framefile = FindFrameFile( frame );
 
@@ -1566,7 +1565,7 @@ void GrabGlobals( char *frame ){
 
 	printf( "grabbing %s\n", file1 );
 
-	fr = &g_frames[model.num_frames - 1]; // last frame read in
+	//frame_t *fr = &g_frames[model.num_frames - 1]; // last frame read in
 
 	LoadGlobals( file1 );
 }

@@ -46,6 +46,8 @@
 #include <time.h>
 #include <stdarg.h>
 
+#include "os/path.h"
+
 #ifdef _MSC_VER
 
 #pragma intrinsic( memset, memcpy )
@@ -62,16 +64,32 @@
 
 #define SAFE_MALLOC
 #ifdef SAFE_MALLOC
-void *safe_malloc( size_t size );
-void *safe_malloc_info( size_t size, const char* info );
-void *safe_calloc( size_t size );
-void *safe_calloc_info( size_t size, const char* info );
+
+class void_ptr
+{
+private:
+	void *ptr;
+public:
+	void_ptr() = delete;
+	void_ptr( void *p ) : ptr( p ) {}
+	template<typename T>
+	operator T*() const {
+		return static_cast<T*>( ptr );
+	}
+};
+
+void_ptr safe_malloc( size_t size );
+void_ptr safe_malloc_info( size_t size, const char* info );
+void_ptr safe_calloc( size_t size );
+void_ptr safe_calloc_info( size_t size, const char* info );
 #else
 #define safe_malloc( size ) malloc( size )
 #define safe_malloc_info( size, info ) malloc( size )
 #define safe_calloc( size ) calloc( 1, size )
 #define safe_calloc_info( size, info ) calloc( 1, size )
 #endif /* SAFE_MALLOC */
+
+#define offsetof_array( TYPE, ARRAY_MEMBER, ARRAY_SIZE ) ( offsetof( TYPE, ARRAY_MEMBER[0] ) + sizeof( TYPE::ARRAY_MEMBER[0] ) * ARRAY_SIZE )
 
 
 static inline bool strEmpty( const char* string ){
@@ -90,9 +108,10 @@ static inline char *strLower( char *string ){
 }
 static inline char *copystring( const char *src ){	// version of strdup() with safe_malloc()
 	const size_t size = strlen( src ) + 1;
-	return memcpy( safe_malloc( size ), src, size );
+	return void_ptr( memcpy( safe_malloc( size ), src, size ) );
 }
-char* strIstr( const char* haystack, const char* needle );
+const char* strIstr( const char* haystack, const char* needle );
+      char* strIstr(       char* haystack, const char* needle );
 #ifdef WIN32
 	#define Q_stricmp           stricmp
 	#define Q_strnicmp          strnicmp
@@ -158,8 +177,8 @@ __attribute__( ( noreturn ) )
 #endif
 ;
 
-FILE    *SafeOpenWrite( const char *filename );
-FILE    *SafeOpenRead( const char *filename );
+FILE    *SafeOpenWrite( const char *filename, const char *mode = "wb" );
+FILE    *SafeOpenRead( const char *filename, const char *mode = "rb" );
 void    SafeRead( FILE *f, void *buffer, int count );
 void    SafeWrite( FILE *f, const void *buffer, int count );
 
@@ -170,14 +189,8 @@ void    SaveFile( const char *filename, const void *buffer, int count );
 bool    FileExists( const char *filename );
 
 
-static inline bool path_separator( const char c ){
-	return c == '/' || c == '\\';
-}
-bool path_is_absolute( const char* path );
-char* path_get_last_separator( const char* path );
-char* path_get_filename_start( const char* path );
-char* path_get_filename_base_end( const char* path );
-char* path_get_extension( const char* path );
+const char* path_get_last_separator( const char* path );
+      char* path_get_last_separator(       char* path );
 void path_add_slash( char *path );
 void path_set_extension( char *path, const char *extension );
 void    DefaultExtension( char *path, const char *extension );

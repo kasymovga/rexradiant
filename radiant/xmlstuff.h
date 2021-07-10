@@ -48,7 +48,7 @@ class ISAXHandler;
 // message_info also stores information to exit the stream listening cleanly with an error:
 //   if msg_level == SYS_ERR, then we will reset the listening at the end of the current node
 //   the level for stopping the feed is stored in stop_depth
-// unkown nodes are ignored, we use ignore_depth to track the level we start ignoring from
+// unknown nodes are ignored, we use ignore_depth to track the level we start ignoring from
 struct message_info_t
 {
 	int msg_level; // current message level (SYS_MSG, SYS_WRN, SYS_ERR)
@@ -68,19 +68,19 @@ class IGL2DWindow;
 class ISAXHandler
 {
 public:
-virtual void Release(){
-}
-virtual void saxStartElement( message_info_t* ctx, const xmlChar* name, const xmlChar** attrs ) = 0;
-virtual void saxEndElement( message_info_t* ctx, const xmlChar* name ) = 0;
-virtual void saxCharacters( message_info_t* ctx, const xmlChar* ch, int len ) = 0;
-virtual const char* getName(){
-	return NULL;
-}
-virtual IGL2DWindow* Highlight(){
-	return 0;
-}
-virtual void DropHighlight(){
-}
+	virtual void Release(){
+	}
+	virtual void saxStartElement( message_info_t* ctx, const xmlChar* name, const xmlChar** attrs ) = 0;
+	virtual void saxEndElement( message_info_t* ctx, const xmlChar* name ) = 0;
+	virtual void saxCharacters( message_info_t* ctx, const xmlChar* ch, int len ) = 0;
+	virtual const char* getName(){
+		return NULL;
+	}
+	virtual IGL2DWindow* Highlight(){
+		return 0;
+	}
+	virtual void DropHighlight(){
+	}
 };
 
 #endif

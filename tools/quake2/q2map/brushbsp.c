@@ -318,12 +318,9 @@ node_t *AllocNode( void ){
    ================
  */
 bspbrush_t *AllocBrush( int numsides ){
-	bspbrush_t  *bb;
-	int c;
-
-	c = (int)&( ( (bspbrush_t *)0 )->sides[numsides] );
-	bb = malloc( c );
-	memset( bb, 0, c );
+	const size_t size = (size_t)&( ( (bspbrush_t *)0 )->sides[numsides] );
+	bspbrush_t *bb = malloc( size );
+	memset( bb, 0, size );
 	if ( numthreads == 1 ) {
 		c_active_brushes++;
 	}
@@ -373,16 +370,12 @@ void FreeBrushList( bspbrush_t *brushes ){
    ==================
  */
 bspbrush_t *CopyBrush( bspbrush_t *brush ){
-	bspbrush_t *newbrush;
-	int size;
-	int i;
+	const size_t size = (size_t)&( ( (bspbrush_t *)0 )->sides[brush->numsides] );
 
-	size = (int)&( ( (bspbrush_t *)0 )->sides[brush->numsides] );
-
-	newbrush = AllocBrush( brush->numsides );
+	bspbrush_t *newbrush = AllocBrush( brush->numsides );
 	memcpy( newbrush, brush, size );
 
-	for ( i = 0 ; i < brush->numsides ; i++ )
+	for ( int i = 0 ; i < brush->numsides ; i++ )
 	{
 		if ( brush->sides[i].winding ) {
 			newbrush->sides[i].winding = CopyWinding( brush->sides[i].winding );
@@ -628,7 +621,7 @@ int TestBrushToPlanenum( bspbrush_t *brush, int planenum,
    WindingIsTiny
 
    Returns true if the winding would be crunched out of
-   existance by the vertex snapping.
+   existence by the vertex snapping.
    ================
  */
 #define EDGE_LENGTH 0.2
@@ -796,10 +789,10 @@ side_t *SelectSplitSide( bspbrush_t *brushes, node_t *node ){
 					continue;   // nothing visible, so it can't split
 				}
 				if ( side->texinfo == TEXINFO_NODE ) {
-					continue;   // allready a node splitter
+					continue;   // already a node splitter
 				}
 				if ( side->tested ) {
-					continue;   // we allready have metrics for this plane
+					continue;   // we already have metrics for this plane
 				}
 				if ( side->surf & SURF_SKIP ) {
 					continue;   // skip surfaces are never chosen
@@ -872,7 +865,7 @@ side_t *SelectSplitSide( bspbrush_t *brushes, node_t *node ){
 				}
 
 				// save off the side test so we don't need
-				// to recalculate it when we actually seperate
+				// to recalculate it when we actually separate
 				// the brushes
 				if ( value > bestvalue ) {
 					bestvalue = value;
@@ -1176,7 +1169,7 @@ void SplitBrushList( bspbrush_t *brushes,
 
 		newbrush = CopyBrush( brush );
 
-		// if the planenum is actualy a part of the brush
+		// if the planenum is actually a part of the brush
 		// find the plane and flag it as used so it won't be tried
 		// as a splitter again
 		if ( sides & PSIDE_FACING ) {

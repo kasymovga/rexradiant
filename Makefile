@@ -4,7 +4,7 @@ MAKEFILE_CONF      ?= Makefile.conf
 ## CONFIGURATION SETTINGS
 # user customizable stuf
 # you may override this in Makefile.conf or the environment
-BUILD              ?= debug
+BUILD              ?= release
 # or: release, or: debug, or: extradebug, or: extradebug_quicker, or: profile, or: native
 OS                 ?= $(shell uname)
 # or: Linux, Win32, Darwin
@@ -114,14 +114,14 @@ CFLAGS_COMMON = -MMD -W -Wall -Wcast-align -Wcast-qual -Wno-unused-parameter -fn
 CPPFLAGS_COMMON =
 LDFLAGS_COMMON =
 LIBS_COMMON =
-CXXFLAGS_COMMON = -std=c++11 -Wreorder -fno-exceptions -fno-rtti
+CXXFLAGS_COMMON = -std=c++17 -Wreorder -fno-exceptions -fno-rtti
 
 ifeq ($(BUILD),debug)
-ifeq ($(findstring $(CFLAGS),-g),)
+ifeq ($(findstring -g,$(CFLAGS)),)
 	CFLAGS_COMMON += -g
 	# only add -g if no -g flag is in $(CFLAGS)
 endif
-ifeq ($(findstring $(CFLAGS),-O),)
+ifeq ($(findstring -O,$(CFLAGS)),)
 	CFLAGS_COMMON += -O
 	# only add -O if no -O flag is in $(CFLAGS)
 endif
@@ -130,7 +130,7 @@ endif
 else
 
 ifeq ($(BUILD),extradebug)
-ifeq ($(findstring $(CFLAGS),-g),)
+ifeq ($(findstring -g,$(CFLAGS)),)
 	CFLAGS_COMMON += -g3
 	# only add -g3 if no -g flag is in $(CFLAGS)
 endif
@@ -139,7 +139,7 @@ endif
 else
 
 ifeq ($(BUILD),extradebug_quicker)
-ifeq ($(findstring $(CFLAGS),-g),)
+ifeq ($(findstring -g,$(CFLAGS)),)
 	CFLAGS_COMMON += -g3
 	# only add -g3 if no -g flag is in $(CFLAGS)
 endif
@@ -148,11 +148,11 @@ endif
 else
 
 ifeq ($(BUILD),profile)
-ifeq ($(findstring $(CFLAGS),-g),)
+ifeq ($(findstring -g,$(CFLAGS)),)
 	CFLAGS_COMMON += -g
 	# only add -g if no -g flag is in $(CFLAGS)
 endif
-ifeq ($(findstring $(CFLAGS),-O),)
+ifeq ($(findstring -O,$(CFLAGS)),)
 	CFLAGS_COMMON += -O
 	# only add -O if no -O flag is in $(CFLAGS)
 endif
@@ -162,21 +162,21 @@ endif
 else
 
 ifeq ($(BUILD),release)
-ifeq ($(findstring $(CFLAGS),-O),)
+ifeq ($(findstring -O,$(CFLAGS)),)
 	CFLAGS_COMMON += -O3
 	# only add -O3 if no -O flag is in $(CFLAGS)
 endif
-	CPPFLAGS_COMMON +=
+	CPPFLAGS_COMMON += -DNDEBUG
 	LDFLAGS_COMMON += -s
 else
 
 ifeq ($(BUILD),native)
-ifeq ($(findstring $(CFLAGS),-O),)
+ifeq ($(findstring -O,$(CFLAGS)),)
 	CFLAGS_COMMON += -O3
 	# only add -O3 if no -O flag is in $(CFLAGS)
 endif
 	CFLAGS_COMMON += -march=native -mtune=native
-	CPPFLAGS_COMMON +=
+	CPPFLAGS_COMMON += -DNDEBUG
 	LDFLAGS_COMMON += -s
 else
 
@@ -295,7 +295,7 @@ all: \
 	install-dll \
 
 .PHONY: dependencies-check
-ifeq ($(findstring $(DEPENDENCIES_CHECK),off),off)
+ifeq ($(findstring off,$(DEPENDENCIES_CHECK)),off)
 dependencies-check:
 	@$(ECHO) dependencies checking disabled, good luck...
 else
@@ -411,8 +411,7 @@ binaries-radiant-modules: \
 	$(INSTALLDIR)/modules/imageq2.$(DLL) \
 	$(INSTALLDIR)/modules/mapq3.$(DLL) \
 	$(INSTALLDIR)/modules/mapxml.$(DLL) \
-	$(INSTALLDIR)/modules/md3model.$(DLL) \
-	$(INSTALLDIR)/modules/model.$(DLL) \
+	$(INSTALLDIR)/modules/assmodel.$(DLL) \
 	$(INSTALLDIR)/modules/shaders.$(DLL) \
 	$(INSTALLDIR)/modules/vfspk3.$(DLL) \
 
@@ -510,10 +509,10 @@ ifeq ($(OS),Win32)
 	$(WINDRES) $< $@
 endif
 
-%.o: %.cpp $(if $(findstring $(DEPEND_ON_MAKEFILE),yes),$(wildcard Makefile*),) | dependencies-check
+%.o: %.cpp $(if $(findstring yes,$(DEPEND_ON_MAKEFILE)),$(wildcard Makefile*),) | dependencies-check
 	$(CXX) $< $(CFLAGS) $(CXXFLAGS) $(CFLAGS_COMMON) $(CXXFLAGS_COMMON) $(CPPFLAGS_EXTRA) $(CPPFLAGS_COMMON) $(CPPFLAGS) $(TARGET_ARCH) -c -o $@
 
-%.o: %.c $(if $(findstring $(DEPEND_ON_MAKEFILE),yes),$(wildcard Makefile*),) | dependencies-check
+%.o: %.c $(if $(findstring yes,$(DEPEND_ON_MAKEFILE)),$(wildcard Makefile*),) | dependencies-check
 	$(CC) $< $(CFLAGS) $(CFLAGS_COMMON) $(CPPFLAGS_EXTRA) $(CPPFLAGS_COMMON) $(CPPFLAGS) $(TARGET_ARCH) -c -o $@
 
 ifeq ($(OS),Win32)
@@ -523,8 +522,11 @@ else
 $(INSTALLDIR)/q3map2.$(EXE): LDFLAGS_EXTRA := -Wl,--stack,4194304
 endif
 endif
-$(INSTALLDIR)/q3map2.$(EXE): LIBS_EXTRA := $(LIBS_XML) $(LIBS_GLIB) $(LIBS_PNG) $(LIBS_JPEG) $(LIBS_ZLIB)
-$(INSTALLDIR)/q3map2.$(EXE): CPPFLAGS_EXTRA := $(CPPFLAGS_XML) $(CPPFLAGS_GLIB) $(CPPFLAGS_PNG) $(CPPFLAGS_JPEG) -Itools/quake3/common -Ilibs -Iinclude
+ifneq ($(OS),Win32)
+$(INSTALLDIR)/q3map2.$(EXE): LDFLAGS_EXTRA += -Wl,-rpath '-Wl,$$ORIGIN'
+endif
+$(INSTALLDIR)/q3map2.$(EXE): LIBS_EXTRA := $(LIBS_XML) $(LIBS_GLIB) $(LIBS_PNG) $(LIBS_JPEG) $(LIBS_ZLIB) -lassimp_ -L$(INSTALLDIR)
+$(INSTALLDIR)/q3map2.$(EXE): CPPFLAGS_EXTRA := $(CPPFLAGS_XML) $(CPPFLAGS_GLIB) $(CPPFLAGS_PNG) $(CPPFLAGS_JPEG) -Itools/quake3/common -Ilibs -Iinclude -Ilibs/assimp/include
 $(INSTALLDIR)/q3map2.$(EXE): \
 	tools/quake3/common/cmdlib.o \
 	tools/quake3/common/imagelib.o \
@@ -540,7 +542,6 @@ $(INSTALLDIR)/q3map2.$(EXE): \
 	tools/quake3/common/miniz.o \
 	tools/quake3/q3map2/autopk3.o \
 	tools/quake3/q3map2/brush.o \
-	tools/quake3/q3map2/brush_primit.o \
 	tools/quake3/q3map2/bspfile_abstract.o \
 	tools/quake3/q3map2/bspfile_ibsp.o \
 	tools/quake3/q3map2/bspfile_rbsp.o \
@@ -584,9 +585,8 @@ $(INSTALLDIR)/q3map2.$(EXE): \
 	libddslib.$(A) \
 	libfilematch.$(A) \
 	libl_net.$(A) \
-	libmathlib.$(A) \
-	libpicomodel.$(A) \
-	$(if $(findstring $(OS),Win32),icons/q3map2.o,) \
+	$(if $(findstring Win32,$(OS)),icons/q3map2.o,) \
+	| $(INSTALLDIR)/libassimp_.$(DLL) \
 
 libmathlib.$(A): CPPFLAGS_EXTRA := -Ilibs
 libmathlib.$(A): \
@@ -599,7 +599,7 @@ libmathlib.$(A): \
 libl_net.$(A): CPPFLAGS_EXTRA := -Ilibs
 libl_net.$(A): \
 	libs/l_net/l_net.o \
-	$(if $(findstring $(OS),Win32),libs/l_net/l_net_wins.o,libs/l_net/l_net_berkley.o) \
+	$(if $(findstring Win32,$(OS)),libs/l_net/l_net_wins.o,libs/l_net/l_net_berkley.o) \
 
 libpicomodel.$(A): CPPFLAGS_EXTRA := -Ilibs
 libpicomodel.$(A): \
@@ -626,6 +626,189 @@ libpicomodel.$(A): \
 	libs/picomodel/pm_ms3d.o \
 	libs/picomodel/pm_obj.o \
 	libs/picomodel/pm_terrain.o \
+
+$(INSTALLDIR)/libassimp_.$(DLL): LIBS_EXTRA := $(LIBS_ZLIB)
+$(INSTALLDIR)/libassimp_.$(DLL): CPPFLAGS_EXTRA := $(CPPFLAGS_ZLIB) -Ilibs/assimp/include -Ilibs/assimp/code -Ilibs/assimp/contrib/pugixml/src -Ilibs/assimp/contrib/unzip -Ilibs/assimp -Ilibs/assimp/contrib/openddlparser/include -Ilibs/assimp/contrib/rapidjson/include -Ilibs/assimp/contrib -DASSIMP_BUILD_DLL_EXPORT -DASSIMP_BUILD_NO_C4D_IMPORTER -DASSIMP_BUILD_NO_EXPORT -DASSIMP_BUILD_NO_IFC_IMPORTER -DASSIMP_BUILD_NO_OWN_ZLIB -DASSIMP_IMPORTER_GLTF_USE_OPEN3DGC=1 -DMINIZ_USE_UNALIGNED_LOADS_AND_STORES=0 -DOPENDDLPARSER_BUILD -DRAPIDJSON_HAS_STDSTRING=1 -DRAPIDJSON_NOMEMBERITERATORCLASS -DWIN32_LEAN_AND_MEAN -Dassimp_EXPORTS -fvisibility=hidden -Wno-long-long -fexceptions -frtti
+$(INSTALLDIR)/libassimp_.$(DLL): \
+	libs/assimp/code/Common/Assimp.o \
+	libs/assimp/code/CApi/CInterfaceIOWrapper.o \
+	libs/assimp/code/Common/BaseImporter.o \
+	libs/assimp/code/Common/BaseProcess.o \
+	libs/assimp/code/Common/PostStepRegistry.o \
+	libs/assimp/code/Common/ImporterRegistry.o \
+	libs/assimp/code/Common/DefaultIOStream.o \
+	libs/assimp/code/Common/DefaultIOSystem.o \
+	libs/assimp/code/Common/ZipArchiveIOSystem.o \
+	libs/assimp/code/Common/Importer.o \
+	libs/assimp/code/Common/SGSpatialSort.o \
+	libs/assimp/code/Common/VertexTriangleAdjacency.o \
+	libs/assimp/code/Common/SpatialSort.o \
+	libs/assimp/code/Common/SceneCombiner.o \
+	libs/assimp/code/Common/ScenePreprocessor.o \
+	libs/assimp/code/Common/SkeletonMeshBuilder.o \
+	libs/assimp/code/Common/StandardShapes.o \
+	libs/assimp/code/Common/TargetAnimation.o \
+	libs/assimp/code/Common/RemoveComments.o \
+	libs/assimp/code/Common/Subdivision.o \
+	libs/assimp/code/Common/scene.o \
+	libs/assimp/code/Common/Bitmap.o \
+	libs/assimp/code/Common/Version.o \
+	libs/assimp/code/Common/CreateAnimMesh.o \
+	libs/assimp/code/Common/simd.o \
+	libs/assimp/code/Common/material.o \
+	libs/assimp/code/Common/AssertHandler.o \
+	libs/assimp/code/Common/Exceptional.o \
+	libs/assimp/code/Common/DefaultLogger.o \
+	libs/assimp/code/PostProcessing/CalcTangentsProcess.o \
+	libs/assimp/code/PostProcessing/ComputeUVMappingProcess.o \
+	libs/assimp/code/PostProcessing/ConvertToLHProcess.o \
+	libs/assimp/code/PostProcessing/EmbedTexturesProcess.o \
+	libs/assimp/code/PostProcessing/FindDegenerates.o \
+	libs/assimp/code/PostProcessing/FindInstancesProcess.o \
+	libs/assimp/code/PostProcessing/FindInvalidDataProcess.o \
+	libs/assimp/code/PostProcessing/FixNormalsStep.o \
+	libs/assimp/code/PostProcessing/DropFaceNormalsProcess.o \
+	libs/assimp/code/PostProcessing/GenFaceNormalsProcess.o \
+	libs/assimp/code/PostProcessing/GenVertexNormalsProcess.o \
+	libs/assimp/code/PostProcessing/PretransformVertices.o \
+	libs/assimp/code/PostProcessing/ImproveCacheLocality.o \
+	libs/assimp/code/PostProcessing/JoinVerticesProcess.o \
+	libs/assimp/code/PostProcessing/LimitBoneWeightsProcess.o \
+	libs/assimp/code/PostProcessing/RemoveRedundantMaterials.o \
+	libs/assimp/code/PostProcessing/RemoveVCProcess.o \
+	libs/assimp/code/PostProcessing/SortByPTypeProcess.o \
+	libs/assimp/code/PostProcessing/SplitLargeMeshes.o \
+	libs/assimp/code/PostProcessing/TextureTransform.o \
+	libs/assimp/code/PostProcessing/TriangulateProcess.o \
+	libs/assimp/code/PostProcessing/ValidateDataStructure.o \
+	libs/assimp/code/PostProcessing/OptimizeGraph.o \
+	libs/assimp/code/PostProcessing/OptimizeMeshes.o \
+	libs/assimp/code/PostProcessing/DeboneProcess.o \
+	libs/assimp/code/PostProcessing/ProcessHelper.o \
+	libs/assimp/code/PostProcessing/MakeVerboseFormat.o \
+	libs/assimp/code/PostProcessing/ScaleProcess.o \
+	libs/assimp/code/PostProcessing/ArmaturePopulate.o \
+	libs/assimp/code/PostProcessing/GenBoundingBoxesProcess.o \
+	libs/assimp/code/PostProcessing/SplitByBoneCountProcess.o \
+	libs/assimp/code/Material/MaterialSystem.o \
+	libs/assimp/code/AssetLib/STEPParser/STEPFileReader.o \
+	libs/assimp/code/AssetLib/STEPParser/STEPFileEncoding.o \
+	libs/assimp/code/AssetLib/AMF/AMFImporter.o \
+	libs/assimp/code/AssetLib/AMF/AMFImporter_Geometry.o \
+	libs/assimp/code/AssetLib/AMF/AMFImporter_Material.o \
+	libs/assimp/code/AssetLib/AMF/AMFImporter_Postprocess.o \
+	libs/assimp/code/AssetLib/3DS/3DSConverter.o \
+	libs/assimp/code/AssetLib/3DS/3DSLoader.o \
+	libs/assimp/code/AssetLib/AC/ACLoader.o \
+	libs/assimp/code/AssetLib/ASE/ASELoader.o \
+	libs/assimp/code/AssetLib/ASE/ASEParser.o \
+	libs/assimp/code/AssetLib/Assbin/AssbinLoader.o \
+	libs/assimp/code/AssetLib/B3D/B3DImporter.o \
+	libs/assimp/code/AssetLib/BVH/BVHLoader.o \
+	libs/assimp/code/AssetLib/Collada/ColladaHelper.o \
+	libs/assimp/code/AssetLib/Collada/ColladaLoader.o \
+	libs/assimp/code/AssetLib/Collada/ColladaParser.o \
+	libs/assimp/code/AssetLib/DXF/DXFLoader.o \
+	libs/assimp/code/AssetLib/CSM/CSMLoader.o \
+	libs/assimp/code/AssetLib/HMP/HMPLoader.o \
+	libs/assimp/code/AssetLib/Irr/IRRMeshLoader.o \
+	libs/assimp/code/AssetLib/Irr/IRRShared.o \
+	libs/assimp/code/AssetLib/Irr/IRRLoader.o \
+	libs/assimp/code/AssetLib/LWO/LWOAnimation.o \
+	libs/assimp/code/AssetLib/LWO/LWOBLoader.o \
+	libs/assimp/code/AssetLib/LWO/LWOLoader.o \
+	libs/assimp/code/AssetLib/LWO/LWOMaterial.o \
+	libs/assimp/code/AssetLib/LWS/LWSLoader.o \
+	libs/assimp/code/AssetLib/M3D/M3DImporter.o \
+	libs/assimp/code/AssetLib/M3D/M3DWrapper.o \
+	libs/assimp/code/AssetLib/MD2/MD2Loader.o \
+	libs/assimp/code/AssetLib/MD3/MD3Loader.o \
+	libs/assimp/code/AssetLib/MD5/MD5Loader.o \
+	libs/assimp/code/AssetLib/MD5/MD5Parser.o \
+	libs/assimp/code/AssetLib/MDC/MDCLoader.o \
+	libs/assimp/code/AssetLib/MDL/MDLLoader.o \
+	libs/assimp/code/AssetLib/MDL/MDLMaterialLoader.o \
+	libs/assimp/code/AssetLib/MDL/HalfLife/HL1MDLLoader.o \
+	libs/assimp/code/AssetLib/MDL/HalfLife/UniqueNameGenerator.o \
+	libs/assimp/code/AssetLib/NFF/NFFLoader.o \
+	libs/assimp/code/AssetLib/NDO/NDOLoader.o \
+	libs/assimp/code/AssetLib/OFF/OFFLoader.o \
+	libs/assimp/code/AssetLib/Obj/ObjFileImporter.o \
+	libs/assimp/code/AssetLib/Obj/ObjFileMtlImporter.o \
+	libs/assimp/code/AssetLib/Obj/ObjFileParser.o \
+	libs/assimp/code/AssetLib/Ogre/OgreImporter.o \
+	libs/assimp/code/AssetLib/Ogre/OgreStructs.o \
+	libs/assimp/code/AssetLib/Ogre/OgreBinarySerializer.o \
+	libs/assimp/code/AssetLib/Ogre/OgreXmlSerializer.o \
+	libs/assimp/code/AssetLib/Ogre/OgreMaterial.o \
+	libs/assimp/code/AssetLib/OpenGEX/OpenGEXImporter.o \
+	libs/assimp/code/AssetLib/Ply/PlyLoader.o \
+	libs/assimp/code/AssetLib/Ply/PlyParser.o \
+	libs/assimp/code/AssetLib/MS3D/MS3DLoader.o \
+	libs/assimp/code/AssetLib/COB/COBLoader.o \
+	libs/assimp/code/AssetLib/Blender/BlenderLoader.o \
+	libs/assimp/code/AssetLib/Blender/BlenderDNA.o \
+	libs/assimp/code/AssetLib/Blender/BlenderScene.o \
+	libs/assimp/code/AssetLib/Blender/BlenderModifier.o \
+	libs/assimp/code/AssetLib/Blender/BlenderBMesh.o \
+	libs/assimp/code/AssetLib/Blender/BlenderTessellator.o \
+	libs/assimp/code/AssetLib/Blender/BlenderCustomData.o \
+	libs/assimp/code/AssetLib/XGL/XGLLoader.o \
+	libs/assimp/code/AssetLib/FBX/FBXImporter.o \
+	libs/assimp/code/AssetLib/FBX/FBXParser.o \
+	libs/assimp/code/AssetLib/FBX/FBXTokenizer.o \
+	libs/assimp/code/AssetLib/FBX/FBXConverter.o \
+	libs/assimp/code/AssetLib/FBX/FBXUtil.o \
+	libs/assimp/code/AssetLib/FBX/FBXDocument.o \
+	libs/assimp/code/AssetLib/FBX/FBXProperties.o \
+	libs/assimp/code/AssetLib/FBX/FBXMeshGeometry.o \
+	libs/assimp/code/AssetLib/FBX/FBXMaterial.o \
+	libs/assimp/code/AssetLib/FBX/FBXModel.o \
+	libs/assimp/code/AssetLib/FBX/FBXAnimation.o \
+	libs/assimp/code/AssetLib/FBX/FBXNodeAttribute.o \
+	libs/assimp/code/AssetLib/FBX/FBXDeformer.o \
+	libs/assimp/code/AssetLib/FBX/FBXBinaryTokenizer.o \
+	libs/assimp/code/AssetLib/FBX/FBXDocumentUtil.o \
+	libs/assimp/code/AssetLib/Q3D/Q3DLoader.o \
+	libs/assimp/code/AssetLib/Q3BSP/Q3BSPFileParser.o \
+	libs/assimp/code/AssetLib/Q3BSP/Q3BSPFileImporter.o \
+	libs/assimp/code/AssetLib/Raw/RawLoader.o \
+	libs/assimp/code/AssetLib/SIB/SIBImporter.o \
+	libs/assimp/code/AssetLib/SMD/SMDLoader.o \
+	libs/assimp/code/AssetLib/STL/STLLoader.o \
+	libs/assimp/code/AssetLib/Terragen/TerragenLoader.o \
+	libs/assimp/code/AssetLib/Unreal/UnrealLoader.o \
+	libs/assimp/code/AssetLib/X/XFileImporter.o \
+	libs/assimp/code/AssetLib/X/XFileParser.o \
+	libs/assimp/code/AssetLib/X3D/X3DImporter.o \
+	libs/assimp/code/AssetLib/glTF/glTFCommon.o \
+	libs/assimp/code/AssetLib/glTF/glTFImporter.o \
+	libs/assimp/code/AssetLib/glTF2/glTF2Importer.o \
+	libs/assimp/code/AssetLib/3MF/D3MFImporter.o \
+	libs/assimp/code/AssetLib/3MF/D3MFOpcPackage.o \
+	libs/assimp/code/AssetLib/MMD/MMDImporter.o \
+	libs/assimp/code/AssetLib/MMD/MMDPmxParser.o \
+	libs/assimp/contrib/unzip/crypt.o \
+	libs/assimp/contrib/unzip/ioapi.o \
+	libs/assimp/contrib/unzip/unzip.o \
+	libs/assimp/contrib/poly2tri/poly2tri/common/shapes.cc \
+	libs/assimp/contrib/poly2tri/poly2tri/sweep/advancing_front.cc \
+	libs/assimp/contrib/poly2tri/poly2tri/sweep/cdt.cc \
+	libs/assimp/contrib/poly2tri/poly2tri/sweep/sweep.cc \
+	libs/assimp/contrib/poly2tri/poly2tri/sweep/sweep_context.cc \
+	libs/assimp/contrib/clipper/clipper.o \
+	libs/assimp/contrib/openddlparser/code/OpenDDLParser.o \
+	libs/assimp/contrib/openddlparser/code/DDLNode.o \
+	libs/assimp/contrib/openddlparser/code/OpenDDLCommon.o \
+	libs/assimp/contrib/openddlparser/code/OpenDDLExport.o \
+	libs/assimp/contrib/openddlparser/code/Value.o \
+	libs/assimp/contrib/openddlparser/code/OpenDDLStream.o \
+	libs/assimp/contrib/Open3DGC/o3dgcArithmeticCodec.o \
+	libs/assimp/contrib/Open3DGC/o3dgcDynamicVectorDecoder.o \
+	libs/assimp/contrib/Open3DGC/o3dgcDynamicVectorEncoder.o \
+	libs/assimp/contrib/Open3DGC/o3dgcTools.o \
+	libs/assimp/contrib/Open3DGC/o3dgcTriangleFans.o \
+	libs/assimp/contrib/zip/src/zip.o \
 
 libddslib.$(A): CPPFLAGS_EXTRA := -Ilibs
 libddslib.$(A): \
@@ -658,7 +841,7 @@ $(INSTALLDIR)/q3data.$(EXE): \
 	libfilematch.$(A) \
 	libl_net.$(A) \
 	libmathlib.$(A) \
-	$(if $(findstring $(OS),Win32),icons/q3data.o,) \
+	$(if $(findstring Win32,$(OS)),icons/q3data.o,) \
 
 $(INSTALLDIR)/radiant.$(EXE): LDFLAGS_EXTRA := $(MWINDOWS)
 $(INSTALLDIR)/radiant.$(EXE): LIBS_EXTRA := $(LIBS_GL) $(LIBS_DL) $(LIBS_XML) $(LIBS_GLIB) $(LIBS_GTK) $(LIBS_GTKGLEXT) $(LIBS_ZLIB) $(LIBS_PANGOFT2)
@@ -706,7 +889,7 @@ $(INSTALLDIR)/radiant.$(EXE): \
 	radiant/main.o \
 	radiant/map.o \
 	radiant/modelwindow.o \
-	$(if $(findstring $(OS),Win32),radiant/multimon.o,) \
+	$(if $(findstring Win32,$(OS)),radiant/multimon.o,) \
 	radiant/mru.o \
 	radiant/nullmodel.o \
 	radiant/parse.o \
@@ -750,11 +933,10 @@ $(INSTALLDIR)/radiant.$(EXE): \
 	libcmdlib.$(A) \
 	libgtkutil.$(A) \
 	libl_net.$(A) \
-	libmathlib.$(A) \
 	libprofile.$(A) \
 	libquickhull.$(A) \
 	libxmllib.$(A) \
-	$(if $(findstring $(OS),Win32),icons/radiant.o,) \
+	$(if $(findstring Win32,$(OS)),icons/radiant.o,) \
 
 libfilematch.$(A): CPPFLAGS_EXTRA := -Ilibs
 libfilematch.$(A): \
@@ -892,21 +1074,16 @@ $(INSTALLDIR)/modules/mapxml.$(DLL): \
 	plugins/mapxml/xmlparse.o \
 	plugins/mapxml/xmlwrite.o \
 
-$(INSTALLDIR)/modules/md3model.$(DLL): CPPFLAGS_EXTRA := -Ilibs -Iinclude
-$(INSTALLDIR)/modules/md3model.$(DLL): \
-	plugins/md3model/md2.o \
-	plugins/md3model/md3.o \
-	plugins/md3model/md5.o \
-	plugins/md3model/mdc.o \
-	plugins/md3model/mdlimage.o \
-	plugins/md3model/mdl.o \
-	plugins/md3model/plugin.o \
-
-$(INSTALLDIR)/modules/model.$(DLL): CPPFLAGS_EXTRA := -Ilibs -Iinclude
-$(INSTALLDIR)/modules/model.$(DLL): \
-	plugins/model/model.o \
-	plugins/model/plugin.o \
-	libpicomodel.$(A) \
+ifneq ($(OS),Win32)
+$(INSTALLDIR)/modules/assmodel.$(DLL): LDFLAGS_EXTRA := -Wl,-rpath '-Wl,$$ORIGIN/..'
+endif
+$(INSTALLDIR)/modules/assmodel.$(DLL): LIBS_EXTRA := -lassimp_ -L$(INSTALLDIR)
+$(INSTALLDIR)/modules/assmodel.$(DLL): CPPFLAGS_EXTRA := -Ilibs -Iinclude -Ilibs/assimp/include
+$(INSTALLDIR)/modules/assmodel.$(DLL): \
+	plugins/assmodel/mdlimage.o \
+	plugins/assmodel/model.o \
+	plugins/assmodel/plugin.o \
+	| $(INSTALLDIR)/libassimp_.$(DLL) \
 
 $(INSTALLDIR)/modules/shaders.$(DLL): LIBS_EXTRA := $(LIBS_GLIB)
 $(INSTALLDIR)/modules/shaders.$(DLL): CPPFLAGS_EXTRA := $(CPPFLAGS_GLIB) -Ilibs -Iinclude
@@ -1004,7 +1181,7 @@ $(INSTALLDIR)/qdata3.$(EXE): \
 	tools/quake2/qdata/tables.o \
 	tools/quake2/qdata/video.o \
 	libl_net.$(A) \
-	$(if $(findstring $(OS),Win32),icons/qdata3.o,) \
+	$(if $(findstring Win32,$(OS)),icons/qdata3.o,) \
 
 $(INSTALLDIR)/q2map.$(EXE): LIBS_EXTRA := $(LIBS_XML)
 $(INSTALLDIR)/q2map.$(EXE): CPPFLAGS_EXTRA := $(CPPFLAGS_XML) -Itools/quake2/common -Ilibs -Iinclude
@@ -1042,7 +1219,7 @@ $(INSTALLDIR)/q2map.$(EXE): \
 	tools/quake2/q2map/tree.o \
 	tools/quake2/q2map/writebsp.o \
 	libl_net.$(A) \
-	$(if $(findstring $(OS),Win32),icons/q2map.o,) \
+	$(if $(findstring Win32,$(OS)),icons/q2map.o,) \
 
 $(INSTALLDIR)/plugins/ufoaiplug.$(DLL): LIBS_EXTRA := $(LIBS_GLIB) $(LIBS_GTK)
 $(INSTALLDIR)/plugins/ufoaiplug.$(DLL): CPPFLAGS_EXTRA := $(CPPFLAGS_GLIB) $(CPPFLAGS_GTK) -Ilibs -Iinclude
@@ -1110,7 +1287,7 @@ $(INSTALLDIR)/heretic2/h2data.$(EXE): \
 	tools/quake2/qdata_heretic2/tmix.o \
 	tools/quake2/qdata_heretic2/video.o \
 	libl_net.$(A) \
-	$(if $(findstring $(OS),Win32),icons/h2data.o,) \
+	$(if $(findstring Win32,$(OS)),icons/h2data.o,) \
 
 $(INSTALLDIR)/mbspc.$(EXE): CPPFLAGS_EXTRA := -Wstrict-prototypes -DNDEBUG -DBSPC -DBSPCINCLUDE -Ilibs
 $(INSTALLDIR)/mbspc.$(EXE): \

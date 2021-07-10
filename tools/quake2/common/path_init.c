@@ -25,9 +25,6 @@
 
 
 
-/* marker */
-#define PATH_INIT_C
-
 #if defined( __linux__ ) || defined( __APPLE__ )
 	#define Q_UNIX
 #endif
@@ -134,8 +131,7 @@ void LokiInitPaths( char *argv0 ){
 		path = getenv( "PATH" );
 
 		/* minor setup */
-		last[ 0 ] = path[ 0 ];
-		last[ 1 ] = '\0';
+		last = path;
 		found = false;
 
 		/* go through each : segment of path */

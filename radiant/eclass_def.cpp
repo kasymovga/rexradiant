@@ -45,18 +45,18 @@ class EntityClassDefDependencies : public GlobalShaderCacheModuleRef, public Glo
 
 class EclassDefAPI
 {
-EntityClassScanner m_eclassdef;
+	EntityClassScanner m_eclassdef;
 public:
-typedef EntityClassScanner Type;
-STRING_CONSTANT( Name, "def" );
+	typedef EntityClassScanner Type;
+	STRING_CONSTANT( Name, "def" );
 
-EclassDefAPI(){
-	m_eclassdef.scanFile = &Eclass_ScanFile;
-	m_eclassdef.getExtension = &EClass_GetExtension;
-}
-EntityClassScanner* getTable(){
-	return &m_eclassdef;
-}
+	EclassDefAPI(){
+		m_eclassdef.scanFile = &Eclass_ScanFile;
+		m_eclassdef.getExtension = &EClass_GetExtension;
+	}
+	EntityClassScanner* getTable(){
+		return &m_eclassdef;
+	}
 };
 
 typedef SingletonModule<EclassDefAPI, EntityClassDefDependencies> EclassDefModule;
@@ -230,7 +230,7 @@ EntityClass *Eclass_InitFromText( const char *text ){
 	if ( Get_COM_Token()[0] == '(' ) { // parse the size as two vectors
 		e->fixedsize = true;
 		int r = sscanf( text,"%f %f %f) (%f %f %f)", &e->mins[0], &e->mins[1], &e->mins[2],
-						&e->maxs[0], &e->maxs[1], &e->maxs[2] );
+		                                             &e->maxs[0], &e->maxs[1], &e->maxs[2] );
 		if ( r != 6 ) {
 			return 0;
 		}
@@ -275,9 +275,7 @@ EntityClass *Eclass_InitFromText( const char *text ){
 	e->m_comments = text;
 
 	setSpecialLoad( e, "model=", e->m_modelpath );
-	StringOutputStream buffer( string_length( e->m_modelpath.c_str() ) );
-	buffer << PathCleaned( e->m_modelpath.c_str() );
-	e->m_modelpath = buffer.c_str();
+	e->m_modelpath = StringOutputStream( 256 )( PathCleaned( e->m_modelpath.c_str() ) ).c_str();
 
 	if ( !e->fixedsize ) {
 		EntityClass_insertAttribute( *e, "angle", EntityClassAttribute( "direction", "Direction" ) );

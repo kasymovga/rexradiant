@@ -294,7 +294,7 @@ void Cmd_Colormap( void ){
 			*lump_p++ = c;
 	}
 
-// 66% transparancy table
+// 66% transparency table
 	for ( l = 0; l < 255; l++ )
 	{
 		for ( c = 0 ; c < 255 ; c++ )
@@ -650,7 +650,7 @@ void Cmd_Mip( void ){
 //
 // dword align the size
 //
-	while ( (int)lump_p & 3 )
+	while ( (size_t)lump_p & 3 )
 		*lump_p++ = 0;
 
 //

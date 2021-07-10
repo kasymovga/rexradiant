@@ -31,63 +31,61 @@
 #include "traverselib.h"
 
 inline void parseTextureName( CopiedString& name, const char* token ){
-	StringOutputStream cleaned( 256 );
-	cleaned << PathCleaned( token );
-	name = StringRange( cleaned.c_str(), path_get_filename_base_end( cleaned.c_str() ) ); // remove extension
+	name = StringOutputStream( 256 )( PathCleaned( PathExtensionless( token ) ) ).c_str(); // remove extension
 }
 
 class ModelSkinKey : public ModuleObserver
 {
-CopiedString m_name;
-ModelSkin* m_skin;
-Callback m_skinChangedCallback;
+	CopiedString m_name;
+	ModelSkin* m_skin;
+	Callback m_skinChangedCallback;
 
-ModelSkinKey( const ModelSkinKey& );
-ModelSkinKey operator=( const ModelSkinKey& );
-
-void construct(){
-	m_skin = &GlobalModelSkinCache().capture( m_name.c_str() );
-	m_skin->attach( *this );
-}
-void destroy(){
-	m_skin->detach( *this );
-	GlobalModelSkinCache().release( m_name.c_str() );
-}
+	void construct(){
+		m_skin = &GlobalModelSkinCache().capture( m_name.c_str() );
+		m_skin->attach( *this );
+	}
+	void destroy(){
+		m_skin->detach( *this );
+		GlobalModelSkinCache().release( m_name.c_str() );
+	}
 
 public:
-ModelSkinKey( const Callback& skinChangedCallback ) : m_skinChangedCallback( skinChangedCallback ){
-	construct();
-}
-~ModelSkinKey(){
-	destroy();
-}
-ModelSkin& get() const {
-	return *m_skin;
-}
-void skinChanged( const char* value ){
-	destroy();
-	parseTextureName( m_name, value );
-	construct();
-}
-typedef MemberCaller1<ModelSkinKey, const char*, &ModelSkinKey::skinChanged> SkinChangedCaller;
+	ModelSkinKey( const ModelSkinKey& ) = delete; // not copyable
+	ModelSkinKey operator=( const ModelSkinKey& ) = delete; // not assignable
 
-void realise(){
-	m_skinChangedCallback();
-}
-void unrealise(){
-}
+	ModelSkinKey( const Callback& skinChangedCallback ) : m_skinChangedCallback( skinChangedCallback ){
+		construct();
+	}
+	~ModelSkinKey(){
+		destroy();
+	}
+	ModelSkin& get() const {
+		return *m_skin;
+	}
+	void skinChanged( const char* value ){
+		destroy();
+		parseTextureName( m_name, value );
+		construct();
+	}
+	typedef MemberCaller1<ModelSkinKey, const char*, &ModelSkinKey::skinChanged> SkinChangedCaller;
+
+	void realise(){
+		m_skinChangedCallback();
+	}
+	void unrealise(){
+	}
 };
 
 class InstanceSkinChanged : public scene::Instantiable::Visitor
 {
 public:
-void visit( scene::Instance& instance ) const {
-	//\todo don't do this for instances that are not children of the entity setting the skin
-	SkinnedModel* skinned = InstanceTypeCast<SkinnedModel>::cast( instance );
-	if ( skinned != 0 ) {
-		skinned->skinChanged();
+	void visit( scene::Instance& instance ) const {
+		//\todo don't do this for instances that are not children of the entity setting the skin
+		SkinnedModel* skinned = InstanceTypeCast<SkinnedModel>::cast( instance );
+		if ( skinned != 0 ) {
+			skinned->skinChanged();
+		}
 	}
-}
 };
 
 inline void Node_modelSkinChanged( scene::Node& node ){

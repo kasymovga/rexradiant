@@ -69,11 +69,8 @@
 #include "version.h"            /* ttimo: might want to guard that if built outside of the GtkRadiant tree */
 
 #include "cmdlib.h"
-#include "mathlib.h"
 #include "md5lib.h"
 #include "ddslib.h"
-
-#include "picomodel.h"
 
 #include "scriplib.h"
 #include "polylib.h"
@@ -84,26 +81,16 @@
 #include "png.h"
 #include "md4.h"
 
+#include "stringfixedsize.h"
+#include "stream/stringstream.h"
+#include "bitflags.h"
+#include <list>
+#include "qmath.h"
+
 #include <stddef.h>
 #include <stdlib.h>
 
-
-/* -------------------------------------------------------------------------------
-
-   port-related hacks
-
-   ------------------------------------------------------------------------------- */
-
-#define MAC_STATIC_HACK         0
-#if defined( __APPLE__ ) && MAC_STATIC_HACK
-	#define MAC_STATIC          static
-#else
-	#define MAC_STATIC
-#endif
-
-/* macro version */
-#define VectorMA( a, s, b, c )  ( ( c )[ 0 ] = ( a )[ 0 ] + ( s ) * ( b )[ 0 ], ( c )[ 1 ] = ( a )[ 1 ] + ( s ) * ( b )[ 1 ], ( c )[ 2 ] = ( a )[ 2 ] + ( s ) * ( b )[ 2 ] )
-
+#include "maxworld.h"
 
 
 /* -------------------------------------------------------------------------------
@@ -119,12 +106,12 @@
 #define Q3MAP2_EXPERIMENTAL_SNAP_PLANE_FIX      1
 
 /* general */
+// actual shader name length limit depends on game engine and name use manner (plain texture/custom shader)
+// now checking it for strlen() < MAX_QPATH (so it's null terminated), though this check may be not enough/too much, depending on the use case
 #define MAX_QPATH               64
 
-#define MAX_IMAGES              512
+#define MAX_IMAGES              2048
 #define DEFAULT_IMAGE           "*default"
-
-#define MAX_MODELS              512
 
 #define DEF_BACKSPLASH_FRACTION 0.05f   /* 5% backsplash by default */
 #define DEF_BACKSPLASH_DISTANCE 23
@@ -133,9 +120,6 @@
 
 #define MAX_SHADER_INFO         8192
 #define MAX_CUST_SURFACEPARMS   256
-
-#define SHADER_MAX_VERTEXES     1000
-#define SHADER_MAX_INDEXES      ( 6 * SHADER_MAX_VERTEXES )
 
 #define MAX_JITTERS             256
 
@@ -200,18 +184,18 @@
 #define PSIDE_BOTH              ( PSIDE_FRONT | PSIDE_BACK )
 #define PSIDE_FACING            4
 
-typedef enum{
-	BPRIMIT_UNDEFINED = 0,
-	BPRIMIT_QUAKE,
-	BPRIMIT_BP,
-	BPRIMIT_VALVE220
-}
-brushType_t;
+enum class EBrushType
+{
+	Undefined,
+	Quake,
+	Bp,
+	Valve220
+};
 
 /* vis */
 #define VIS_HEADER_SIZE         8
 
-#define SEPERATORCACHE          /* seperator caching helps a bit */
+#define SEPERATORCACHE          /* separator caching helps a bit */
 
 #define PORTALFILE              "PRT1"
 
@@ -222,29 +206,6 @@ brushType_t;
 
 
 /* light */
-#define EMIT_POINT              0
-#define EMIT_AREA               1
-#define EMIT_SPOT               2
-#define EMIT_SUN                3
-
-#define LIGHT_ATTEN_LINEAR      1
-#define LIGHT_ATTEN_ANGLE       2
-#define LIGHT_ATTEN_DISTANCE    4
-#define LIGHT_TWOSIDED          8
-#define LIGHT_GRID              16
-#define LIGHT_SURFACES          32
-#define LIGHT_DARK              64      /* probably never use this */
-#define LIGHT_FAST              256
-#define LIGHT_FAST_TEMP         512
-#define LIGHT_FAST_ACTUAL       ( LIGHT_FAST | LIGHT_FAST_TEMP )
-#define LIGHT_NEGATIVE          1024
-#define LIGHT_UNNORMALIZED      2048    /* vortex: do not normalize _color */
-
-#define LIGHT_SUN_DEFAULT       ( LIGHT_ATTEN_ANGLE | LIGHT_GRID | LIGHT_SURFACES )
-#define LIGHT_AREA_DEFAULT      ( LIGHT_ATTEN_ANGLE | LIGHT_ATTEN_DISTANCE | LIGHT_GRID | LIGHT_SURFACES )    /* q3a and wolf are the same */
-#define LIGHT_Q3A_DEFAULT       ( LIGHT_ATTEN_ANGLE | LIGHT_ATTEN_DISTANCE | LIGHT_GRID | LIGHT_SURFACES | LIGHT_FAST )
-#define LIGHT_WOLF_DEFAULT      ( LIGHT_ATTEN_LINEAR | LIGHT_ATTEN_DISTANCE | LIGHT_GRID | LIGHT_SURFACES | LIGHT_FAST )
-
 #define MAX_TRACE_TEST_NODES    256
 #define DEFAULT_INHIBIT_RADIUS  1.5f
 
@@ -264,33 +225,8 @@ brushType_t;
 #define CLUSTER_OCCLUDED        -2
 #define CLUSTER_FLOODED         -3
 
-#define VERTEX_LUXEL_SIZE       3
-#define BSP_LUXEL_SIZE          3
-#define RAD_LUXEL_SIZE          3
-#define SUPER_LUXEL_SIZE        4
-#define SUPER_FLAG_SIZE         4
 #define FLAG_FORCE_SUBSAMPLING 1
 #define FLAG_ALREADY_SUBSAMPLED 2
-#define SUPER_ORIGIN_SIZE       3
-#define SUPER_NORMAL_SIZE       4
-#define SUPER_DELUXEL_SIZE      3
-#define BSP_DELUXEL_SIZE        3
-#define SUPER_FLOODLIGHT_SIZE   4
-
-#define VERTEX_LUXEL( s, v )    ( vertexLuxels[ s ] + ( ( v ) * VERTEX_LUXEL_SIZE ) )
-#define RAD_VERTEX_LUXEL( s, v )( radVertexLuxels[ s ] + ( ( v ) * VERTEX_LUXEL_SIZE ) )
-#define BSP_LUXEL( s, x, y )    ( lm->bspLuxels[ s ] + ( ( ( ( y ) * lm->w ) + ( x ) ) * BSP_LUXEL_SIZE ) )
-#define RAD_LUXEL( s, x, y )    ( lm->radLuxels[ s ] + ( ( ( ( y ) * lm->w ) + ( x ) ) * RAD_LUXEL_SIZE ) )
-#define SUPER_LUXEL( s, x, y )  ( lm->superLuxels[ s ] + ( ( ( ( y ) * lm->sw ) + ( x ) ) * SUPER_LUXEL_SIZE ) )
-#define SUPER_FLAG( x, y )  ( lm->superFlags + ( ( ( ( y ) * lm->sw ) + ( x ) ) * SUPER_FLAG_SIZE ) )
-#define SUPER_DELUXEL( x, y )   ( lm->superDeluxels + ( ( ( ( y ) * lm->sw ) + ( x ) ) * SUPER_DELUXEL_SIZE ) )
-#define BSP_DELUXEL( x, y )     ( lm->bspDeluxels + ( ( ( ( y ) * lm->w ) + ( x ) ) * BSP_DELUXEL_SIZE ) )
-#define SUPER_CLUSTER( x, y )   ( lm->superClusters + ( ( ( y ) * lm->sw ) + ( x ) ) )
-#define SUPER_ORIGIN( x, y )    ( lm->superOrigins + ( ( ( ( y ) * lm->sw ) + ( x ) ) * SUPER_ORIGIN_SIZE ) )
-#define SUPER_NORMAL( x, y )    ( lm->superNormals + ( ( ( ( y ) * lm->sw ) + ( x ) ) * SUPER_NORMAL_SIZE ) )
-#define SUPER_DIRT( x, y )      ( lm->superNormals + ( ( ( ( y ) * lm->sw ) + ( x ) ) * SUPER_NORMAL_SIZE ) + 3 )   /* stash dirtyness in normal[ 3 ] */
-#define SUPER_FLOODLIGHT( x, y )    ( lm->superFloodLight + ( ( ( ( y ) * lm->sw ) + ( x ) ) * SUPER_FLOODLIGHT_SIZE ) )
-
 
 
 /* -------------------------------------------------------------------------------
@@ -324,10 +260,6 @@ brushType_t;
 
 #define MAX_MAP_ADVERTISEMENTS  30
 
-/* key / value pair sizes in the entities lump */
-#define MAX_KEY                 32
-#define MAX_VALUE               1024
-
 /* the editor uses these predefined yaw angles to orient entities up or down */
 #define ANGLE_UP                -1
 #define ANGLE_DOWN              -2
@@ -335,125 +267,105 @@ brushType_t;
 #define LIGHTMAP_WIDTH          128
 #define LIGHTMAP_HEIGHT         128
 
-#define MIN_WORLD_COORD         ( -65536 )
-#define MAX_WORLD_COORD         ( 65536 )
-#define WORLD_SIZE              ( MAX_WORLD_COORD - MIN_WORLD_COORD )
 
 
 typedef void ( *bspFunc )( const char * );
 
 
-typedef struct
+struct bspLump_t
 {
 	int offset, length;
-}
-bspLump_t;
+};
 
 
-typedef struct
+struct bspHeader_t
 {
 	char ident[ 4 ];
 	int version;
 
 	bspLump_t lumps[ 100 ];     /* theoretical maximum # of bsp lumps */
-}
-bspHeader_t;
+};
 
 
-typedef struct
+struct bspModel_t
 {
-	float mins[ 3 ], maxs[ 3 ];
+	MinMax minmax;
 	int firstBSPSurface, numBSPSurfaces;
 	int firstBSPBrush, numBSPBrushes;
-}
-bspModel_t;
+};
 
 
-typedef struct
+struct bspShader_t
 {
 	char shader[ MAX_QPATH ];
 	int surfaceFlags;
 	int contentFlags;
-}
-bspShader_t;
+};
 
 
 /* planes x^1 is always the opposite of plane x */
 
-typedef struct
-{
-	float normal[ 3 ];
-	float dist;
-}
-bspPlane_t;
+using bspPlane_t = Plane3f;
 
 
-typedef struct
+struct bspNode_t
 {
 	int planeNum;
 	int children[ 2 ];              /* negative numbers are -(leafs+1), not nodes */
-	int mins[ 3 ];                  /* for frustum culling */
-	int maxs[ 3 ];
-}
-bspNode_t;
+	MinMax___<int> minmax;          /* for frustum culling */
+};
 
 
-typedef struct
+struct bspLeaf_t
 {
 	int cluster;                    /* -1 = opaque cluster (do I still store these?) */
 	int area;
 
-	int mins[ 3 ];                  /* for frustum culling */
-	int maxs[ 3 ];
+	MinMax___<int> minmax;          /* for frustum culling */
 
 	int firstBSPLeafSurface;
 	int numBSPLeafSurfaces;
 
 	int firstBSPLeafBrush;
 	int numBSPLeafBrushes;
-}
-bspLeaf_t;
+};
 
 
-typedef struct
+struct bspBrushSide_t
 {
 	int planeNum;                   /* positive plane side faces out of the leaf */
 	int shaderNum;
 	int surfaceNum;                 /* RBSP */
-}
-bspBrushSide_t;
+};
 
 
-typedef struct
+struct bspBrush_t
 {
 	int firstSide;
 	int numSides;
 	int shaderNum;                  /* the shader that determines the content flags */
-}
-bspBrush_t;
+};
 
 
-typedef struct
+struct bspFog_t
 {
 	char shader[ MAX_QPATH ];
 	int brushNum;
 	int visibleSide;                /* the brush side that ray tests need to clip against (-1 == none) */
-}
-bspFog_t;
+};
 
 
-typedef struct
+struct bspDrawVert_t
 {
-	vec3_t xyz;
-	float st[ 2 ];
-	float lightmap[ MAX_LIGHTMAPS ][ 2 ];       /* RBSP */
-	vec3_t normal;
-	byte color[ MAX_LIGHTMAPS ][ 4 ];           /* RBSP */
-}
-bspDrawVert_t;
+	Vector3 xyz;
+	Vector2 st;
+	Vector2 lightmap[ MAX_LIGHTMAPS ];          /* RBSP */
+	Vector3 normal;
+	Color4b color[ MAX_LIGHTMAPS ];             /* RBSP */
+};
 
 
-typedef enum
+enum bspSurfaceType_t
 {
 	MST_BAD,
 	MST_PLANAR,
@@ -461,21 +373,19 @@ typedef enum
 	MST_TRIANGLE_SOUP,
 	MST_FLARE,
 	MST_FOLIAGE
-}
-bspSurfaceType_t;
+};
 
 
-typedef struct bspGridPoint_s
+struct bspGridPoint_t
 {
-	byte ambient[ MAX_LIGHTMAPS ][ 3 ];
-	byte directed[ MAX_LIGHTMAPS ][ 3 ];
+	Vector3b ambient[ MAX_LIGHTMAPS ];
+	Vector3b directed[ MAX_LIGHTMAPS ];
 	byte styles[ MAX_LIGHTMAPS ];
 	byte latLong[ 2 ];
-}
-bspGridPoint_t;
+};
 
 
-typedef struct
+struct bspDrawSurface_t
 {
 	int shaderNum;
 	int fogNum;
@@ -493,22 +403,22 @@ typedef struct
 	int lightmapX[ MAX_LIGHTMAPS ], lightmapY[ MAX_LIGHTMAPS ];         /* RBSP */
 	int lightmapWidth, lightmapHeight;
 
-	vec3_t lightmapOrigin;
-	vec3_t lightmapVecs[ 3 ];       /* on patches, [ 0 ] and [ 1 ] are lodbounds */
+	Vector3 lightmapOrigin;
+	Vector3 lightmapVecs[ 3 ];       /* on patches, [ 0 ] and [ 1 ] are lodbounds */
 
 	int patchWidth;
 	int patchHeight;
-}
-bspDrawSurface_t;
+};
 
 
 /* advertisements */
-typedef struct {
+struct bspAdvertisement_t
+{
 	int cellId;
-	vec3_t normal;
-	vec3_t rect[4];
+	Vector3 normal;
+	Vector3 rect[4];
 	char model[ MAX_QPATH ];
-} bspAdvertisement_t;
+};
 
 
 /* -------------------------------------------------------------------------------
@@ -518,39 +428,37 @@ typedef struct {
    ------------------------------------------------------------------------------- */
 
 /* ydnar: for q3map_tcMod */
-typedef float tcMod_t[ 3 ][ 3 ];
+typedef Vector3 tcMod_t[ 3 ];
 
 
 /* ydnar: for multiple game support */
-typedef struct surfaceParm_s
+struct surfaceParm_t
 {
-	char        *name;
+	const char  *name;
 	int contentFlags, contentFlagsClear;
 	int surfaceFlags, surfaceFlagsClear;
 	int compileFlags, compileFlagsClear;
-}
-surfaceParm_t;
+};
 
-typedef enum
+enum class EMiniMapMode
 {
-	MINIMAP_MODE_GRAY,
-	MINIMAP_MODE_BLACK,
-	MINIMAP_MODE_WHITE
-}
-miniMapMode_t;
+	Gray,
+	Black,
+	White
+};
 
-typedef struct game_s
+struct game_t
 {
-	char                *arg;                           /* -game matches this */
-	char                *gamePath;                      /* main game data dir */
-	char                *homeBasePath;                  /* home sub-dir on unix */
-	char                *magic;                         /* magic word for figuring out base path */
-	char                *shaderPath;                    /* shader directory */
+	const char          *arg;                           /* -game matches this */
+	const char          *gamePath;                      /* main game data dir */
+	const char          *homeBasePath;                  /* home sub-dir on unix */
+	const char          *magic;                         /* magic word for figuring out base path */
+	const char          *shaderPath;                    /* shader directory */
 	int maxLMSurfaceVerts;                              /* default maximum meta surface verts */
 	int maxSurfaceVerts;                                /* default maximum surface verts */
 	int maxSurfaceIndexes;                              /* default maximum surface indexes (tris * 3) */
 	bool emitFlares;                                    /* when true, emit flare surfaces */
-	char                *flareShader;                   /* default flare shader (MUST BE SET) */
+	const char          *flareShader;                   /* default flare shader (MUST BE SET) */
 	bool wolfLight;                                     /* when true, lights work like wolf q3map  */
 	int lightmapSize;                                   /* bsp lightmap width/height */
 	float lightmapGamma;                                /* default lightmap gamma */
@@ -572,143 +480,119 @@ typedef struct game_s
 	float miniMapSharpen;                               /* minimap sharpening coefficient */
 	float miniMapBorder;                                /* minimap border amount */
 	bool miniMapKeepAspect;                             /* minimap keep aspect ratio by letterboxing */
-	miniMapMode_t miniMapMode;                          /* minimap mode */
-	char                *miniMapNameFormat;             /* minimap name format */
-	char                *bspIdent;                      /* 4-letter bsp file prefix */
+	EMiniMapMode miniMapMode;                           /* minimap mode */
+	const char          *miniMapNameFormat;             /* minimap name format */
+	const char          *bspIdent;                      /* 4-letter bsp file prefix */
 	int bspVersion;                                     /* bsp version to use */
 	bool lumpSwap;                                      /* cod-style len/ofs order */
 	bspFunc load, write;                                /* load/write function pointers */
 	surfaceParm_t surfaceParms[ 128 ];                  /* surfaceparm array */
 	int brushBevelsSurfaceFlagsMask;                    /* apply only these surfaceflags to bevels to reduce extra bsp shaders amount; applying them to get correct physics at walkable brush edges and vertices */
-}
-game_t;
+};
 
 
-typedef struct image_s
+struct image_t
 {
 	char                *name, *filename;
 	int refCount;
 	int width, height;
 	byte                *pixels;
-}
-image_t;
+};
 
 
-typedef struct sun_s
+struct sun_t
 {
-	struct sun_s        *next;
-	vec3_t direction, color;
+	sun_t        *next;
+	Vector3 direction, color;
 	float photons, deviance, filterRadius;
 	int numSamples, style;
-}
-sun_t;
+};
 
 
-typedef struct surfaceModel_s
+struct surfaceModel_t
 {
-	struct surfaceModel_s   *next;
-	char model[ MAX_QPATH ];
+	CopiedString model;
 	float density, odds;
 	float minScale, maxScale;
 	float minAngle, maxAngle;
 	bool oriented;
-}
-surfaceModel_t;
+};
 
 
 /* ydnar/sd: foliage stuff for wolf et (engine-supported optimization of the above) */
-typedef struct foliage_s
+struct foliage_t
 {
-	struct foliage_s    *next;
-	char model[ MAX_QPATH ];
+	CopiedString model;
 	float scale, density, odds;
 	int inverseAlpha;
-}
-foliage_t;
+};
 
-typedef struct foliageInstance_s
+struct foliageInstance_t
 {
-	vec3_t xyz, normal;
-}
-foliageInstance_t;
+	Vector3 xyz, normal;
+};
 
 
-typedef struct remap_s
+struct remap_t
 {
-	struct remap_s      *next;
 	char from[ 1024 ];
 	char to[ MAX_QPATH ];
-}
-remap_t;
+};
 
-typedef struct skinfile_s
+
+enum class EColorMod
 {
-	struct skinfile_s   *next;
-	char name[ 1024 ];
-	char to[ MAX_QPATH ];
-}
-skinfile_t;
+	None,
+	Volume,
+	ColorSet,
+	AlphaSet,
+	ColorScale,
+	AlphaScale,
+	ColorDotProduct,
+	AlphaDotProduct,
+	ColorDotProductScale,
+	AlphaDotProductScale,
+	ColorDotProduct2,
+	AlphaDotProduct2,
+	ColorDotProduct2Scale,
+	AlphaDotProduct2Scale
+};
 
 
-/* wingdi.h hack, it's the same: 0 */
-#undef CM_NONE
-
-typedef enum
+struct colorMod_t
 {
-	CM_NONE,
-	CM_VOLUME,
-	CM_COLOR_SET,
-	CM_ALPHA_SET,
-	CM_COLOR_SCALE,
-	CM_ALPHA_SCALE,
-	CM_COLOR_DOT_PRODUCT,
-	CM_ALPHA_DOT_PRODUCT,
-	CM_COLOR_DOT_PRODUCT_SCALE,
-	CM_ALPHA_DOT_PRODUCT_SCALE,
-	CM_COLOR_DOT_PRODUCT_2,
-	CM_ALPHA_DOT_PRODUCT_2,
-	CM_COLOR_DOT_PRODUCT_2_SCALE,
-	CM_ALPHA_DOT_PRODUCT_2_SCALE
-}
-colorModType_t;
+	colorMod_t   *next;
+	EColorMod type;
+	float data[ 16 ];
+};
 
 
-typedef struct colorMod_s
+enum class EImplicitMap
 {
-	struct colorMod_s   *next;
-	colorModType_t type;
-	vec_t data[ 16 ];
-}
-colorMod_t;
+	None,
+	Opaque,
+	Masked,
+	Blend
+};
 
 
-typedef enum
+struct shaderInfo_t
 {
-	IM_NONE,
-	IM_OPAQUE,
-	IM_MASKED,
-	IM_BLEND
-}
-implicitMap_t;
-
-
-typedef struct shaderInfo_s
-{
-	char shader[ MAX_QPATH ];
+	String64 shader;
 	int surfaceFlags;
 	int contentFlags;
 	int compileFlags;
 	float value;                                        /* light value */
 
-	char                *flareShader;                   /* for light flares */
+	const char          *flareShader;                   /* for light flares */
 	char                *damageShader;                  /* ydnar: sof2 damage shader name */
 	char                *backShader;                    /* for surfaces that generate different front and back passes */
 	char                *cloneShader;                   /* ydnar: for cloning of a surface */
 	char                *remapShader;                   /* ydnar: remap a shader in final stage */
 	char                *deprecateShader;               /* vortex: shader is deprecated and replaced by this on use */
 
-	surfaceModel_t      *surfaceModel;                  /* ydnar: for distribution of models */
-	foliage_t           *foliage;                       /* ydnar/splash damage: wolf et foliage */
+	std::list<surfaceModel_t> surfaceModels;            /* ydnar: for distribution of models */
+	std::list<foliage_t>      foliage;                  /* ydnar/splash damage: wolf et foliage */
 
 	float subdivisions;                                 /* from a "tesssize xxx" */
 	float backsplashFraction;                           /* floating point value, usually 0.05 */
@@ -723,7 +607,7 @@ typedef struct shaderInfo_s
 	float offset;                                       /* ydnar: offset in units */
 	float shadeAngleDegrees;                            /* ydnar: breaking angle for smooth shading (degrees) */
 
-	vec3_t mins, maxs;                                  /* ydnar: for particle studio vertexDeform move support */
+	MinMax minmax;                                      /* ydnar: for particle studio vertexDeform move support */
 
 	bool legacyTerrain;                                 /* ydnar: enable legacy terrain crutches */
 	bool indexed;                                       /* ydnar: attempt to use indexmap (terrain alphamap style) */
@@ -733,9 +617,9 @@ typedef struct shaderInfo_s
 	bool invert;                                        /* ydnar: reverse facing */
 	bool nonplanar;                                     /* ydnar: for nonplanar meta surface merging */
 	bool tcGen;                                         /* ydnar: has explicit texcoord generation */
-	vec3_t vecs[ 2 ];                                   /* ydnar: explicit texture vectors for [0,1] texture space */
+	Vector3 vecs[ 2 ];                                  /* ydnar: explicit texture vectors for [0,1] texture space */
 	tcMod_t mod;                                        /* ydnar: q3map_tcMod matrix for djbob :) */
-	vec3_t lightmapAxis;                                /* ydnar: explicit lightmap axis projection */
+	Vector3 lightmapAxis{ 0 };                          /* ydnar: explicit lightmap axis projection */
 	colorMod_t          *colorMod;                      /* ydnar: q3map_rgb/color/alpha/Set/Mod support */
 
 	int furNumLayers;                                   /* ydnar: number of fur layers */
@@ -763,14 +647,14 @@ typedef struct shaderInfo_s
 
 	float vertexScale;                                  /* vertex light scale */
 
-	char skyParmsImageBase[ MAX_QPATH ];                /* ydnar: for skies */
+	String64 skyParmsImageBase;                         /* ydnar: for skies */
 
-	char editorImagePath[ MAX_QPATH ];                  /* use this image to generate texture coordinates */
-	char lightImagePath[ MAX_QPATH ];                   /* use this image to generate color / averageColor */
-	char normalImagePath[ MAX_QPATH ];                  /* ydnar: normalmap image for bumpmapping */
+	String64 editorImagePath;                           /* use this image to generate texture coordinates */
+	String64 lightImagePath;                            /* use this image to generate color / averageColor */
+	String64 normalImagePath;                           /* ydnar: normalmap image for bumpmapping */
 
-	implicitMap_t implicitMap;                          /* ydnar: enemy territory implicit shaders */
-	char implicitImagePath[ MAX_QPATH ];
+	EImplicitMap implicitMap;                           /* ydnar: enemy territory implicit shaders */
+	String64 implicitImagePath;
 
 	image_t             *shaderImage;
 	image_t             *lightImage;
@@ -780,13 +664,13 @@ typedef struct shaderInfo_s
 	int skyLightIterations;                             /* ydnar */
 	sun_t               *sun;                           /* ydnar */
 
-	vec3_t color;                                       /* normalized color */
-	vec4_t averageColor;
+	Vector3 color{ 0 };                                 /* normalized color */
+	Color4f averageColor = { 0, 0, 0, 0 };
 	byte lightStyle;
 
 	/* vortex: per-surface floodlight */
 	float floodlightDirectionScale;
-	vec3_t floodlightRGB;
+	Vector3 floodlightRGB;
 	float floodlightIntensity;
 	float floodlightDistance;
 
@@ -796,15 +680,14 @@ typedef struct shaderInfo_s
 	float lmFilterRadius;                               /* ydnar: lightmap filtering/blurring radius for this shader (default: 0) */
 
 	int shaderWidth, shaderHeight;                      /* ydnar */
-	float stFlat[ 2 ];
+	Vector2 stFlat;
 
-	vec3_t fogDir;                                      /* ydnar */
+	Vector3 fogDir{ 0 };                                /* ydnar */
 
 	char                *shaderText;                    /* ydnar */
 	bool custom;
 	bool finished;
-}
-shaderInfo_t;
+};
 
 
 
@@ -814,37 +697,46 @@ shaderInfo_t;
 
    ------------------------------------------------------------------------------- */
 
-typedef struct face_s
+struct face_t
 {
-	struct face_s       *next;
+	face_t              *next;
 	int planenum;
 	int priority;
 	//bool			checked;
 	int compileFlags;
 	winding_t           *w;
-}
-face_t;
+};
 
 
-typedef struct plane_s
+struct plane_t
 {
-	vec3_t normal;
-	vec_t dist;
-	int type;
+	Plane3f plane;
+	Vector3& normal(){
+		return plane.normal();
+	}
+	const Vector3& normal() const {
+		return plane.normal();
+	}
+	float& dist(){
+		return plane.dist();
+	}
+	const float& dist() const {
+		return plane.dist();
+	}
+	EPlaneType type;
 	int counter;
 	int hash_chain;
-}
-plane_t;
+};
 
 
-typedef struct side_s
+struct side_t
 {
 	int planenum;
 
 	int outputNum;                          /* set when the side is written to the file list */
 
-	float texMat[ 2 ][ 3 ];                 /* brush primitive texture matrix */
-	float vecs[ 2 ][ 4 ];                   /* old-style texture coordinate mapping */
+	Vector3 texMat[ 2 ];                    /* brush primitive texture matrix */
+	Vector4 vecs[ 2 ];                      /* old-style texture coordinate mapping */
 
 	winding_t           *winding;
 	winding_t           *visibleHull;       /* convex hull of all visible fragments */
@@ -859,34 +751,31 @@ typedef struct side_s
 	bool visible;                           /* choose visible planes first */
 	bool bevel;                             /* don't ever use for bsp splitting, and don't bother making windings for it */
 	bool culled;                            /* ydnar: face culling */
-}
-side_t;
+};
 
 
-typedef struct sideRef_s
+struct sideRef_t
 {
-	struct sideRef_s    *next;
+	sideRef_t           *next;
 	side_t              *side;
-}
-sideRef_t;
+};
 
 
 /* ydnar: generic index mapping for entities (natural extension of terrain texturing) */
-typedef struct indexMap_s
+struct indexMap_t
 {
 	int w, h, numLayers;
-	char name[ MAX_QPATH ], shader[ MAX_QPATH ];
+	String64 shader;
 	float offsets[ 256 ];
 	byte                *pixels;
-}
-indexMap_t;
+};
 
 
-typedef struct brush_s
+struct brush_t
 {
-	struct brush_s      *next;
-	struct brush_s      *nextColorModBrush; /* ydnar: colorMod volume brushes go here */
-	struct brush_s      *original;          /* chopped up brushes will reference the originals */
+	brush_t             *next;
+	brush_t             *nextColorModBrush; /* ydnar: colorMod volume brushes go here */
+	brush_t             *original;          /* chopped up brushes will reference the originals */
 
 	int entityNum, brushNum;                /* editor numbering */
 	int outputNum;                          /* set when the brush is written to the file list */
@@ -901,8 +790,8 @@ typedef struct brush_s
 	/* ydnar: gs mods */
 	int lightmapSampleSize;                 /* jal : entity based _lightmapsamplesize */
 	float lightmapScale;
-	float shadeAngleDegrees;               /* jal : entity based _shadeangle */
-	vec3_t eMins, eMaxs;
+	float shadeAngleDegrees;                /* jal : entity based _shadeangle */
+	MinMax eMinmax;
 	indexMap_t          *im;
 
 	int contentFlags;
@@ -912,34 +801,31 @@ typedef struct brush_s
 
 	int portalareas[ 2 ];
 
-	vec3_t mins, maxs;
+	MinMax minmax;
 	int numsides;
 
 	side_t sides[];                         /* variably sized */
-}
-brush_t;
+};
 
 
-typedef struct fog_s
+struct fog_t
 {
 	shaderInfo_t        *si;
 	brush_t             *brush;
 	int visibleSide;                        /* the brush side that ray tests need to clip against (-1 == none) */
-}
-fog_t;
+};
 
 
-typedef struct
+struct mesh_t
 {
 	int width, height;
 	bspDrawVert_t       *verts;
-}
-mesh_t;
+};
 
 
-typedef struct parseMesh_s
+struct parseMesh_t
 {
-	struct parseMesh_s  *next;
+	parseMesh_t  *next;
 
 	int entityNum, brushNum;                    /* ydnar: editor numbering */
 
@@ -954,15 +840,14 @@ typedef struct parseMesh_s
 	/* ydnar: gs mods */
 	int lightmapSampleSize;                     /* jal : entity based _lightmapsamplesize */
 	float lightmapScale;
-	vec3_t eMins, eMaxs;
+	MinMax eMinmax;
 	indexMap_t          *im;
 
 	/* grouping */
 	bool grouped;
 	float longestCurve;
 	int maxIterations;
-}
-parseMesh_t;
+};
 
 
 /*
@@ -973,55 +858,47 @@ parseMesh_t;
     - planar patches
  */
 
-typedef enum
+enum class ESurfaceType
 {
 	/* ydnar: these match up exactly with bspSurfaceType_t */
-	SURFACE_BAD,
-	SURFACE_FACE,
-	SURFACE_PATCH,
-	SURFACE_TRIANGLES,
-	SURFACE_FLARE,
-	SURFACE_FOLIAGE,    /* wolf et */
+	Bad,
+	Face,
+	Patch,
+	Triangles,
+	Flare,
+	Foliage,    /* wolf et */
 
 	/* ydnar: compiler-relevant surface types */
-	SURFACE_FORCED_META,
-	SURFACE_META,
-	SURFACE_FOGHULL,
-	SURFACE_DECAL,
-	SURFACE_SHADER,
+	ForcedMeta,
+	Meta,
+	Foghull,
+	Decal,
+	Shader,  // this is used to define number of enum items
+};
 
-	NUM_SURFACE_TYPES
-}
-surfaceType_t;
-
-#ifndef MAIN_C
-extern
-#endif
-char            *surfaceTypes[ NUM_SURFACE_TYPES ]
-#ifndef MAIN_C
-;
-#else
-	=
+constexpr const char *surfaceTypeName( ESurfaceType type ){
+	switch ( type )
 	{
-	"SURFACE_BAD",
-	"SURFACE_FACE",
-	"SURFACE_PATCH",
-	"SURFACE_TRIANGLES",
-	"SURFACE_FLARE",
-	"SURFACE_FOLIAGE",
-	"SURFACE_FORCED_META",
-	"SURFACE_META",
-	"SURFACE_FOGHULL",
-	"SURFACE_DECAL",
-	"SURFACE_SHADER"
-	};
-#endif
+	case ESurfaceType::Bad:        return "ESurfaceType::Bad";
+	case ESurfaceType::Face:       return "ESurfaceType::Face";
+	case ESurfaceType::Patch:      return "ESurfaceType::Patch";
+	case ESurfaceType::Triangles:  return "ESurfaceType::Triangles";
+	case ESurfaceType::Flare:      return "ESurfaceType::Flare";
+	case ESurfaceType::Foliage:    return "ESurfaceType::Foliage";
+	case ESurfaceType::ForcedMeta: return "ESurfaceType::ForcedMeta";
+	case ESurfaceType::Meta:       return "ESurfaceType::Meta";
+	case ESurfaceType::Foghull:    return "ESurfaceType::Foghull";
+	case ESurfaceType::Decal:      return "ESurfaceType::Decal";
+	case ESurfaceType::Shader:     return "ESurfaceType::Shader";
+	}
+	return "SURFACE NAME ERROR";
+}
 
 
 /* ydnar: this struct needs an overhaul (again, heh) */
-typedef struct mapDrawSurface_s
+struct mapDrawSurface_t
 {
-	surfaceType_t type;
+	ESurfaceType type;
 	bool planar;
 	int outputNum;                          /* ydnar: to match this sort of thing up */
 
@@ -1029,9 +906,9 @@ typedef struct mapDrawSurface_s
 	bool skybox;                            /* ydnar: yet another fun hack */
 	bool backSide;                          /* ydnar: q3map_backShader support */
 
-	struct mapDrawSurface_s *parent;        /* ydnar: for cloned (skybox) surfaces to share lighting data */
-	struct mapDrawSurface_s *clone;         /* ydnar: for cloned surfaces */
-	struct mapDrawSurface_s *cel;           /* ydnar: for cloned cel surfaces */
+	mapDrawSurface_t *parent;        /* ydnar: for cloned (skybox) surfaces to share lighting data */
+	mapDrawSurface_t *clone;         /* ydnar: for cloned surfaces */
+	mapDrawSurface_t *cel;           /* ydnar: for cloned cel surfaces */
 
 	shaderInfo_t        *shaderInfo;
 	shaderInfo_t        *celShader;
@@ -1047,8 +924,8 @@ typedef struct mapDrawSurface_s
 	int                 *indexes;
 
 	int planeNum;
-	vec3_t lightmapOrigin;                  /* also used for flares */
-	vec3_t lightmapVecs[ 3 ];               /* also used for flares */
+	Vector3 lightmapOrigin;                 /* also used for flares */
+	Vector3 lightmapVecs[ 3 ];              /* also used for flares */
 	int lightStyle;                         /* used for flares */
 
 	/* ydnar: per-surface (per-entity, actually) lightmap sample size scaling */
@@ -1058,22 +935,22 @@ typedef struct mapDrawSurface_s
 	float shadeAngleDegrees;
 
 	/* ydnar: surface classification */
-	vec3_t mins, maxs;
-	vec3_t lightmapAxis;
+	MinMax minmax;
+	Vector3 lightmapAxis;
 	int sampleSize;
 
 	/* ydnar: shadow group support */
 	int castShadows, recvShadows;
 
 	/* ydnar: texture coordinate range monitoring for hardware with limited texcoord precision (in texel space) */
-	float bias[ 2 ];
+	Vector2 bias;
 	int texMins[ 2 ], texMaxs[ 2 ], texRange[ 2 ];
 
 	/* ydnar: for patches */
 	float longestCurve;
 	int maxIterations;
 	int patchWidth, patchHeight;
-	vec3_t bounds[ 2 ];
+	MinMax bounds;
 
 	/* ydnar/sd: for foliage */
 	int numFoliageInstances;
@@ -1081,67 +958,113 @@ typedef struct mapDrawSurface_s
 	/* ydnar: editor/useful numbering */
 	int entityNum;
 	int surfaceNum;
-}
-mapDrawSurface_t;
+};
 
 
-typedef struct drawSurfRef_s
+struct drawSurfRef_t
 {
-	struct drawSurfRef_s    *nextRef;
+	drawSurfRef_t    *nextRef;
 	int outputNum;
-}
-drawSurfRef_t;
+};
 
 
 /* ydnar: metasurfaces are constructed from lists of metatriangles so they can be merged in the best way */
-typedef struct metaTriangle_s
+struct metaTriangle_t
 {
 	shaderInfo_t        *si;
 	side_t              *side;
 	int entityNum, surfaceNum, planeNum, fogNum, sampleSize, castShadows, recvShadows;
 	float shadeAngleDegrees;
-	vec4_t plane;
-	vec3_t lightmapAxis;
+	Plane3f plane;
+	Vector3 lightmapAxis;
 	int indexes[ 3 ];
-}
-metaTriangle_t;
+};
 
 
-typedef struct epair_s
+struct epair_t
 {
-	struct epair_s      *next;
-	char                *key, *value;
-}
-epair_t;
+	CopiedString key, value;
+};
 
 
-typedef struct
+struct entity_t
 {
-	vec3_t origin;
+	Vector3 origin;
 	brush_t             *brushes, *lastBrush, *colorModBrushes;
 	parseMesh_t         *patches;
 	int mapEntityNum, firstDrawSurf;
 	int firstBrush, numBrushes;                     /* only valid during BSP compile */
-	epair_t             *epairs;
-	vec3_t originbrush_origin;
-}
-entity_t;
+	std::list<epair_t> epairs;
+	Vector3 originbrush_origin;
+
+	void setKeyValue( const char *key, const char *value );
+	const char *valueForKey( const char *key ) const;
+
+	template<typename ... Keys>
+	bool boolForKey( Keys ... keys ) const {
+		bool bool_value = false;
+		read_keyvalue_( bool_value, { keys ... } );
+		return bool_value;
+	}
+	template<typename ... Keys>
+	int intForKey( Keys ... keys ) const {
+		int int_value = 0;
+		read_keyvalue_( int_value, { keys ... } );
+		return int_value;
+	}
+	template<typename ... Keys>
+	float floatForKey( Keys ... keys ) const {
+		float float_value = 0;
+		read_keyvalue_( float_value, { keys ... } );
+		return float_value;
+	}
+	Vector3 vectorForKey( const char *key ) const {
+		Vector3 vec( 0 );
+		read_keyvalue_( vec, { key } );
+		return vec;
+	}
+
+	const char *classname() const {
+		return valueForKey( "classname" );
+	}
+	bool classname_is( const char *name ) const {
+		return striEqual( classname(), name );
+	}
+	bool classname_prefixed( const char *prefix ) const {
+		return striEqualPrefix( classname(), prefix );
+	}
+
+		/* entity: read key value variadic template
+		returns true on successful read
+		returns false and does not modify value otherwise */
+	template<typename T, typename ... Keys>
+	bool read_keyvalue( T& value_ref, Keys ... keys ) const {
+		return read_keyvalue_( value_ref, { keys ... } );
+	}
+private:
+	bool read_keyvalue_( bool &bool_value, std::initializer_list<const char*>&& keys ) const;
+	bool read_keyvalue_( int &int_value, std::initializer_list<const char*>&& keys ) const;
+	bool read_keyvalue_( float &float_value, std::initializer_list<const char*>&& keys ) const;
+	bool read_keyvalue_( Vector3& vector3_value, std::initializer_list<const char*>&& keys ) const;
+	bool read_keyvalue_( char (&string_value)[1024], std::initializer_list<const char*>&& keys ) const;
+	bool read_keyvalue_( const char *&string_ptr_value, std::initializer_list<const char*>&& keys ) const;
+};
 
 
-typedef struct node_s
+struct node_t
 {
 	/* both leafs and nodes */
 	int planenum;                       /* -1 = leaf node */
-	struct node_s       *parent;
-	vec3_t mins, maxs;                  /* valid after portalization */
+	node_t              *parent;
+	MinMax minmax;                      /* valid after portalization */
 	brush_t             *volume;        /* one for each leaf/node */
 
 	/* nodes only */
 	side_t              *side;          /* the side that created the node */
-	struct node_s       *children[ 2 ];
+	node_t              *children[ 2 ];
 	int compileFlags;                   /* ydnar: hint, antiportal */
 	int tinyportals;
-	vec3_t referencepoint;
+	Vector3 referencepoint;
 
 	/* leafs only */
 	bool opaque;                        /* view can never be inside */
@@ -1154,37 +1077,34 @@ typedef struct node_s
 	drawSurfRef_t       *drawSurfReferences;
 
 	int occupied;                       /* 1 or greater can reach entity */
-	entity_t            *occupant;      /* for leak file testing */
+	const entity_t      *occupant;      /* for leak file testing */
 
-	struct portal_s     *portals;       /* also on nodes during construction */
+	struct portal_t     *portals;       /* also on nodes during construction */
 
 	bool has_structural_children;
-}
-node_t;
+};
 
 
-typedef struct portal_s
+struct portal_t
 {
 	plane_t plane;
 	node_t              *onnode;        /* NULL = outside box */
 	node_t              *nodes[ 2 ];    /* [ 0 ] = front side of plane */
-	struct portal_s     *next[ 2 ];
+	portal_t            *next[ 2 ];
 	winding_t           *winding;
 
 	bool sidefound;                     /* false if ->side hasn't been checked */
 	int compileFlags;                   /* from original face that caused the split */
 	side_t              *side;          /* NULL = non-visible */
-}
-portal_t;
+};
 
 
-typedef struct
+struct tree_t
 {
 	node_t              *headnode;
 	node_t outside_node;
-	vec3_t mins, maxs;
-}
-tree_t;
+	MinMax minmax;
+};
 
 
 
@@ -1194,39 +1114,32 @@ tree_t;
 
    ------------------------------------------------------------------------------- */
 
-typedef struct
-{
-	vec3_t normal;
-	float dist;
-}
-visPlane_t;
+using visPlane_t = Plane3f;
 
 
-typedef struct
+struct fixedWinding_t
 {
 	int numpoints;
-	vec3_t points[ MAX_POINTS_ON_FIXED_WINDING ];                   /* variable sized */
-}
-fixedWinding_t;
+	Vector3 points[ MAX_POINTS_ON_FIXED_WINDING ];                   /* variable sized */
+};
 
 
-typedef struct passage_s
+struct passage_t
 {
-	struct passage_s    *next;
+	struct passage_t    *next;
 	byte cansee[ 1 ];                   /* all portals that can be seen through this passage */
-} passage_t;
+};
 
 
-typedef enum
+enum class EVStatus
 {
-	stat_none,
-	stat_working,
-	stat_done
-}
-vstatus_t;
+	None,
+	Working,
+	Done
+};
 
 
-typedef struct
+struct vportal_t
 {
 	int num;
 	bool hint;                          /* true if this portal was created from a hint splitter */
@@ -1235,11 +1148,11 @@ typedef struct
 	visPlane_t plane;                   /* normal pointing into neighbor */
 	int leaf;                           /* neighbor */
 
-	vec3_t origin;                      /* for fast clip testing */
+	Vector3 origin;                     /* for fast clip testing */
 	float radius;
 
 	fixedWinding_t      *winding;
-	vstatus_t status;
+	EVStatus status;
 	byte                *portalfront;   /* [portals], preliminary */
 	byte                *portalflood;   /* [portals], intermediate */
 	byte                *portalvis;     /* [portals], final */
@@ -1247,23 +1160,21 @@ typedef struct
 	int nummightsee;                    /* bit count on portalflood for sort */
 	passage_t           *passages;      /* there are just as many passages as there */
 	                                    /* are portals in the leaf this portal leads */
-}
-vportal_t;
+};
 
 
-typedef struct leaf_s
+struct leaf_t
 {
 	int numportals;
 	int merged;
 	vportal_t           *portals[MAX_PORTALS_ON_LEAF];
-}
-leaf_t;
+};
 
 
-typedef struct pstack_s
+struct pstack_t
 {
 	byte mightsee[ MAX_PORTALS / 8 ];
-	struct pstack_s     *next;
+	pstack_t            *next;
 	leaf_t              *leaf;
 	vportal_t           *portal;        /* portal exiting */
 	fixedWinding_t      *source;
@@ -1278,17 +1189,15 @@ typedef struct pstack_s
 	visPlane_t seperators[ 2 ][ MAX_SEPERATORS ];
 	int numseperators[ 2 ];
 #endif
-}
-pstack_t;
+};
 
 
-typedef struct
+struct threaddata_t
 {
 	vportal_t           *base;
 	int c_chains;
 	pstack_t pstack_head;
-}
-threaddata_t;
+};
 
 
 
@@ -1298,22 +1207,51 @@ threaddata_t;
 
    ------------------------------------------------------------------------------- */
 
-/* ydnar: new light struct with flags */
-typedef struct light_s
+enum class ELightType
 {
-	struct light_s      *next;
+	Point,
+	Area,
+	Spot,
+	Sun
+};
 
-	int type;
-	int flags;                          /* ydnar: condensed all the booleans into one flags int */
+struct LightFlags : BitFlags<std::uint32_t, LightFlags>
+{
+	constexpr static BitFlags AttenLinear      {1 << 0};
+	constexpr static BitFlags AttenAngle       {1 << 1};
+	constexpr static BitFlags AttenDistance    {1 << 2};
+	constexpr static BitFlags Twosided         {1 << 3};
+	constexpr static BitFlags Grid             {1 << 4};
+	constexpr static BitFlags Surfaces         {1 << 5};
+	constexpr static BitFlags Dark             {1 << 6};      /* probably never use this */
+	constexpr static BitFlags Fast             {1 << 7};
+	constexpr static BitFlags FastTemp         {1 << 8};
+	constexpr static BitFlags FastActual       { Fast | FastTemp };
+	constexpr static BitFlags Negative         {1 << 9};
+	constexpr static BitFlags Unnormalized     {1 << 10};     /* vortex: do not normalize _color */
+
+	constexpr static BitFlags DefaultSun       { AttenAngle | Grid | Surfaces };
+	constexpr static BitFlags DefaultArea      { AttenAngle | AttenDistance | Grid | Surfaces };    /* q3a and wolf are the same */
+	constexpr static BitFlags DefaultQ3A       { AttenAngle | AttenDistance | Grid | Surfaces | Fast };
+	constexpr static BitFlags DefaultWolf      { AttenLinear | AttenDistance | Grid | Surfaces | Fast };
+};
+
+/* ydnar: new light struct with flags */
+struct light_t
+{
+	light_t             *next;
+
+	ELightType type;
+	LightFlags flags;                   /* ydnar: condensed all the booleans into one flags int */
 	shaderInfo_t        *si;
 
-	vec3_t origin;
-	vec3_t normal;                      /* for surfaces, spotlights, and suns */
+	Vector3 origin;
+	Vector3 normal;                     /* for surfaces, spotlights, and suns */
 	float dist;                         /* plane location along normal */
 
 	float photons;
 	int style;
-	vec3_t color;
+	Vector3 color;
 	float radiusByDist;                 /* for spotlights */
 	float fade;                         /* ydnar: from wolf, for linear lights */
 	float angleScale;                   /* ydnar: stolen from vlight for K */
@@ -1322,19 +1260,17 @@ typedef struct light_s
 	float add;                          /* ydnar: used for area lights */
 	float envelope;                     /* ydnar: units until falloff < tolerance */
 	float envelope2;                    /* ydnar: envelope squared (tiny optimization) */
-	vec3_t mins, maxs;                  /* ydnar: pvs envelope */
+	MinMax minmax;                      /* ydnar: pvs envelope */
 	int cluster;                        /* ydnar: cluster light falls into */
 
 	winding_t           *w;
-	vec3_t emitColor;                   /* full out-of-gamut value */
 
-	float falloffTolerance;                 /* ydnar: minimum attenuation threshold */
+	float falloffTolerance;             /* ydnar: minimum attenuation threshold */
 	float filterRadius;                 /* ydnar: lightmap filter radius in world units, 0 == default */
-}
-light_t;
+};
 
 
-typedef struct
+struct trace_t
 {
 	/* constant input */
 	bool testOcclusion, forceSunlight, testAll;
@@ -1350,68 +1286,62 @@ typedef struct
 
 	/* per-sample input */
 	int cluster;
-	vec3_t origin, normal;
-	vec_t inhibitRadius;                /* sphere in which occluding geometry is ignored */
+	Vector3 origin, normal;
+	float inhibitRadius;                /* sphere in which occluding geometry is ignored */
 
 	/* per-light input */
 	light_t             *light;
-	vec3_t end;
+	Vector3 end;
 
 	/* calculated input */
-	vec3_t displacement, direction;
-	vec_t distance;
+	Vector3 displacement, direction;
+	float distance;
 
 	/* input and output */
-	vec3_t color;                       /* starts out at full color, may be reduced if transparent surfaces are crossed */
-	vec3_t colorNoShadow;               /* result color with no shadow casting */
-	vec3_t directionContribution;              /* result contribution to the deluxe map */
+	Vector3 color;                      /* starts out at full color, may be reduced if transparent surfaces are crossed */
+	Vector3 directionContribution;      /* result contribution to the deluxe map */
 
 	/* output */
-	vec3_t hit;
+	Vector3 hit;
 	int compileFlags;                   /* for determining surface compile flags traced through */
 	bool passSolid;
 	bool opaque;
-	vec_t forceSubsampling;             /* needs subsampling (alphashadow), value = max color contribution possible from it */
+	float forceSubsampling;             /* needs subsampling (alphashadow), value = max color contribution possible from it */
 
 	/* working data */
 	int numTestNodes;
 	int testNodes[ MAX_TRACE_TEST_NODES ];
-}
-trace_t;
-
+};
 
 
 /* must be identical to bspDrawVert_t except for float color! */
-typedef struct
+struct radVert_t
 {
-	vec3_t xyz;
-	float st[ 2 ];
-	float lightmap[ MAX_LIGHTMAPS ][ 2 ];
-	vec3_t normal;
-	float color[ MAX_LIGHTMAPS ][ 4 ];
-}
-radVert_t;
+	Vector3 xyz;
+	Vector2 st;
+	Vector2 lightmap[ MAX_LIGHTMAPS ];
+	Vector3 normal;
+	Color4f color[ MAX_LIGHTMAPS ];
+};
 
 
-typedef struct
+struct radWinding_t
 {
 	int numVerts;
 	radVert_t verts[ MAX_POINTS_ON_WINDING ];
-}
-radWinding_t;
+};
 
 
 /* crutch for poor local allocations in win32 smp */
-typedef struct
+struct clipWork_t
 {
-	vec_t dists[ MAX_POINTS_ON_WINDING + 4 ];
-	int sides[ MAX_POINTS_ON_WINDING + 4 ];
-}
-clipWork_t;
+	float dists[ MAX_POINTS_ON_WINDING + 4 ];
+	EPlaneSide sides[ MAX_POINTS_ON_WINDING + 4 ];
+};
 
 
 /* ydnar: new lightmap handling code */
-typedef struct outLightmap_s
+struct outLightmap_t
 {
 	int lightmapNum, extLightmapNum;
 	int customWidth, customHeight;
@@ -1420,13 +1350,21 @@ typedef struct outLightmap_s
 	int numShaders;
 	shaderInfo_t        *shaders[ MAX_LIGHTMAP_SHADERS ];
 	byte                *lightBits;
-	byte                *bspLightBytes;
-	byte                *bspDirBytes;
-}
-outLightmap_t;
+	Vector3b            *bspLightBytes;
+	Vector3b            *bspDirBytes;
+};
 
+struct SuperLuxel{
+	Vector3 value;
+	float count;
+};
 
-typedef struct rawLightmap_s
+struct SuperFloodLight{
+	Vector3 value;
+	float scale;
+};
+
+struct rawLightmap_t
 {
 	bool finished, splotchFix, wrap[ 2 ];
 	int customWidth, customHeight;
@@ -1440,52 +1378,118 @@ typedef struct rawLightmap_s
 
 	/* vortex: per-surface floodlight */
 	float floodlightDirectionScale;
-	vec3_t floodlightRGB;
+	Vector3 floodlightRGB;
 	float floodlightIntensity;
 	float floodlightDistance;
 
 	int entityNum;
 	int recvShadows;
-	vec3_t mins, maxs, axis, origin, *vecs;
-	float                   *plane;
+	MinMax minmax;
+	Vector3 axis, origin, *vecs;
+	Plane3f                   *plane;
 	int w, h, sw, sh, used;
 
 	bool solid[ MAX_LIGHTMAPS ];
-	vec3_t solidColor[ MAX_LIGHTMAPS ];
+	Vector3 solidColor[ MAX_LIGHTMAPS ];
 
 	int numStyledTwins;
-	struct rawLightmap_s    *twins[ MAX_LIGHTMAPS ];
+	rawLightmap_t           *twins[ MAX_LIGHTMAPS ];
 
 	int outLightmapNums[ MAX_LIGHTMAPS ];
 	int twinNums[ MAX_LIGHTMAPS ];
 	int lightmapX[ MAX_LIGHTMAPS ], lightmapY[ MAX_LIGHTMAPS ];
 	byte styles[ MAX_LIGHTMAPS ];
-	float                   *bspLuxels[ MAX_LIGHTMAPS ];
-	float                   *radLuxels[ MAX_LIGHTMAPS ];
-	float                   *superLuxels[ MAX_LIGHTMAPS ];
-	unsigned char               *superFlags;
-	float                   *superOrigins;
-	float                   *superNormals;
+	Vector3                 *bspLuxels[ MAX_LIGHTMAPS ];
+	Vector3                 *radLuxels[ MAX_LIGHTMAPS ];
+	SuperLuxel              *superLuxels[ MAX_LIGHTMAPS ];
+	byte                    *superFlags;
+	Vector3                 *superOrigins;
+	Vector3                 *superNormals;
+	float                   *superDirt;
 	int                     *superClusters;
 
-	float                   *superDeluxels; /* average light direction */
-	float                   *bspDeluxels;
-	float                   *superFloodLight;
-}
-rawLightmap_t;
+	Vector3                 *superDeluxels; /* average light direction */
+	Vector3                 *bspDeluxels;
+	SuperFloodLight         *superFloodLight;
+	Vector3& getBspLuxel( int lightmapNum, int x, int y ){
+		return bspLuxels[ lightmapNum ][y * w + x];
+	}
+	const Vector3& getBspLuxel( int lightmapNum, int x, int y ) const {
+		return bspLuxels[ lightmapNum ][y * w + x];
+	}
+	Vector3& getRadLuxel( int lightmapNum, int x, int y ){
+		return radLuxels[ lightmapNum ][y * w + x];
+	}
+	const Vector3& getRadLuxel( int lightmapNum, int x, int y ) const {
+		return radLuxels[ lightmapNum ][y * w + x];
+	}
+	SuperLuxel& getSuperLuxel( int lightmapNum, int x, int y ){
+		return superLuxels[ lightmapNum ][y * sw + x];
+	}
+	const SuperLuxel& getSuperLuxel( int lightmapNum, int x, int y ) const {
+		return superLuxels[ lightmapNum ][y * sw + x];
+	}
+	const byte& getSuperFlag( int x, int y ) const {
+		return superFlags[y * sw + x];
+	}
+	byte& getSuperFlag( int x, int y ){
+		return superFlags[y * sw + x];
+	}
+	Vector3& getSuperOrigin( int x, int y ){
+		return superOrigins[y * sw + x];
+	}
+	const Vector3& getSuperOrigin( int x, int y ) const {
+		return superOrigins[y * sw + x];
+	}
+	Vector3& getSuperNormal( int x, int y ){
+		return superNormals[y * sw + x];
+	}
+	const Vector3& getSuperNormal( int x, int y ) const {
+		return superNormals[y * sw + x];
+	}
+	float& getSuperDirt( int x, int y ){
+		return superDirt[y * sw + x];
+	}
+	const float& getSuperDirt( int x, int y ) const {
+		return superDirt[y * sw + x];
+	}
+	int& getSuperCluster( int x, int y ){
+		return superClusters[y * sw + x];
+	}
+	const int& getSuperCluster( int x, int y ) const {
+		return superClusters[y * sw + x];
+	}
+	Vector3& getSuperDeluxel( int x, int y ){
+		return superDeluxels[y * sw + x];
+	}
+	const Vector3& getSuperDeluxel( int x, int y ) const {
+		return superDeluxels[y * sw + x];
+	}
+	Vector3& getBspDeluxel( int x, int y ){
+		return bspDeluxels[y * w + x];
+	}
+	const Vector3& getBspDeluxel( int x, int y ) const {
+		return bspDeluxels[y * w + x];
+	}
+	SuperFloodLight& getSuperFloodLight( int x, int y ){
+		return superFloodLight[y * sw + x];
+	}
+	const SuperFloodLight& getSuperFloodLight( int x, int y ) const {
+		return superFloodLight[y * sw + x];
+	}
+};
 
 
-typedef struct rawGridPoint_s
+struct rawGridPoint_t
 {
-	vec3_t ambient[ MAX_LIGHTMAPS ];
-	vec3_t directed[ MAX_LIGHTMAPS ];
-	vec3_t dir;
+	Vector3 ambient[ MAX_LIGHTMAPS ];
+	Vector3 directed[ MAX_LIGHTMAPS ];
+	Vector3 dir;
 	byte styles[ MAX_LIGHTMAPS ];
-}
-rawGridPoint_t;
+};
 
 
-typedef struct surfaceInfo_s
+struct surfaceInfo_t
 {
 	int modelindex;
 	shaderInfo_t        *si;
@@ -1493,12 +1497,12 @@ typedef struct surfaceInfo_s
 	int parentSurfaceNum, childSurfaceNum;
 	int entityNum, castShadows, recvShadows, sampleSize, patchIterations;
 	float longestCurve;
-	float               *plane;
-	vec3_t axis, mins, maxs;
+	Plane3f               *plane;
+	Vector3 axis;
+	MinMax minmax;
 	bool hasLightmap, approximated;
 	int firstSurfaceCluster, numSurfaceClusters;
-}
-surfaceInfo_t;
+};
 
 /* -------------------------------------------------------------------------------
 
@@ -1506,12 +1510,13 @@ surfaceInfo_t;
 
    ------------------------------------------------------------------------------- */
 
-static inline vec_t Random( void ){ /* returns a pseudorandom number between 0 and 1 */
-	return (vec_t) rand() / RAND_MAX;
+inline float Random( void ){ /* returns a pseudorandom number between 0 and 1 */
+	return (float) rand() / RAND_MAX;
 }
 
 /* help.c */
 void                        HelpMain(const char* arg);
+void                        HelpGames();
 
 /* path_init.c */
 game_t                      *GetGame( char *arg );
@@ -1553,15 +1558,15 @@ void                        FreeBrush( brush_t *brushes );
 void                        FreeBrushList( brush_t *brushes );
 brush_t                     *CopyBrush( const brush_t *brush );
 bool                        BoundBrush( brush_t *brush );
+void                        SnapWeldVector( const Vector3& a, const Vector3& b, Vector3& out );
 bool                        CreateBrushWindings( brush_t *brush );
-brush_t                     *BrushFromBounds( vec3_t mins, vec3_t maxs );
-vec_t                       BrushVolume( brush_t *brush );
-void                        WriteBSPBrushMap( char *name, brush_t *list );
+brush_t                     *BrushFromBounds( const Vector3& mins, const Vector3& maxs );
+float                       BrushVolume( brush_t *brush );
+void                        WriteBSPBrushMap( const char *name, brush_t *list );
 
 void                        FilterDetailBrushesIntoTree( entity_t *e, tree_t *tree );
 void                        FilterStructuralBrushesIntoTree( entity_t *e, tree_t *tree );
 
-int                         BoxOnPlaneSide( vec3_t mins, vec3_t maxs, plane_t *plane );
 bool                        WindingIsTiny( winding_t *w );
 
 void                        SplitBrush( brush_t *brush, int planenum, brush_t **front, brush_t **back );
@@ -1571,7 +1576,7 @@ node_t                      *AllocNode( void );
 
 
 /* mesh.c */
-void                        LerpDrawVert( bspDrawVert_t *a, bspDrawVert_t *b, bspDrawVert_t *out );
+void                        LerpDrawVert( const bspDrawVert_t *a, const bspDrawVert_t *b, bspDrawVert_t *out );
 void                        LerpDrawVertAmount( bspDrawVert_t *a, bspDrawVert_t *b, float amount, bspDrawVert_t *out );
 void                        FreeMesh( mesh_t *m );
 mesh_t                      *CopyMesh( mesh_t *mesh );
@@ -1586,14 +1591,14 @@ mesh_t                      *RemoveLinearMeshColumnsRows( mesh_t *in );
 void                        MakeMeshNormals( mesh_t in );
 void                        PutMeshOnCurve( mesh_t in );
 
-void                        MakeNormalVectors( vec3_t forward, vec3_t right, vec3_t up );
-
 
 /* map.c */
 void                        LoadMapFile( char *filename, bool onlyLights, bool noCollapseGroups );
-int                         FindFloatPlane( vec3_t normal, vec_t dist, int numPoints, vec3_t *points );
-bool                        PlaneEqual( plane_t *p, vec3_t normal, vec_t dist );
-int                         PlaneTypeForNormal( vec3_t normal );
+int                         FindFloatPlane( const Plane3f& plane, int numPoints, const Vector3 *points );
+inline int                  FindFloatPlane( const Vector3& normal, float dist, int numPoints, const Vector3 *points ){
+	return FindFloatPlane( Plane3f( normal, dist ), numPoints, points );
+}
+bool                        PlaneEqual( const plane_t& p, const Plane3f& plane );
 void                        AddBrushBevels( void );
 brush_t                     *FinishBrush( bool noCollapseGroups );
 
@@ -1605,10 +1610,13 @@ void                        SplitNodePortals( node_t *node );
 
 bool                        PortalPassable( portal_t *p );
 
-#define FLOODENTITIES_LEAKED 1
-#define FLOODENTITIES_GOOD 0
-#define FLOODENTITIES_EMPTY -1
-int                     FloodEntities( tree_t *tree );
+enum class EFloodEntities
+{
+	Leaked,
+	Good,
+	Empty
+};
+EFloodEntities              FloodEntities( tree_t *tree );
 void                        FillOutside( node_t *headnode );
 void                        FloodAreas( tree_t *tree );
 face_t                      *VisibleFaces( entity_t *e, tree_t *tree );
@@ -1662,8 +1670,8 @@ void                        FixTJunctions( entity_t *e );
 /* fog.c */
 winding_t                   *WindingFromDrawSurf( mapDrawSurface_t *ds );
 void                        FogDrawSurfaces( entity_t *e );
-int                         FogForPoint( vec3_t point, float epsilon );
-int                         FogForBounds( vec3_t mins, vec3_t maxs, float epsilon );
+int                         FogForPoint( const Vector3& point, float epsilon );
+int                         FogForBounds( const MinMax& minmax, float epsilon );
 void                        CreateMapFogs( void );
 
 
@@ -1674,21 +1682,18 @@ tree_t                      *FaceBSP( face_t *list );
 
 
 /* model.c */
-void                        PicoPrintFunc( int level, const char *str );
-void                        PicoLoadFileFunc( const char *name, byte **buffer, int *bufSize );
-picoModel_t                 *FindModel( const char *name, int frame );
-picoModel_t                 *LoadModel( const char *name, int frame );
-void                        InsertModel( const char *name, int skin, int frame, m4x4_t transform, remap_t *remap, shaderInfo_t *celShader, int eNum, int castShadows, int recvShadows, int spawnFlags, float lightmapScale, int lightmapSampleSize, float shadeAngle, float clipDepth );
+void                        assimp_init();
+void                        InsertModel( const char *name, int skin, int frame, const Matrix4& transform, const std::list<remap_t> *remaps, shaderInfo_t *celShader, int eNum, int castShadows, int recvShadows, int spawnFlags, float lightmapScale, int lightmapSampleSize, float shadeAngle, float clipDepth );
 void                        AddTriangleModels( entity_t *e );
 
 
 /* surface.c */
-mapDrawSurface_t            *AllocDrawSurface( surfaceType_t type );
+mapDrawSurface_t            *AllocDrawSurface( ESurfaceType type );
 void                        FinishSurface( mapDrawSurface_t *ds );
 void                        StripFaceSurface( mapDrawSurface_t *ds );
 void                        MaxAreaFaceSurface( mapDrawSurface_t *ds );
 bool                        CalcSurfaceTextureRange( mapDrawSurface_t *ds );
-bool                        CalcLightmapAxis( vec3_t normal, vec3_t axis );
+Vector3                     CalcLightmapAxis( const Vector3& normal );
 void                        ClassifySurfaces( int numSurfs, mapDrawSurface_t *ds );
 void                        ClassifyEntitySurfaces( entity_t *e );
 void                        TidyEntitySurfaces( entity_t *e );
@@ -1699,11 +1704,11 @@ void                        ClearSurface( mapDrawSurface_t *ds );
 void                        AddEntitySurfaceModels( entity_t *e );
 mapDrawSurface_t            *DrawSurfaceForSide( entity_t *e, brush_t *b, side_t *s, winding_t *w );
 mapDrawSurface_t            *DrawSurfaceForMesh( entity_t *e, parseMesh_t *p, mesh_t *mesh );
-mapDrawSurface_t            *DrawSurfaceForFlare( int entNum, vec3_t origin, vec3_t normal, vec3_t color, const char *flareShader, int lightStyle );
-mapDrawSurface_t            *DrawSurfaceForShader( char *shader );
+mapDrawSurface_t            *DrawSurfaceForFlare( int entNum, const Vector3& origin, const Vector3& normal, const Vector3& color, const char *flareShader, int lightStyle );
+mapDrawSurface_t            *DrawSurfaceForShader( const char *shader );
 void                        ClipSidesIntoTree( entity_t *e, tree_t *tree );
 void                        MakeDebugPortalSurfs( tree_t *tree );
-void                        MakeFogHullSurfs( entity_t *e, tree_t *tree, char *shader );
+void                        MakeFogHullSurfs( entity_t *e, tree_t *tree, const char *shader );
 void                        SubdivideFaceSurfaces( entity_t *e, tree_t *tree );
 void                        AddEntitySurfaceModels( entity_t *e );
 int                         AddSurfaceModels( mapDrawSurface_t *ds );
@@ -1743,7 +1748,7 @@ int                         GetSurfaceExtraRecvShadows( int num );
 int                         GetSurfaceExtraSampleSize( int num );
 int                         GetSurfaceExtraMinSampleSize( int num );
 float                       GetSurfaceExtraLongestCurve( int num );
-void                        GetSurfaceExtraLightmapAxis( int num, vec3_t lightmapAxis );
+Vector3                     GetSurfaceExtraLightmapAxis( int num );
 
 void                        WriteSurfaceExtraFile( const char *path );
 void                        LoadSurfaceExtraFile( const char *path );
@@ -1754,11 +1759,7 @@ void                        ProcessDecals( void );
 void                        MakeEntityDecals( entity_t *e );
 
 /* map.c */
-void                        TextureAxisFromPlane( plane_t *pln, vec3_t xv, vec3_t yv );
-
-/* brush_primit.c */
-void                        ComputeAxisBase( vec3_t normal, vec3_t texX, vec3_t texY );
-
+std::array<Vector3, 2>      TextureAxisFromPlane( const plane_t& plane );
 
 /* vis.c */
 fixedWinding_t              *NewFixedWinding( int points );
@@ -1777,9 +1778,9 @@ void                        PassagePortalFlow( int portalnum );
 
 
 /* light.c  */
-float                       PointToPolygonFormFactor( const vec3_t point, const vec3_t normal, const winding_t *w );
+float                       PointToPolygonFormFactor( const Vector3& point, const Vector3& normal, const winding_t *w );
 int                         LightContributionToSample( trace_t *trace );
-void LightingAtSample( trace_t * trace, byte styles[ MAX_LIGHTMAPS ], vec3_t colors[ MAX_LIGHTMAPS ] );
+void                        LightingAtSample( trace_t * trace, byte styles[ MAX_LIGHTMAPS ], Vector3 (&colors)[ MAX_LIGHTMAPS ] );
 bool                        LightContributionToPoint( trace_t *trace );
 int                         LightMain( int argc, char **argv );
 
@@ -1791,7 +1792,7 @@ float                       SetupTrace( trace_t *trace );
 
 
 /* light_bounce.c */
-bool                        RadSampleImage( byte * pixels, int width, int height, float st[ 2 ], float color[ 4 ] );
+bool                        RadSampleImage( byte * pixels, int width, int height, const Vector2& st, Color4f& color );
 void                        RadLightForTriangles( int num, int lightmapNum, rawLightmap_t *lm, shaderInfo_t *si, float scale, float subdivide, clipWork_t *cw );
 void                        RadLightForPatch( int num, int lightmapNum, rawLightmap_t *lm, shaderInfo_t *si, float scale, float subdivide, clipWork_t *cw );
 void                        RadCreateDiffuseLights( void );
@@ -1799,7 +1800,7 @@ void                        RadFreeLights();
 
 
 /* light_ydnar.c */
-void                        ColorToBytes( const float *color, byte *colorBytes, float scale );
+Vector3b                    ColorToBytes( const Vector3& color, float scale );
 void                        SmoothNormals( void );
 
 void                        MapRawLightmap( int num );
@@ -1821,14 +1822,14 @@ void                        SetupBrushesFlags( int mask_any, int test_any, int m
 void                        SetupBrushes( void );
 void                        SetupClusters( void );
 bool                        ClusterVisible( int a, int b );
-bool                        ClusterVisibleToPoint( vec3_t point, int cluster );
-int                         ClusterForPoint( vec3_t point );
-int                         ClusterForPointExt( vec3_t point, float epsilon );
-int                         ClusterForPointExtFilter( vec3_t point, float epsilon, int numClusters, int *clusters );
-int                         ShaderForPointInLeaf( vec3_t point, int leafNum, float epsilon, int wantContentFlags, int wantSurfaceFlags, int *contentFlags, int *surfaceFlags );
+bool                        ClusterVisibleToPoint( const Vector3& point, int cluster );
+int                         ClusterForPoint( const Vector3& point );
+int                         ClusterForPointExt( const Vector3& point, float epsilon );
+int                         ClusterForPointExtFilter( const Vector3& point, float epsilon, int numClusters, int *clusters );
+int                         ShaderForPointInLeaf( const Vector3& point, int leafNum, float epsilon, int wantContentFlags, int wantSurfaceFlags, int *contentFlags, int *surfaceFlags );
 void                        SetupEnvelopes( bool forGrid, bool fastFlag );
 void                        FreeTraceLights( trace_t *trace );
-void                        CreateTraceLightsForBounds( vec3_t mins, vec3_t maxs, vec3_t normal, int numClusters, int *clusters, int flags, trace_t *trace );
+void                        CreateTraceLightsForBounds( const MinMax& minmax, const Vector3 *normal, int numClusters, int *clusters, LightFlags flags, trace_t *trace );
 void                        CreateTraceLightsForSurface( int num, trace_t *trace );
 
 
@@ -1857,18 +1858,18 @@ image_t                     *ImageLoad( const char *filename );
 /* shaders.c */
 void                        ColorMod( colorMod_t *am, int numVerts, bspDrawVert_t *drawVerts );
 
-void                        TCMod( tcMod_t mod, float st[ 2 ] );
-void                        TCModIdentity( tcMod_t mod );
-void                        TCModMultiply( tcMod_t a, tcMod_t b, tcMod_t out );
-void                        TCModTranslate( tcMod_t mod, float s, float t );
-void                        TCModScale( tcMod_t mod, float s, float t );
-void                        TCModRotate( tcMod_t mod, float euler );
+void                        TCMod( const tcMod_t& mod, Vector2& st );
+void                        TCModIdentity( tcMod_t& mod );
+void                        TCModMultiply( const tcMod_t& a, const tcMod_t& b, tcMod_t& out );
+void                        TCModTranslate( tcMod_t& mod, float s, float t );
+void                        TCModScale( tcMod_t& mod, float s, float t );
+void                        TCModRotate( tcMod_t& mod, float euler );
 
-bool                        ApplySurfaceParm( char *name, int *contentFlags, int *surfaceFlags, int *compileFlags );
+bool                        ApplySurfaceParm( const char *name, int *contentFlags, int *surfaceFlags, int *compileFlags );
 
 void                        BeginMapShaderFile( const char *mapFile );
 void                        WriteMapShaderFile( void );
-shaderInfo_t                *CustomShader( shaderInfo_t *si, char *find, char *replace );
+shaderInfo_t                *CustomShader( shaderInfo_t *si, const char *find, char *replace );
 void                        EmitVertexRemapShader( char *from, char *to );
 
 void                        LoadShaderInfo( void );
@@ -1887,7 +1888,7 @@ void                        BSPFilesCleanup();
 void                        SwapBlock( int *block, int size );
 
 int                         GetLumpElements( bspHeader_t *header, int lump, int size );
-void                        *GetLump( bspHeader_t *header, int lump );
+void_ptr                    GetLump( bspHeader_t *header, int lump );
 int                         CopyLump( bspHeader_t *header, int lump, void *dest, int size );
 int                         CopyLump_Allocate( bspHeader_t *header, int lump, void **dest, int size, int *allocationVariable );
 void                        AddLump( FILE *file, bspHeader_t *header, int lumpNum, const void *data, int length );
@@ -1897,40 +1898,10 @@ void                        PartialLoadBSPFile( const char *filename );
 void                        WriteBSPFile( const char *filename );
 void                        PrintBSPFileSizes( void );
 
-epair_t                     *ParseEPair( void );
+void                        ParseEPair( std::list<epair_t>& epairs );
 void                        ParseEntities( void );
 void                        UnparseEntities( void );
 void                        PrintEntity( const entity_t *ent );
-void                        SetKeyValue( entity_t *ent, const char *key, const char *value );
-const char                  *ValueForKey( const entity_t *ent, const char *key );
-bool                        BoolForKey_impl( const entity_t *ent, ... );
-#define                     BoolForKey( entity, keys... ) BoolForKey_impl( entity, keys, NULL )
-int                         IntForKey_impl( const entity_t *ent, ... );
-#define                     IntForKey( entity, keys... ) IntForKey_impl( entity, keys, NULL )
-vec_t                       FloatForKey_impl( const entity_t *ent, ... );
-#define                     FloatForKey( entity, keys... ) FloatForKey_impl( entity, keys, NULL )
-void                        GetVectorForKey( const entity_t *ent, const char *key, vec3_t vec );
-/* entity: read key value generic macro
-   returns true on successful read
-   returns false and does not modify value otherwise */
-bool                        entity_read_bool( bool *bool_value, const entity_t *entity, ... );
-bool                        entity_read_int( int *int_value, const entity_t *entity, ... );
-bool                        entity_read_float( float *float_value, const entity_t *entity, ... ); // warning: float[3] may be passed here erroneously, if not written as &float[3]
-bool                        entity_read_vector3( float (*vector3_value)[3], const entity_t *entity, ... );
-bool                        entity_read_string( char (*string_value)[], const entity_t *entity, ... ); // explicit pointer to array to avoid erroneous mix of char* and char**
-bool                        entity_read_string_ptr( const char **string_ptr_value, const entity_t *entity, ... );
-#define ENT_READKV( value_ptr, entity, keys... ) _Generic( ( value_ptr ),         \
-                                                    bool*: entity_read_bool,       \
-                                                    int*: entity_read_int,          \
-                                                    float*: entity_read_float,       \
-                                                    float (*)[3]: entity_read_vector3,\
-                                                    char (*)[]: entity_read_string,    \
-                                                    const char**: entity_read_string_ptr\
-                                                 )( value_ptr, entity, keys, NULL )
-
-const char                  *ent_classname( const entity_t *entity );
-bool                        ent_class_is( const entity_t *entity, const char *classname );
-bool                        ent_class_prefixed( const entity_t *entity, const char *prefix );
 
 entity_t                    *FindTargetEntity( const char *target );
 void                        GetEntityShadowFlags( const entity_t *ent, const entity_t *ent2, int *castShadows, int *recvShadows );
@@ -1972,47 +1943,47 @@ Q_EXTERN game_t games[]
 #else
 	=
 	{
-								#include "game_quake3.h"
+	#include "game_quake3.h"
 	,
-								#include "game_quakelive.h" /* must be after game_quake3.h as they share defines! */
+	#include "game_quakelive.h" /* must be after game_quake3.h as they share defines! */
 	,
-								#include "game_nexuiz.h" /* must be after game_quake3.h as they share defines! */
+	#include "game_nexuiz.h" /* must be after game_quake3.h as they share defines! */
 	,
-								#include "game_rexuiz.h" /* must be after game_quake3.h as they share defines! */
+	#include "game_rexuiz.h" /* must be after game_quake3.h as they share defines! */
 	,
-								#include "game_xonotic.h" /* must be after game_quake3.h as they share defines! */
+	#include "game_xonotic.h" /* must be after game_quake3.h as they share defines! */
 	,
-								#include "game_tremulous.h" /*LinuxManMikeC: must be after game_quake3.h, depends on #define's set in it */
+	#include "game_tremulous.h" /*LinuxManMikeC: must be after game_quake3.h, depends on #define's set in it */
 	,
-								#include "game_unvanquished.h"
+	#include "game_unvanquished.h"
 	,
-								#include "game_tenebrae.h"
+	#include "game_tenebrae.h"
 	,
-								#include "game_wolf.h"
+	#include "game_wolf.h"
 	,
-								#include "game_wolfet.h" /* must be after game_wolf.h as they share defines! */
+	#include "game_wolfet.h" /* must be after game_wolf.h as they share defines! */
 	,
-								#include "game_etut.h"
+	#include "game_etut.h"
 	,
-								#include "game_ef.h"
+	#include "game_ef.h"
 	,
-								#include "game_sof2.h"
+	#include "game_sof2.h"
 	,
-								#include "game_jk2.h"   /* must be after game_sof2.h as they share defines! */
+	#include "game_jk2.h"   /* must be after game_sof2.h as they share defines! */
 	,
-								#include "game_ja.h"    /* must be after game_jk2.h as they share defines! */
+	#include "game_ja.h"    /* must be after game_jk2.h as they share defines! */
 	,
-								#include "game_qfusion.h"   /* qfusion game */
+	#include "game_qfusion.h"   /* qfusion game */
 	,
-								#include "game_reaction.h" /* must be after game_quake3.h */
+	#include "game_reaction.h" /* must be after game_quake3.h */
 	,
-								#include "game_darkplaces.h"    /* vortex: darkplaces q1 engine */
+	#include "game_darkplaces.h"    /* vortex: darkplaces q1 engine */
 	,
-								#include "game_dq.h"    /* vortex: deluxe quake game ( darkplaces q1 engine) */
+	#include "game_dq.h"    /* vortex: deluxe quake game ( darkplaces q1 engine) */
 	,
-								#include "game_prophecy.h"  /* vortex: prophecy game ( darkplaces q1 engine) */
+	#include "game_prophecy.h"  /* vortex: prophecy game ( darkplaces q1 engine) */
 	,
-								#include "game__null.h" /* null game (must be last item) */
+	#include "game__null.h" /* null game (must be last item) */
 	};
 #endif
 Q_EXTERN game_t             *game Q_ASSIGN( &games[ 0 ] );
@@ -2022,18 +1993,14 @@ Q_EXTERN game_t             *game Q_ASSIGN( &games[ 0 ] );
 Q_EXTERN int numImages Q_ASSIGN( 0 );
 Q_EXTERN image_t images[ MAX_IMAGES ];
 
-Q_EXTERN int numPicoModels Q_ASSIGN( 0 );
-Q_EXTERN picoModel_t        *picoModels[ MAX_MODELS ];
-
 Q_EXTERN shaderInfo_t       *shaderInfo Q_ASSIGN( NULL );
 Q_EXTERN int numShaderInfo Q_ASSIGN( 0 );
-Q_EXTERN int numVertexRemaps Q_ASSIGN( 0 );
 
 Q_EXTERN surfaceParm_t custSurfaceParms[ MAX_CUST_SURFACEPARMS ];
 Q_EXTERN int numCustSurfaceParms Q_ASSIGN( 0 );
 
-Q_EXTERN char mapName[ MAX_QPATH ];                 /* ydnar: per-map custom shaders for larger lightmaps */
-Q_EXTERN char mapShaderFile[ 1024 ];
+Q_EXTERN String64 mapName;                 /* ydnar: per-map custom shaders for larger lightmaps */
+Q_EXTERN CopiedString mapShaderFile;
 Q_EXTERN bool warnImage Q_ASSIGN( true );
 
 /* ydnar: sinusoid samples */
@@ -2045,9 +2012,7 @@ Q_EXTERN bool doingBSP Q_ASSIGN( false );
 /* commandline arguments */
 Q_EXTERN bool verboseEntities Q_ASSIGN( false );
 Q_EXTERN bool force Q_ASSIGN( false );
-Q_EXTERN bool infoMode Q_ASSIGN( false );
 Q_EXTERN bool useCustomInfoParms Q_ASSIGN( false );
-Q_EXTERN bool noprune Q_ASSIGN( false );
 Q_EXTERN bool leaktest Q_ASSIGN( false );
 Q_EXTERN bool nodetail Q_ASSIGN( false );
 Q_EXTERN bool nosubdivide Q_ASSIGN( false );
@@ -2056,7 +2021,6 @@ Q_EXTERN bool fulldetail Q_ASSIGN( false );
 Q_EXTERN bool nowater Q_ASSIGN( false );
 Q_EXTERN bool noCurveBrushes Q_ASSIGN( false );
 Q_EXTERN bool fakemap Q_ASSIGN( false );
-Q_EXTERN bool coplanar Q_ASSIGN( false );
 Q_EXTERN bool nofog Q_ASSIGN( false );
 Q_EXTERN bool noHint Q_ASSIGN( false );                        /* ydnar */
 Q_EXTERN bool renameModelShaders Q_ASSIGN( false );            /* ydnar */
@@ -2132,13 +2096,12 @@ Q_EXTERN char EnginePath[ 1024 ];
 
 Q_EXTERN char name[ 1024 ];
 Q_EXTERN char source[ 1024 ];
-Q_EXTERN char outbase[ 32 ];
 
-Q_EXTERN int sampleSize;                                    /* lightmap sample size in units */
-Q_EXTERN int minSampleSize;                                 /* minimum sample size to use at all */
-Q_EXTERN int sampleScale;                                   /* vortex: lightmap sample scale (ie quality)*/
+Q_EXTERN int sampleSize Q_ASSIGN( DEFAULT_LIGHTMAP_SAMPLE_SIZE );          /* lightmap sample size in units */
+Q_EXTERN int minSampleSize Q_ASSIGN( DEFAULT_LIGHTMAP_MIN_SAMPLE_SIZE );   /* minimum sample size to use at all */
+Q_EXTERN int sampleScale;                                                  /* vortex: lightmap sample scale (ie quality)*/
 
-Q_EXTERN int mapEntityNum Q_ASSIGN( 0 );
+Q_EXTERN std::size_t mapEntityNum Q_ASSIGN( 0 );
 
 Q_EXTERN int entitySourceBrushes;
 
@@ -2146,7 +2109,9 @@ Q_EXTERN plane_t            *mapplanes Q_ASSIGN( NULL );  /* mapplanes[ num ^ 1 
 Q_EXTERN int nummapplanes Q_ASSIGN( 0 );                    /* nummapplanes will always be even */
 Q_EXTERN int allocatedmapplanes Q_ASSIGN( 0 );
 Q_EXTERN int numMapPatches;
-Q_EXTERN vec3_t mapMins, mapMaxs;
+Q_EXTERN MinMax g_mapMinmax;
+
+inline const MinMax c_worldMinmax( Vector3( MIN_WORLD_COORD ), Vector3( MAX_WORLD_COORD ) );
 
 Q_EXTERN int defaultFogNum Q_ASSIGN( -1 );                  /* ydnar: cleaner fog handling */
 Q_EXTERN int numMapFogs Q_ASSIGN( 0 );
@@ -2154,7 +2119,7 @@ Q_EXTERN fog_t mapFogs[ MAX_MAP_FOGS ];
 
 Q_EXTERN entity_t           *mapEnt;
 Q_EXTERN brush_t            *buildBrush;
-Q_EXTERN brushType_t g_brushType;
+Q_EXTERN EBrushType g_brushType Q_ASSIGN( EBrushType::Undefined );
 
 Q_EXTERN int numStrippedLights Q_ASSIGN( 0 );
 
@@ -2163,8 +2128,7 @@ Q_EXTERN int numStrippedLights Q_ASSIGN( 0 );
 Q_EXTERN mapDrawSurface_t   *mapDrawSurfs Q_ASSIGN( NULL );
 Q_EXTERN int numMapDrawSurfs;
 
-Q_EXTERN int numSurfacesByType[ NUM_SURFACE_TYPES ];
-Q_EXTERN int numClearedSurfaces;
+Q_EXTERN int numSurfacesByType[ static_cast<std::size_t>( ESurfaceType::Shader ) + 1 ];
 Q_EXTERN int numStripSurfaces;
 Q_EXTERN int numMaxAreaSurfaces;
 Q_EXTERN int numFanSurfaces;
@@ -2175,7 +2139,7 @@ Q_EXTERN int numRedundantIndexes;
 
 Q_EXTERN int numSurfaceModels Q_ASSIGN( 0 );
 
-Q_EXTERN byte debugColors[ 12 ][ 3 ]
+Q_EXTERN Vector3b debugColors[ 12 ]
 #ifndef MAIN_C
 ;
 #else
@@ -2196,9 +2160,8 @@ Q_EXTERN byte debugColors[ 12 ][ 3 ]
 	};
 #endif
 
-Q_EXTERN bool skyboxPresent Q_ASSIGN( false );
 Q_EXTERN int skyboxArea Q_ASSIGN( -1 );
-Q_EXTERN m4x4_t skyboxTransform;
+Q_EXTERN Matrix4 skyboxTransform;
 
 
 
@@ -2217,8 +2180,7 @@ Q_EXTERN bool mergevisportals;
 Q_EXTERN bool nosort;
 Q_EXTERN bool saveprt;
 Q_EXTERN bool hint;             /* ydnar */
-Q_EXTERN char inbase[ MAX_QPATH ];
-Q_EXTERN char globalCelShader[ MAX_QPATH ];
+Q_EXTERN String64 globalCelShader;
 
 Q_EXTERN float farPlaneDist Q_ASSIGN( 0.0f );                /* rr2do2, rf, mre, ydnar all contributed to this one... */
 Q_EXTERN int farPlaneDistMode Q_ASSIGN( 0 );
@@ -2234,13 +2196,7 @@ Q_EXTERN leaf_t             *faceleafs;
 
 Q_EXTERN int numfaces;
 
-Q_EXTERN byte               *vismap, *vismap_p, *vismap_end;
-
-Q_EXTERN int testlevel;
-
-Q_EXTERN byte               *uncompressed;
-
-Q_EXTERN int leafbytes, leaflongs;
+Q_EXTERN int leafbytes;
 Q_EXTERN int portalbytes, portallongs;
 
 Q_EXTERN vportal_t          *sorted_portals[ MAX_MAP_PORTALS * 2 ];
@@ -2260,8 +2216,8 @@ Q_EXTERN bool loMem Q_ASSIGN( false );
 Q_EXTERN bool noStyles Q_ASSIGN( false );
 Q_EXTERN bool keepLights Q_ASSIGN( false );
 
-Q_EXTERN int sampleSize Q_ASSIGN( DEFAULT_LIGHTMAP_SAMPLE_SIZE );
-Q_EXTERN int minSampleSize Q_ASSIGN( DEFAULT_LIGHTMAP_MIN_SAMPLE_SIZE );
+//Q_EXTERN int sampleSize Q_ASSIGN( DEFAULT_LIGHTMAP_SAMPLE_SIZE );
+//Q_EXTERN int minSampleSize Q_ASSIGN( DEFAULT_LIGHTMAP_MIN_SAMPLE_SIZE );
 Q_EXTERN float noVertexLighting Q_ASSIGN( 0.0f );
 Q_EXTERN bool nolm Q_ASSIGN( false );
 Q_EXTERN bool noGridLighting Q_ASSIGN( false );
@@ -2318,23 +2274,19 @@ Q_EXTERN float dirtGain Q_ASSIGN( 1.0f );
 Q_EXTERN bool debugnormals Q_ASSIGN( false );
 Q_EXTERN bool floodlighty Q_ASSIGN( false );
 Q_EXTERN bool floodlight_lowquality Q_ASSIGN( false );
-Q_EXTERN vec3_t floodlightRGB;
+Q_EXTERN Vector3 floodlightRGB;
 Q_EXTERN float floodlightIntensity Q_ASSIGN( 512.0f );
 Q_EXTERN float floodlightDistance Q_ASSIGN( 1024.0f );
 Q_EXTERN float floodlightDirectionScale Q_ASSIGN( 1.0f );
 
 Q_EXTERN bool dump Q_ASSIGN( false );
 Q_EXTERN bool debug Q_ASSIGN( false );
-Q_EXTERN bool debugUnused Q_ASSIGN( false );
 Q_EXTERN bool debugAxis Q_ASSIGN( false );
 Q_EXTERN bool debugCluster Q_ASSIGN( false );
 Q_EXTERN bool debugOrigin Q_ASSIGN( false );
 Q_EXTERN bool lightmapBorder Q_ASSIGN( false );
 //1=warn; 0=warn if lmsize>128
 Q_EXTERN int debugSampleSize Q_ASSIGN( 0 );
-
-/* longest distance across the map */
-Q_EXTERN float maxMapDistance Q_ASSIGN( 0 );
 
 /* for run time tweaking of light sources */
 Q_EXTERN float pointScale Q_ASSIGN( 7500.0f );
@@ -2366,6 +2318,7 @@ Q_EXTERN float lightmapExposure Q_ASSIGN( 0.0f );
 Q_EXTERN float lightmapCompensate Q_ASSIGN( 1.0f );
 Q_EXTERN float lightmapBrightness Q_ASSIGN( 1.0f );
 Q_EXTERN float lightmapContrast Q_ASSIGN( 1.0f );
+inline float g_lightmapSaturation = 1;
 
 /* ydnar: for runtime tweaking of falloff tolerance */
 Q_EXTERN float falloffTolerance Q_ASSIGN( 1.0f );
@@ -2381,7 +2334,6 @@ Q_EXTERN light_t            *lights;
 Q_EXTERN int numPointLights;
 Q_EXTERN int numSpotLights;
 Q_EXTERN int numSunLights;
-Q_EXTERN int numAreaLights;
 
 /* ydnar: for luxel placement */
 Q_EXTERN int numSurfaceClusters, maxSurfaceClusters;
@@ -2396,25 +2348,11 @@ Q_EXTERN int numPatchDiffuseLights;
 /* ydnar: general purpose extra copy of drawvert list */
 Q_EXTERN bspDrawVert_t      *yDrawVerts;
 
-/* ydnar: for tracing statistics */
-Q_EXTERN int minSurfacesTested;
-Q_EXTERN int maxSurfacesTested;
-Q_EXTERN int totalSurfacesTested;
-Q_EXTERN int totalTraces;
-
-Q_EXTERN FILE               *dumpFile;
-
 Q_EXTERN int defaultLightSubdivide Q_ASSIGN( 999 );
 
-Q_EXTERN vec3_t ambientColor;
-Q_EXTERN vec3_t minLight, minVertexLight, minGridLight;
+Q_EXTERN Vector3 ambientColor;
+Q_EXTERN Vector3 minLight, minVertexLight, minGridLight;
 Q_EXTERN float maxLight Q_ASSIGN( 255.f );
-
-Q_EXTERN int                *entitySurface;
-Q_EXTERN vec3_t             *surfaceOrigin;
-
-Q_EXTERN vec3_t sunDirection;
-Q_EXTERN vec3_t sunLight;
 
 /* ydnar: light optimization */
 Q_EXTERN float subdivideThreshold Q_ASSIGN( DEFAULT_SUBDIVIDE_THRESHOLD );
@@ -2449,14 +2387,20 @@ Q_EXTERN int numLightSurfaces Q_ASSIGN( 0 );
 Q_EXTERN int                *lightSurfaces Q_ASSIGN( NULL );
 
 /* raw lightmaps */
-Q_EXTERN int numRawSuperLuxels Q_ASSIGN( 0 );
 Q_EXTERN int numRawLightmaps Q_ASSIGN( 0 );
 Q_EXTERN rawLightmap_t      *rawLightmaps Q_ASSIGN( NULL );
 Q_EXTERN int                *sortLightmaps Q_ASSIGN( NULL );
 
 /* vertex luxels */
-Q_EXTERN float              *vertexLuxels[ MAX_LIGHTMAPS ];
-Q_EXTERN float              *radVertexLuxels[ MAX_LIGHTMAPS ];
+Q_EXTERN Vector3            *vertexLuxels[ MAX_LIGHTMAPS ];
+Q_EXTERN Vector3            *radVertexLuxels[ MAX_LIGHTMAPS ];
+
+inline Vector3& getVertexLuxel( int lightmapNum, int vertexNum ){
+	return vertexLuxels[lightmapNum][vertexNum];
+}
+inline Vector3& getRadVertexLuxel( int lightmapNum, int vertexNum ){
+	return radVertexLuxels[lightmapNum][vertexNum];
+}
 
 /* bsp lightmaps */
 Q_EXTERN int numLightmapShaders Q_ASSIGN( 0 );
@@ -2466,7 +2410,7 @@ Q_EXTERN int numBSPLightmaps Q_ASSIGN( 0 );
 Q_EXTERN int numExtLightmaps Q_ASSIGN( 0 );
 Q_EXTERN outLightmap_t      *outLightmaps Q_ASSIGN( NULL );
 
-/* vortex: per surface floodlight statictics */
+/* vortex: per surface floodlight statistics */
 Q_EXTERN int numSurfacesFloodlighten Q_ASSIGN( 0 );
 
 /* grid points */
@@ -2489,9 +2433,9 @@ Q_EXTERN int numLuxelsIlluminated Q_ASSIGN( 0 );
 Q_EXTERN int numVertsIlluminated Q_ASSIGN( 0 );
 
 /* lightgrid */
-Q_EXTERN vec3_t gridMins;
+Q_EXTERN Vector3 gridMins;
 Q_EXTERN int gridBounds[ 3 ];
-Q_EXTERN vec3_t gridSize
+Q_EXTERN Vector3 gridSize
 #ifndef MAIN_C
 ;
 #else
@@ -2506,10 +2450,8 @@ Q_EXTERN vec3_t gridSize
 
    ------------------------------------------------------------------------------- */
 
-Q_EXTERN int numEntities Q_ASSIGN( 0 );
-Q_EXTERN int numBSPEntities Q_ASSIGN( 0 );
-Q_EXTERN int allocatedEntities Q_ASSIGN( 0 );
-Q_EXTERN entity_t*          entities Q_ASSIGN( NULL );
+Q_EXTERN std::size_t numBSPEntities Q_ASSIGN( 0 );
+Q_EXTERN std::vector<entity_t> entities;
 
 Q_EXTERN int numBSPModels Q_ASSIGN( 0 );
 Q_EXTERN int allocatedBSPModels Q_ASSIGN( 0 );
@@ -2553,9 +2495,6 @@ Q_EXTERN bspBrushSide_t*    bspBrushSides Q_ASSIGN( NULL );
 Q_EXTERN int numBSPLightBytes Q_ASSIGN( 0 );
 Q_EXTERN byte               *bspLightBytes Q_ASSIGN( NULL );
 
-//%	Q_EXTERN int				numBSPGridPoints Q_ASSIGN( 0 );
-//%	Q_EXTERN byte				*bspGridPoints Q_ASSIGN( NULL );
-
 Q_EXTERN int numBSPGridPoints Q_ASSIGN( 0 );
 Q_EXTERN bspGridPoint_t     *bspGridPoints Q_ASSIGN( NULL );
 
@@ -2591,7 +2530,7 @@ Q_EXTERN bspAdvertisement_t bspAds[ MAX_MAP_ADVERTISEMENTS ];
 			{ \
 				Error( # ptr " over 2 GB" ); \
 			} \
-			ptr = realloc( ptr, sizeof( *ptr ) * allocated ); \
+			ptr = void_ptr( realloc( ptr, sizeof( *ptr ) * allocated ) ); \
 			if ( !ptr ) { \
 				Error( # ptr " out of memory" ); } \
 		} \
@@ -2606,7 +2545,7 @@ Q_EXTERN bspAdvertisement_t bspAds[ MAX_MAP_ADVERTISEMENTS ];
 		if ( used >= allocated )	\
 		{ \
 			allocated += add; \
-			ptr = realloc( ptr, sizeof( *ptr ) * allocated ); \
+			ptr = void_ptr( realloc( ptr, sizeof( *ptr ) * allocated ) ); \
 			if ( !ptr ) { \
 				Error( # ptr " out of memory" ); } \
 		} \

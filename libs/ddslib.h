@@ -181,7 +181,7 @@ typedef struct ddsBuffer_s
 	};
 	unsigned int alphaBitDepth;
 	unsigned int reserved;
-	void                *surface;
+	unsigned int surface; // void *surface;
 	union
 	{
 		ddsColorKey_t ckDestOverlay;
@@ -242,9 +242,9 @@ int                     DDSDecompress( ddsBuffer_t *dds, unsigned char *pixels )
 
 
 
-/* end marker */
 #ifdef __cplusplus
 }
 #endif
 
+/* end marker */
 #endif

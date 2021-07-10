@@ -32,61 +32,61 @@
 
 class NameCallbackSet
 {
-typedef std::set<NameCallback> NameCallbacks;
-NameCallbacks m_callbacks;
+	typedef std::set<NameCallback> NameCallbacks;
+	NameCallbacks m_callbacks;
 public:
-void insert( const NameCallback& callback ){
-	m_callbacks.insert( callback );
-}
-void erase( const NameCallback& callback ){
-	m_callbacks.erase( callback );
-}
-void changed( const char* name ) const {
-	for ( NameCallbacks::const_iterator i = m_callbacks.begin(); i != m_callbacks.end(); ++i )
-	{
-		( *i )( name );
+	void insert( const NameCallback& callback ){
+		m_callbacks.insert( callback );
 	}
-}
+	void erase( const NameCallback& callback ){
+		m_callbacks.erase( callback );
+	}
+	void changed( const char* name ) const {
+		for ( NameCallbacks::const_iterator i = m_callbacks.begin(); i != m_callbacks.end(); ++i )
+		{
+			( *i )( name );
+		}
+	}
 };
 
 class NamedEntity : public Nameable
 {
-EntityKeyValues& m_entity;
-NameCallbackSet m_changed;
-CopiedString m_name;
+	EntityKeyValues& m_entity;
+	NameCallbackSet m_changed;
+	CopiedString m_name;
 public:
-NamedEntity( EntityKeyValues& entity ) : m_entity( entity ){
-}
-const char* name() const {
-	if ( string_empty( m_name.c_str() ) ) {
-		return m_entity.getEntityClass().name();
+	NamedEntity( EntityKeyValues& entity ) : m_entity( entity ){
 	}
-	return m_name.c_str();
-}
-const char* classname() const {
-	return m_entity.getEntityClass().name();
-}
-const Colour3& color() const {
-	return m_entity.getEntityClass().color;
-}
-void attach( const NameCallback& callback ){
-	m_changed.insert( callback );
-}
-void detach( const NameCallback& callback ){
-	m_changed.erase( callback );
-}
+	const char* name() const {
+		if ( string_empty( m_name.c_str() ) ) {
+			return m_entity.getClassName();
+		}
+		return m_name.c_str();
+	}
+	const char* classname() const {
+		return m_entity.getClassName();
+	}
+	const Colour3& color() const {
+		return m_entity.getEntityClass().color;
+	}
+	void attach( const NameCallback& callback ){
+		m_changed.insert( callback );
+	}
+	void detach( const NameCallback& callback ){
+		m_changed.erase( callback );
+	}
 
-void identifierChanged( const char* value ){
-	if ( string_empty( value ) ) {
-		m_changed.changed( m_entity.getEntityClass().name() );
+	void identifierChanged( const char* value ){
+		if ( string_empty( value ) ) {
+			m_changed.changed( m_entity.getClassName() );
+		}
+		else
+		{
+			m_changed.changed( value );
+		}
+		m_name = value;
 	}
-	else
-	{
-		m_changed.changed( value );
-	}
-	m_name = value;
-}
-typedef MemberCaller1<NamedEntity, const char*, &NamedEntity::identifierChanged> IdentifierChangedCaller;
+	typedef MemberCaller1<NamedEntity, const char*, &NamedEntity::identifierChanged> IdentifierChangedCaller;
 };
 
 
@@ -96,7 +96,7 @@ typedef MemberCaller1<NamedEntity, const char*, &NamedEntity::identifierChanged>
 
 class RenderableNamedEntity
 {
-	enum ENameMode{
+	enum ENameMode {
 		eNameNormal = 0,
 		eNameSelected = 1,
 		eNameChildSelected = 2,
@@ -143,8 +143,7 @@ public:
 		matrix4_transform_vector4( volume.GetViewport(), position );
 //			globalOutputStream() << position << " Viewport\n";
 //			globalOutputStream() << volume.GetViewport()[0] << " " << volume.GetViewport()[5] << " Viewport size\n";
-		m_label.screenPos.x() = position.x();
-		m_label.screenPos.y() = position.y();
+		m_label.screenPos = position.vec3().vec2();
 //			globalOutputStream() << m_label.screenPos << "\n";
 
 		renderer.PushState();

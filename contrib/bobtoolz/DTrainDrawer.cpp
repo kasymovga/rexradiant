@@ -160,73 +160,74 @@ void DTrainDrawer::renderWireframe( Renderer& renderer, const VolumeTest& volume
 
 void AddSplineControl( const char* control, splinePoint_t* pSP ) {
 	controlPoint_t cp;
-	strncpy( cp.strName, control, 64 );
+	strncpy( cp.strName, control, sizeof( cp.strName ) - 1 );
+	cp.strName[ sizeof( cp.strName ) - 1 ] = '\0';
 
 	pSP->m_pointList.push_front( cp );
 }
 
 class EntityBuildPaths
 {
-mutable DEntity e;
-DTrainDrawer& drawer;
+	mutable DEntity e;
+	DTrainDrawer& drawer;
 public:
-EntityBuildPaths( DTrainDrawer& drawer ) : drawer( drawer ){
-}
-void operator()( scene::Instance& instance ) const {
-	e.ClearEPairs();
-	e.LoadEPairList( Node_getEntity( instance.path().top() ) );
+	EntityBuildPaths( DTrainDrawer& drawer ) : drawer( drawer ){
+	}
+	void operator()( scene::Instance& instance ) const {
+		e.ClearEPairs();
+		e.LoadEPairList( Node_getEntity( instance.path().top() ) );
 
-	const char* classname = e.m_Classname.GetBuffer();
-	const char* target;
-	const char* control;
-	const char* targetname;
-	vec3_t vOrigin;
+		const char* classname = e.m_Classname.GetBuffer();
+		const char* target;
+		const char* control;
+		const char* targetname;
+		vec3_t vOrigin;
 
-	e.SpawnString( "targetname", NULL, &targetname );
-	e.SpawnVector( "origin", "0 0 0", vOrigin );
+		e.SpawnString( "targetname", NULL, &targetname );
+		e.SpawnVector( "origin", "0 0 0", vOrigin );
 
-	if ( !strcmp( classname, "info_train_spline_main" ) ) {
-		if ( !targetname ) {
-			globalWarningStream() << "info_train_spline_main with no targetname";
-			return;
-		}
+		if ( !strcmp( classname, "info_train_spline_main" ) ) {
+			if ( !targetname ) {
+				globalWarningStream() << "info_train_spline_main with no targetname";
+				return;
+			}
 
-		e.SpawnString( "target", NULL, &target );
+			e.SpawnString( "target", NULL, &target );
 
-		if ( !target ) {
-			drawer.AddControlPoint( targetname, vOrigin );
-		}
-		else {
-			splinePoint_t* pSP = drawer.AddSplinePoint( targetname, target, vOrigin );
+			if ( !target ) {
+				drawer.AddControlPoint( targetname, vOrigin );
+			}
+			else {
+				splinePoint_t* pSP = drawer.AddSplinePoint( targetname, target, vOrigin );
 
-			e.SpawnString( "control", NULL, &control );
+				e.SpawnString( "control", NULL, &control );
 
-			if ( control ) {
-				AddSplineControl( control, pSP );
-
-				for ( int j = 2;; j++ ) {
-					char buffer[32];
-					sprintf( buffer, "control%i", j );
-
-					e.SpawnString( buffer, NULL, &control );
-					if ( !control ) {
-						break;
-					}
-
+				if ( control ) {
 					AddSplineControl( control, pSP );
+
+					for ( int j = 2;; j++ ) {
+						char buffer[32];
+						sprintf( buffer, "control%i", j );
+
+						e.SpawnString( buffer, NULL, &control );
+						if ( !control ) {
+							break;
+						}
+
+						AddSplineControl( control, pSP );
+					}
 				}
 			}
 		}
-	}
-	else if ( !strcmp( classname, "info_train_spline_control" ) ) {
-		if ( !targetname ) {
-			globalWarningStream() << "info_train_spline_control with no targetname";
-			return;
-		}
+		else if ( !strcmp( classname, "info_train_spline_control" ) ) {
+			if ( !targetname ) {
+				globalWarningStream() << "info_train_spline_control with no targetname";
+				return;
+			}
 
-		drawer.AddControlPoint( targetname, vOrigin );
+			drawer.AddControlPoint( targetname, vOrigin );
+		}
 	}
-}
 };
 
 void DTrainDrawer::BuildPaths() {
@@ -297,7 +298,8 @@ void DTrainDrawer::BuildPaths() {
 void DTrainDrawer::AddControlPoint( const char* name, vec_t* origin ){
 	controlPoint_t* pCP = new controlPoint_t;
 
-	strncpy( pCP->strName, name, 64 );
+	strncpy( pCP->strName, name, sizeof( pCP->strName ) - 1 );
+	pCP->strName[ sizeof( pCP->strName ) - 1 ] = '\0';
 	VectorCopy( origin, pCP->vOrigin );
 
 	m_pointList.push_back( pCP );
@@ -306,8 +308,10 @@ void DTrainDrawer::AddControlPoint( const char* name, vec_t* origin ){
 splinePoint_t* DTrainDrawer::AddSplinePoint( const char* name, const char* target, vec_t* origin ){
 	splinePoint_t* pSP = new splinePoint_t;
 
-	strncpy( pSP->point.strName, name,       64 );
-	strncpy( pSP->strTarget,     target,     64 );
+	strncpy( pSP->point.strName, name, sizeof( pSP->point.strName ) - 1 );
+	pSP->point.strName[ sizeof( pSP->point.strName ) - 1 ] = '\0';
+	strncpy( pSP->strTarget, target, sizeof( pSP->strTarget ) - 1 );
+	pSP->strTarget[ sizeof( pSP->strTarget ) - 1 ] = '\0';
 	VectorCopy( origin, pSP->point.vOrigin );
 	m_splineList.push_back( pSP );
 

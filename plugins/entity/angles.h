@@ -53,6 +53,14 @@ inline void read_angle( Vector3& angles, const char* value ){
 		normalise_angles( angles );
 	}
 }
+inline void read_group_angle( Vector3& angles, const char* value ){
+	if( string_equal( value, "-1" ) )
+		angles = Vector3( 0, -90, 0 );
+	else if( string_equal( value, "-2" ) )
+		angles = Vector3( 0, 90, 0 );
+	else
+		read_angle( angles, value );
+}
 inline void read_angles( Vector3& angles, const char* value ){
 	if ( !string_parse_vector3( value, angles ) ) {
 		default_angles( angles );
@@ -64,9 +72,7 @@ inline void read_angles( Vector3& angles, const char* value ){
 	}
 }
 inline void write_angles( const Vector3& angles, Entity* entity ){
-	if ( angles[0] == 0
-		 && angles[1] == 0
-		 && angles[2] == 0 ) {
+	if ( angles == ANGLESKEY_IDENTITY ) {
 		entity->setKeyValue( "angle", "" );
 		entity->setKeyValue( "angles", "" );
 	}
@@ -101,72 +107,84 @@ inline Matrix4 matrix4_rotation_for_euler_xyz_degrees_quantised( const Vector3& 
 }
 
 inline Vector3 angles_snapped_to_zero( const Vector3& angles ){
-	float epsilon = ( fabs( angles[0] ) > 0.001f || fabs( angles[1] ) > 0.001f || fabs( angles[2] ) > 0.001f ) ? 5e-5 : 1e-6;
+	const float epsilon = ( fabs( angles[0] ) > 0.001f || fabs( angles[1] ) > 0.001f || fabs( angles[2] ) > 0.001f ) ? 5e-5 : 1e-6;
 	return Vector3( fabs( angles[0] ) < epsilon ? 0.f : angles[0],
-					fabs( angles[1] ) < epsilon ? 0.f : angles[1],
-					fabs( angles[2] ) < epsilon ? 0.f : angles[2]
-					);
+	                fabs( angles[1] ) < epsilon ? 0.f : angles[1],
+	                fabs( angles[2] ) < epsilon ? 0.f : angles[2]
+	              );
 }
 
 inline Vector3 angles_rotated( const Vector3& angles, const Quaternion& rotation ){
 	return angles_snapped_to_zero(
-			matrix4_get_rotation_euler_xyz_degrees(
-				matrix4_multiplied_by_matrix4(
-					matrix4_rotation_for_quaternion_quantised( rotation ),
-					matrix4_rotation_for_euler_xyz_degrees_quantised( angles )
-				)
-			)
-		);
+	           matrix4_get_rotation_euler_xyz_degrees(
+	               matrix4_multiplied_by_matrix4(
+	                   matrix4_rotation_for_quaternion_quantised( rotation ),
+	                   matrix4_rotation_for_euler_xyz_degrees_quantised( angles )
+	               )
+	           )
+	       );
 }
 #if 0
 inline Vector3 angles_rotated_for_rotated_pivot( const Vector3& angles, const Quaternion& rotation ){
 	return angles_snapped_to_zero(
-			matrix4_get_rotation_euler_xyz_degrees(
-				matrix4_multiplied_by_matrix4(
-					matrix4_rotation_for_euler_xyz_degrees_quantised( angles ),
-					matrix4_rotation_for_quaternion_quantised( rotation )
-				)
-			)
-		);
+	           matrix4_get_rotation_euler_xyz_degrees(
+	               matrix4_multiplied_by_matrix4(
+	                   matrix4_rotation_for_euler_xyz_degrees_quantised( angles ),
+	                   matrix4_rotation_for_quaternion_quantised( rotation )
+	               )
+	           )
+	       );
 }
 #endif
 class AnglesKey
 {
-Callback m_anglesChanged;
+	Callback m_anglesChanged;
+	KeyObserver m_angleCB;
+	KeyObserver m_anglesCB;
+	const Entity& m_entity;
 public:
-Vector3 m_angles;
+	Vector3 m_angles;
 
 
-AnglesKey( const Callback& anglesChanged )
-	: m_anglesChanged( anglesChanged ), m_angles( ANGLESKEY_IDENTITY ){
-}
+	AnglesKey( const Callback& anglesChanged, const Entity& entity )
+		: m_anglesChanged( anglesChanged ), m_angleCB(), m_anglesCB(), m_entity( entity ), m_angles( ANGLESKEY_IDENTITY ){
+	}
 
-void angleChanged( const char* value ){
-	read_angle( m_angles, value );
-	m_anglesChanged();
-}
-typedef MemberCaller1<AnglesKey, const char*, &AnglesKey::angleChanged> AngleChangedCaller;
+	void angleChanged( const char* value ){
+		if( !m_entity.hasKeyValue( "angles" ) || m_anglesCB == KeyObserver() ){ // no "angles" set or supported
+			read_angle( m_angles, value );
+			m_anglesChanged();
+		}
+	}
+	KeyObserver getAngleChangedCallback(){
+		return m_angleCB = MemberCaller1<AnglesKey, const char*, &AnglesKey::angleChanged>( *this );
+	}
 
-void groupAngleChanged( const char* value ){
-	if( strlen( value ) == 2 && value[0] == '-' && value[1] == '1' )
-		m_angles = Vector3( 0, -90, 0 );
-	else if( strlen( value ) == 2 && value[0] == '-' && value[1] == '2' )
-		m_angles = Vector3( 0, 90, 0 );
-	else
-		read_angle( m_angles, value );
-	m_anglesChanged();
-}
-typedef MemberCaller1<AnglesKey, const char*, &AnglesKey::groupAngleChanged> GroupAngleChangedCaller;
+	void groupAngleChanged( const char* value ){
+		if( !m_entity.hasKeyValue( "angles" ) || m_anglesCB == KeyObserver() ){ // no "angles" set or supported
+			read_group_angle( m_angles, value );
+			m_anglesChanged();
+		}
+	}
+	KeyObserver getGroupAngleChangedCallback(){
+		return m_angleCB = MemberCaller1<AnglesKey, const char*, &AnglesKey::groupAngleChanged>( *this );
+	}
 
-void anglesChanged( const char* value ){
-	read_angles( m_angles, value );
-	m_anglesChanged();
-}
-typedef MemberCaller1<AnglesKey, const char*, &AnglesKey::anglesChanged> AnglesChangedCaller;
+	void anglesChanged( const char* value ){
+		if( m_entity.hasKeyValue( "angles" ) ){ // check actual key presence, as this may be notified by default value on key removal
+			read_angles( m_angles, value );
+			m_anglesChanged();
+		}
+		else // "angles" key removed // improvable: also do this on invalid "angles" key
+			m_angleCB( m_entity.getKeyValue( "angle" ) );
+	}
+	KeyObserver getAnglesChangedCallback(){
+		return m_anglesCB = MemberCaller1<AnglesKey, const char*, &AnglesKey::anglesChanged>( *this );
+	}
 
-void write( Entity* entity ) const {
-	write_angles( m_angles, entity );
-}
+	void write( Entity* entity ) const {
+		write_angles( m_angles, entity );
+	}
 };
 
 

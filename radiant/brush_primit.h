@@ -65,24 +65,24 @@ struct brushprimit_texdef_t
 class TextureProjection
 {
 public:
-texdef_t m_texdef;
-brushprimit_texdef_t m_brushprimit_texdef;
-Vector3 m_basis_s;
-Vector3 m_basis_t;
+	texdef_t m_texdef;
+	brushprimit_texdef_t m_brushprimit_texdef;
+	Vector3 m_basis_s;
+	Vector3 m_basis_t;
 
-TextureProjection(){
-}
-TextureProjection(
-	const texdef_t& texdef,
-	const brushprimit_texdef_t& brushprimit_texdef,
-	const Vector3& basis_s,
-	const Vector3& basis_t
+	TextureProjection(){
+	}
+	TextureProjection(
+	    const texdef_t& texdef,
+	    const brushprimit_texdef_t& brushprimit_texdef,
+	    const Vector3& basis_s,
+	    const Vector3& basis_t
 	) :
-	m_texdef( texdef ),
-	m_brushprimit_texdef( brushprimit_texdef ),
-	m_basis_s( basis_s ),
-	m_basis_t( basis_t ){
-}
+		m_texdef( texdef ),
+		m_brushprimit_texdef( brushprimit_texdef ),
+		m_basis_s( basis_s ),
+		m_basis_t( basis_t ){
+	}
 };
 
 float Texdef_getDefaultTextureScale();
@@ -90,7 +90,8 @@ float Texdef_getDefaultTextureScale();
 class texdef_t;
 struct Winding;
 class Matrix4;
-class Plane3;
+template<typename T> class Plane3___;
+typedef Plane3___<double> Plane3;
 
 void Normal_GetTransform( const Vector3& normal, Matrix4& transform );
 

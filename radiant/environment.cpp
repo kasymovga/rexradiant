@@ -140,7 +140,9 @@ void gamedetect(){
 #else
 			if ( gamedetect_check_game( "nexuiz.game", "data/common-spog.pk3", "nexuiz-linux-glx.sh", buf, p - buf ) )
 #endif
-			{ return; }
+			{
+				return;
+			}
 
 			// try to detect Q2World installs
 			if ( gamedetect_check_game( "q2w.game", "default/quake2world.version", NULL, buf, p - buf ) ) {
@@ -203,9 +205,7 @@ CopiedString g_openMapByCmd;
 void cmdMap(){
 	for ( int i = 1; i < g_argc; ++i )
 		if( extension_equal( path_get_extension( g_argv[i] ), "map" ) ){
-			StringOutputStream stream( 256 );
-			stream << PathCleaned( g_argv[i] );
-			g_openMapByCmd = stream.c_str();
+			g_openMapByCmd = StringOutputStream( 256 )( PathCleaned( g_argv[i] ) ).c_str();
 			return;
 		}
 }
@@ -220,11 +220,11 @@ void cmdMap(){
 
 const char* LINK_NAME =
 #if defined ( __linux__ )
-	"/proc/self/exe"
+    "/proc/self/exe"
 #else // FreeBSD and OSX
-	"/proc/curproc/file"
+    "/proc/curproc/file"
 #endif
-;
+    ;
 
 /// brief Returns the filename of the executable belonging to the current process, or empty string, if not found.
 const char* getexename( char *buf ){
@@ -250,7 +250,7 @@ void environment_init( int argc, char* argv[] ){
 	struct passwd *pw;
 	seteuid( getuid() );
 	if ( geteuid() == 0 && ( loginname = getlogin() ) != 0 &&
-		 ( pw = getpwnam( loginname ) ) != 0 ) {
+	     ( pw = getpwnam( loginname ) ) != 0 ) {
 		setuid( pw->pw_uid );
 	}
 
@@ -262,14 +262,12 @@ void environment_init( int argc, char* argv[] ){
 		ASSERT_MESSAGE( !string_empty( app_filepath.c_str() ), "failed to deduce app path" );
 		// NOTE: we build app path with a trailing '/'
 		// it's a general convention in Radiant to have the slash at the end of directories
-		app_path = StringRange( real, path_get_filename_start( real ) );
+		app_path = PathFilenameless( real );
 	}
 
 	if ( !portable_app_setup() ) {
-		StringOutputStream home( 256 );
-		home << DirectoryCleaned( g_get_home_dir() ) << ".netradiant/";
-		Q_mkdir( home.c_str() );
-		home_path = home.c_str();
+		home_path = StringOutputStream( 256 )( DirectoryCleaned( g_get_home_dir() ), ".netradiant/" ).c_str();
+		Q_mkdir( home_path.c_str() );
 	}
 	gamedetect();
 	cmdMap();
@@ -287,10 +285,8 @@ void environment_init( int argc, char* argv[] ){
 		char filename[MAX_PATH + 1];
 		GetModuleFileName( 0, filename, MAX_PATH );
 
-		StringOutputStream stream( 256 );
-		stream << PathCleaned( filename );
-		app_filepath = stream.c_str();
-		app_path = StringRange( stream.c_str(), path_get_filename_start( stream.c_str() ) );
+		app_filepath = StringOutputStream( 256 )( PathCleaned( filename ) ).c_str();
+		app_path = PathFilenameless( app_filepath.c_str() );
 	}
 
 	if ( !portable_app_setup() ) {
@@ -298,7 +294,7 @@ void environment_init( int argc, char* argv[] ){
 		StringOutputStream home( 256 );
 		if ( !appdata || string_empty( appdata ) ) {
 			ERROR_MESSAGE( "Application Data folder not available.\n"
-						   "Radiant will use C:\\ for user preferences.\n" );
+			               "Radiant will use C:\\ for user preferences.\n" );
 			home << "C:";
 		}
 		else

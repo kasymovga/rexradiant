@@ -92,7 +92,7 @@ typedef struct z_stream_s {
 	unsigned int avail_out;     /* remaining free space at next_out */
 	unsigned long total_out;    /* total nb of unsigned chars output so */
 
-	char     *msg;      /* last error message, NULL if no error */
+	const char     *msg;      /* last error message, NULL if no error */
 	struct internal_state *state; /* not visible by applications */
 
 	alloc_func zalloc;  /* used to allocate the internal state */
@@ -170,8 +170,8 @@ extern int unzStringFileNameCompare( const char* fileName1, const char* fileName
 
 /*
    Compare two filename (fileName1,fileName2).
-   If iCaseSenisivity = 1, comparision is case sensitivity (like strcmp)
-   If iCaseSenisivity = 2, comparision is not case sensitivity (like strcmpi
+   If iCaseSenisivity = 1, comparison is case sensitivity (like strcmp)
+   If iCaseSenisivity = 2, comparison is not case sensitivity (like strcmpi
                                 or strcasecmp)
    If iCaseSenisivity = 0, case sensitivity is defaut of your operating system
     (like 1 on Unix, 2 on Windows)

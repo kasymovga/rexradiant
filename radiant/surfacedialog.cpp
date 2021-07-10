@@ -118,127 +118,127 @@ inline void spin_button_set_step( GtkSpinButton* spin, gfloat step ){
 
 class Increment
 {
-float& m_f;
+	float& m_f;
 public:
-GtkSpinButton* m_spin;
-GtkEntry* m_entry;
-Increment( float& f ) : m_f( f ), m_spin( 0 ), m_entry( 0 ){
-}
-void cancel(){
-	entry_set_float( m_entry, m_f );
-}
-typedef MemberCaller<Increment, &Increment::cancel> CancelCaller;
-void apply(){
-	m_f = static_cast<float>( entry_get_float( m_entry ) );
-	spin_button_set_step( m_spin, m_f );
-}
-typedef MemberCaller<Increment, &Increment::apply> ApplyCaller;
+	GtkSpinButton* m_spin;
+	GtkEntry* m_entry;
+	Increment( float& f ) : m_f( f ), m_spin( 0 ), m_entry( 0 ){
+	}
+	void cancel(){
+		entry_set_float( m_entry, m_f );
+	}
+	typedef MemberCaller<Increment, &Increment::cancel> CancelCaller;
+	void apply(){
+		m_f = static_cast<float>( entry_get_float( m_entry ) );
+		spin_button_set_step( m_spin, m_f );
+	}
+	typedef MemberCaller<Increment, &Increment::apply> ApplyCaller;
 };
 
 void SurfaceInspector_GridChange();
 
 class SurfaceInspector : public Dialog
 {
-GtkWindow* BuildDialog();
+	GtkWindow* BuildDialog();
 
-NonModalEntry m_textureEntry;
-NonModalSpinner m_hshiftSpinner;
-NonModalEntry m_hshiftEntry;
-NonModalSpinner m_vshiftSpinner;
-NonModalEntry m_vshiftEntry;
-NonModalSpinner m_hscaleSpinner;
-NonModalEntry m_hscaleEntry;
-NonModalSpinner m_vscaleSpinner;
-NonModalEntry m_vscaleEntry;
-NonModalSpinner m_rotateSpinner;
-NonModalEntry m_rotateEntry;
+	NonModalEntry m_textureEntry;
+	NonModalSpinner m_hshiftSpinner;
+	NonModalEntry m_hshiftEntry;
+	NonModalSpinner m_vshiftSpinner;
+	NonModalEntry m_vshiftEntry;
+	NonModalSpinner m_hscaleSpinner;
+	NonModalEntry m_hscaleEntry;
+	NonModalSpinner m_vscaleSpinner;
+	NonModalEntry m_vscaleEntry;
+	NonModalSpinner m_rotateSpinner;
+	NonModalEntry m_rotateEntry;
 
-IdleDraw m_idleDraw;
+	IdleDraw m_idleDraw;
 
-GtkCheckButton* m_surfaceFlags[32];
-GtkCheckButton* m_contentFlags[32];
+	GtkCheckButton* m_surfaceFlags[32];
+	GtkCheckButton* m_contentFlags[32];
 
-NonModalEntry m_valueEntry;
-GtkEntry* m_valueEntryWidget;
+	NonModalEntry m_valueEntry;
+	GtkEntry* m_valueEntryWidget;
 public:
-WindowPositionTracker m_positionTracker;
-WindowPositionTrackerImportStringCaller m_importPosition;
-WindowPositionTrackerExportStringCaller m_exportPosition;
+	WindowPositionTracker m_positionTracker;
+	WindowPositionTrackerImportStringCaller m_importPosition;
+	WindowPositionTrackerExportStringCaller m_exportPosition;
 
 // Dialog Data
-float m_fitHorizontal;
-float m_fitVertical;
+	float m_fitHorizontal;
+	float m_fitVertical;
 
-Increment m_hshiftIncrement;
-Increment m_vshiftIncrement;
-Increment m_hscaleIncrement;
-Increment m_vscaleIncrement;
-Increment m_rotateIncrement;
-GtkEntry* m_texture;
+	Increment m_hshiftIncrement;
+	Increment m_vshiftIncrement;
+	Increment m_hscaleIncrement;
+	Increment m_vscaleIncrement;
+	Increment m_rotateIncrement;
+	GtkEntry* m_texture;
 
-SurfaceInspector() :
-	m_textureEntry( ApplyShaderCaller( *this ), UpdateCaller( *this ) ),
-	m_hshiftSpinner( ApplyTexdef_HShiftCaller( *this ), UpdateCaller( *this ) ),
-	m_hshiftEntry( Increment::ApplyCaller( m_hshiftIncrement ), Increment::CancelCaller( m_hshiftIncrement ) ),
-	m_vshiftSpinner( ApplyTexdef_VShiftCaller( *this ), UpdateCaller( *this ) ),
-	m_vshiftEntry( Increment::ApplyCaller( m_vshiftIncrement ), Increment::CancelCaller( m_vshiftIncrement ) ),
-	m_hscaleSpinner( ApplyTexdef_HScaleCaller( *this ), UpdateCaller( *this ) ),
-	m_hscaleEntry( Increment::ApplyCaller( m_hscaleIncrement ), Increment::CancelCaller( m_hscaleIncrement ) ),
-	m_vscaleSpinner( ApplyTexdef_VScaleCaller( *this ), UpdateCaller( *this ) ),
-	m_vscaleEntry( Increment::ApplyCaller( m_vscaleIncrement ), Increment::CancelCaller( m_vscaleIncrement ) ),
-	m_rotateSpinner( ApplyTexdef_RotationCaller( *this ), UpdateCaller( *this ) ),
-	m_rotateEntry( Increment::ApplyCaller( m_rotateIncrement ), Increment::CancelCaller( m_rotateIncrement ) ),
-	m_idleDraw( UpdateCaller( *this ) ),
-	m_valueEntry( ApplyFlagsCaller( *this ), UpdateCaller( *this ) ),
-	m_importPosition( m_positionTracker ),
-	m_exportPosition( m_positionTracker ),
-	m_hshiftIncrement( g_si_globals.shift[0] ),
-	m_vshiftIncrement( g_si_globals.shift[1] ),
-	m_hscaleIncrement( g_si_globals.scale[0] ),
-	m_vscaleIncrement( g_si_globals.scale[1] ),
-	m_rotateIncrement( g_si_globals.rotate ){
-	m_fitVertical = 1;
-	m_fitHorizontal = 1;
-	m_positionTracker.setPosition( WindowPosition( -1, -1, 300, 400 ) );
-}
-
-void constructWindow( GtkWindow* main_window ){
-	m_parent = main_window;
-	Create();
-	AddGridChangeCallback( FreeCaller<SurfaceInspector_GridChange>() );
-}
-void destroyWindow(){
-	Destroy();
-}
-bool visible() const {
-	return gtk_widget_get_visible( GTK_WIDGET( GetWidget() ) );
-}
-void queueDraw(){
-	if ( visible() ) {
-		m_idleDraw.queueDraw();
+	SurfaceInspector() :
+		m_textureEntry( ApplyShaderCaller( *this ), UpdateCaller( *this ) ),
+		m_hshiftSpinner( ApplyTexdef_HShiftCaller( *this ), UpdateCaller( *this ) ),
+		m_hshiftEntry( Increment::ApplyCaller( m_hshiftIncrement ), Increment::CancelCaller( m_hshiftIncrement ) ),
+		m_vshiftSpinner( ApplyTexdef_VShiftCaller( *this ), UpdateCaller( *this ) ),
+		m_vshiftEntry( Increment::ApplyCaller( m_vshiftIncrement ), Increment::CancelCaller( m_vshiftIncrement ) ),
+		m_hscaleSpinner( ApplyTexdef_HScaleCaller( *this ), UpdateCaller( *this ) ),
+		m_hscaleEntry( Increment::ApplyCaller( m_hscaleIncrement ), Increment::CancelCaller( m_hscaleIncrement ) ),
+		m_vscaleSpinner( ApplyTexdef_VScaleCaller( *this ), UpdateCaller( *this ) ),
+		m_vscaleEntry( Increment::ApplyCaller( m_vscaleIncrement ), Increment::CancelCaller( m_vscaleIncrement ) ),
+		m_rotateSpinner( ApplyTexdef_RotationCaller( *this ), UpdateCaller( *this ) ),
+		m_rotateEntry( Increment::ApplyCaller( m_rotateIncrement ), Increment::CancelCaller( m_rotateIncrement ) ),
+		m_idleDraw( UpdateCaller( *this ) ),
+		m_valueEntry( ApplyFlagsCaller( *this ), UpdateCaller( *this ) ),
+		m_importPosition( m_positionTracker ),
+		m_exportPosition( m_positionTracker ),
+		m_hshiftIncrement( g_si_globals.shift[0] ),
+		m_vshiftIncrement( g_si_globals.shift[1] ),
+		m_hscaleIncrement( g_si_globals.scale[0] ),
+		m_vscaleIncrement( g_si_globals.scale[1] ),
+		m_rotateIncrement( g_si_globals.rotate ){
+		m_fitVertical = 1;
+		m_fitHorizontal = 1;
+		m_positionTracker.setPosition( WindowPosition( -1, -1, 300, 400 ) );
 	}
-}
 
-void Update();
-typedef MemberCaller<SurfaceInspector, &SurfaceInspector::Update> UpdateCaller;
-void ApplyShader();
-typedef MemberCaller<SurfaceInspector, &SurfaceInspector::ApplyShader> ApplyShaderCaller;
+	void constructWindow( GtkWindow* main_window ){
+		m_parent = main_window;
+		Create();
+		AddGridChangeCallback( FreeCaller<SurfaceInspector_GridChange>() );
+	}
+	void destroyWindow(){
+		Destroy();
+	}
+	bool visible() const {
+		return gtk_widget_get_visible( GTK_WIDGET( GetWidget() ) );
+	}
+	void queueDraw(){
+		if ( visible() ) {
+			m_idleDraw.queueDraw();
+		}
+	}
+
+	void Update();
+	typedef MemberCaller<SurfaceInspector, &SurfaceInspector::Update> UpdateCaller;
+	void ApplyShader();
+	typedef MemberCaller<SurfaceInspector, &SurfaceInspector::ApplyShader> ApplyShaderCaller;
 
 //void ApplyTexdef();
 //typedef MemberCaller<SurfaceInspector, &SurfaceInspector::ApplyTexdef> ApplyTexdefCaller;
-void ApplyTexdef_HShift();
-typedef MemberCaller<SurfaceInspector, &SurfaceInspector::ApplyTexdef_HShift> ApplyTexdef_HShiftCaller;
-void ApplyTexdef_VShift();
-typedef MemberCaller<SurfaceInspector, &SurfaceInspector::ApplyTexdef_VShift> ApplyTexdef_VShiftCaller;
-void ApplyTexdef_HScale();
-typedef MemberCaller<SurfaceInspector, &SurfaceInspector::ApplyTexdef_HScale> ApplyTexdef_HScaleCaller;
-void ApplyTexdef_VScale();
-typedef MemberCaller<SurfaceInspector, &SurfaceInspector::ApplyTexdef_VScale> ApplyTexdef_VScaleCaller;
-void ApplyTexdef_Rotation();
-typedef MemberCaller<SurfaceInspector, &SurfaceInspector::ApplyTexdef_Rotation> ApplyTexdef_RotationCaller;
+	void ApplyTexdef_HShift();
+	typedef MemberCaller<SurfaceInspector, &SurfaceInspector::ApplyTexdef_HShift> ApplyTexdef_HShiftCaller;
+	void ApplyTexdef_VShift();
+	typedef MemberCaller<SurfaceInspector, &SurfaceInspector::ApplyTexdef_VShift> ApplyTexdef_VShiftCaller;
+	void ApplyTexdef_HScale();
+	typedef MemberCaller<SurfaceInspector, &SurfaceInspector::ApplyTexdef_HScale> ApplyTexdef_HScaleCaller;
+	void ApplyTexdef_VScale();
+	typedef MemberCaller<SurfaceInspector, &SurfaceInspector::ApplyTexdef_VScale> ApplyTexdef_VScaleCaller;
+	void ApplyTexdef_Rotation();
+	typedef MemberCaller<SurfaceInspector, &SurfaceInspector::ApplyTexdef_Rotation> ApplyTexdef_RotationCaller;
 
-void ApplyFlags();
-typedef MemberCaller<SurfaceInspector, &SurfaceInspector::ApplyFlags> ApplyFlagsCaller;
+	void ApplyFlags();
+	typedef MemberCaller<SurfaceInspector, &SurfaceInspector::ApplyFlags> ApplyFlagsCaller;
 };
 
 namespace
@@ -757,8 +757,8 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 				gtk_widget_show( label );
 				gtk_misc_set_alignment( GTK_MISC( label ), 0, 0 );
 				gtk_table_attach( GTK_TABLE( table ), label, 0, 1, 0, 1,
-								  (GtkAttachOptions) ( GTK_FILL ),
-								  (GtkAttachOptions) ( 0 ), 0, 0 );
+				                  (GtkAttachOptions) ( GTK_FILL ),
+				                  (GtkAttachOptions) ( 0 ), 0, 0 );
 			}
 			{
 				GtkSpinButton* spin = GTK_SPIN_BUTTON( gtk_spin_button_new( GTK_ADJUSTMENT( gtk_adjustment_new( 0, -8192, 8192, 2, 8, 0 ) ), 0, 2 ) );
@@ -766,8 +766,8 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 				m_hshiftSpinner.connect( spin );
 				gtk_widget_show( GTK_WIDGET( spin ) );
 				gtk_table_attach( GTK_TABLE( table ), GTK_WIDGET( spin ), 1, 2, 0, 1,
-								  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
-								  (GtkAttachOptions) ( 0 ), 0, 0 );
+				                  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
+				                  (GtkAttachOptions) ( 0 ), 0, 0 );
 				gtk_widget_set_size_request( GTK_WIDGET( spin ), 60, -1 );
 			}
 			{
@@ -775,15 +775,15 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 				gtk_widget_show( label );
 				gtk_misc_set_alignment( GTK_MISC( label ), 0, 0 );
 				gtk_table_attach( GTK_TABLE( table ), label, 2, 3, 0, 1,
-								  (GtkAttachOptions) ( GTK_FILL ),
-								  (GtkAttachOptions) ( 0 ), 0, 0 );
+				                  (GtkAttachOptions) ( GTK_FILL ),
+				                  (GtkAttachOptions) ( 0 ), 0, 0 );
 			}
 			{
 				GtkEntry* entry = GTK_ENTRY( gtk_entry_new() );
 				gtk_widget_show( GTK_WIDGET( entry ) );
 				gtk_table_attach( GTK_TABLE( table ), GTK_WIDGET( entry ), 3, 4, 0, 1,
-								  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
-								  (GtkAttachOptions) ( 0 ), 0, 0 );
+				                  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
+				                  (GtkAttachOptions) ( 0 ), 0, 0 );
 				gtk_widget_set_size_request( GTK_WIDGET( entry ), 50, -1 );
 				m_hshiftIncrement.m_entry = entry;
 				m_hshiftEntry.connect( entry );
@@ -793,8 +793,8 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 				gtk_widget_show( label );
 				gtk_misc_set_alignment( GTK_MISC( label ), 0, 0 );
 				gtk_table_attach( GTK_TABLE( table ), label, 0, 1, 1, 2,
-								  (GtkAttachOptions) ( GTK_FILL ),
-								  (GtkAttachOptions) ( 0 ), 0, 0 );
+				                  (GtkAttachOptions) ( GTK_FILL ),
+				                  (GtkAttachOptions) ( 0 ), 0, 0 );
 			}
 			{
 				GtkSpinButton* spin = GTK_SPIN_BUTTON( gtk_spin_button_new( GTK_ADJUSTMENT( gtk_adjustment_new( 0, -8192, 8192, 2, 8, 0 ) ), 0, 2 ) );
@@ -802,8 +802,8 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 				m_vshiftSpinner.connect( spin );
 				gtk_widget_show( GTK_WIDGET( spin ) );
 				gtk_table_attach( GTK_TABLE( table ), GTK_WIDGET( spin ), 1, 2, 1, 2,
-								  (GtkAttachOptions) ( GTK_FILL ),
-								  (GtkAttachOptions) ( 0 ), 0, 0 );
+				                  (GtkAttachOptions) ( GTK_FILL ),
+				                  (GtkAttachOptions) ( 0 ), 0, 0 );
 				gtk_widget_set_size_request( GTK_WIDGET( spin ), 60, -1 );
 			}
 			{
@@ -811,15 +811,15 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 				gtk_widget_show( label );
 				gtk_misc_set_alignment( GTK_MISC( label ), 0, 0 );
 				gtk_table_attach( GTK_TABLE( table ), label, 2, 3, 1, 2,
-								  (GtkAttachOptions) ( GTK_FILL ),
-								  (GtkAttachOptions) ( 0 ), 0, 0 );
+				                  (GtkAttachOptions) ( GTK_FILL ),
+				                  (GtkAttachOptions) ( 0 ), 0, 0 );
 			}
 			{
 				GtkEntry* entry = GTK_ENTRY( gtk_entry_new() );
 				gtk_widget_show( GTK_WIDGET( entry ) );
 				gtk_table_attach( GTK_TABLE( table ), GTK_WIDGET( entry ), 3, 4, 1, 2,
-								  (GtkAttachOptions) ( GTK_FILL ),
-								  (GtkAttachOptions) ( 0 ), 0, 0 );
+				                  (GtkAttachOptions) ( GTK_FILL ),
+				                  (GtkAttachOptions) ( 0 ), 0, 0 );
 				gtk_widget_set_size_request( GTK_WIDGET( entry ), 50, -1 );
 				m_vshiftIncrement.m_entry = entry;
 				m_vshiftEntry.connect( entry );
@@ -829,8 +829,8 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 				gtk_widget_show( label );
 				gtk_misc_set_alignment( GTK_MISC( label ), 0, 0 );
 				gtk_table_attach( GTK_TABLE( table ), label, 0, 1, 2, 3,
-								  (GtkAttachOptions) ( GTK_FILL ),
-								  (GtkAttachOptions) ( 0 ), 0, 0 );
+				                  (GtkAttachOptions) ( GTK_FILL ),
+				                  (GtkAttachOptions) ( 0 ), 0, 0 );
 			}
 			{
 				GtkSpinButton* spin = GTK_SPIN_BUTTON( gtk_spin_button_new( GTK_ADJUSTMENT( gtk_adjustment_new( 0, -8192, 8192, 2, 8, 0 ) ), 0, 5 ) );
@@ -838,8 +838,8 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 				m_hscaleSpinner.connect( spin );
 				gtk_widget_show( GTK_WIDGET( spin ) );
 				gtk_table_attach( GTK_TABLE( table ), GTK_WIDGET( spin ), 1, 2, 2, 3,
-								  (GtkAttachOptions) ( GTK_FILL ),
-								  (GtkAttachOptions) ( 0 ), 0, 0 );
+				                  (GtkAttachOptions) ( GTK_FILL ),
+				                  (GtkAttachOptions) ( 0 ), 0, 0 );
 				gtk_widget_set_size_request( GTK_WIDGET( spin ), 60, -1 );
 			}
 			{
@@ -847,15 +847,15 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 				gtk_widget_show( label );
 				gtk_misc_set_alignment( GTK_MISC( label ), 0, 0 );
 				gtk_table_attach( GTK_TABLE( table ), label, 2, 3, 2, 3,
-								  (GtkAttachOptions) ( GTK_FILL ),
-								  (GtkAttachOptions) ( 0 ), 2, 3 );
+				                  (GtkAttachOptions) ( GTK_FILL ),
+				                  (GtkAttachOptions) ( 0 ), 2, 3 );
 			}
 			{
 				GtkEntry* entry = GTK_ENTRY( gtk_entry_new() );
 				gtk_widget_show( GTK_WIDGET( entry ) );
 				gtk_table_attach( GTK_TABLE( table ), GTK_WIDGET( entry ), 3, 4, 2, 3,
-								  (GtkAttachOptions) ( GTK_FILL ),
-								  (GtkAttachOptions) ( 0 ), 2, 3 );
+				                  (GtkAttachOptions) ( GTK_FILL ),
+				                  (GtkAttachOptions) ( 0 ), 2, 3 );
 				gtk_widget_set_size_request( GTK_WIDGET( entry ), 50, -1 );
 				m_hscaleIncrement.m_entry = entry;
 				m_hscaleEntry.connect( entry );
@@ -865,8 +865,8 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 				gtk_widget_show( label );
 				gtk_misc_set_alignment( GTK_MISC( label ), 0, 0 );
 				gtk_table_attach( GTK_TABLE( table ), label, 0, 1, 3, 4,
-								  (GtkAttachOptions) ( GTK_FILL ),
-								  (GtkAttachOptions) ( 0 ), 0, 0 );
+				                  (GtkAttachOptions) ( GTK_FILL ),
+				                  (GtkAttachOptions) ( 0 ), 0, 0 );
 			}
 			{
 				GtkSpinButton* spin = GTK_SPIN_BUTTON( gtk_spin_button_new( GTK_ADJUSTMENT( gtk_adjustment_new( 0, -8192, 8192, 2, 8, 0 ) ), 0, 5 ) );
@@ -874,8 +874,8 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 				m_vscaleSpinner.connect( spin );
 				gtk_widget_show( GTK_WIDGET( spin ) );
 				gtk_table_attach( GTK_TABLE( table ), GTK_WIDGET( spin ), 1, 2, 3, 4,
-								  (GtkAttachOptions) ( GTK_FILL ),
-								  (GtkAttachOptions) ( 0 ), 0, 0 );
+				                  (GtkAttachOptions) ( GTK_FILL ),
+				                  (GtkAttachOptions) ( 0 ), 0, 0 );
 				gtk_widget_set_size_request( GTK_WIDGET( spin ), 60, -1 );
 			}
 			{
@@ -883,15 +883,15 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 				gtk_widget_show( label );
 				gtk_misc_set_alignment( GTK_MISC( label ), 0, 0 );
 				gtk_table_attach( GTK_TABLE( table ), label, 2, 3, 3, 4,
-								  (GtkAttachOptions) ( GTK_FILL ),
-								  (GtkAttachOptions) ( 0 ), 0, 0 );
+				                  (GtkAttachOptions) ( GTK_FILL ),
+				                  (GtkAttachOptions) ( 0 ), 0, 0 );
 			}
 			{
 				GtkEntry* entry = GTK_ENTRY( gtk_entry_new() );
 				gtk_widget_show( GTK_WIDGET( entry ) );
 				gtk_table_attach( GTK_TABLE( table ), GTK_WIDGET( entry ), 3, 4, 3, 4,
-								  (GtkAttachOptions) ( GTK_FILL ),
-								  (GtkAttachOptions) ( 0 ), 0, 0 );
+				                  (GtkAttachOptions) ( GTK_FILL ),
+				                  (GtkAttachOptions) ( 0 ), 0, 0 );
 				gtk_widget_set_size_request( GTK_WIDGET( entry ), 50, -1 );
 				m_vscaleIncrement.m_entry = entry;
 				m_vscaleEntry.connect( entry );
@@ -901,8 +901,8 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 				gtk_widget_show( label );
 				gtk_misc_set_alignment( GTK_MISC( label ), 0, 0 );
 				gtk_table_attach( GTK_TABLE( table ), label, 0, 1, 4, 5,
-								  (GtkAttachOptions) ( GTK_FILL ),
-								  (GtkAttachOptions) ( 0 ), 0, 0 );
+				                  (GtkAttachOptions) ( GTK_FILL ),
+				                  (GtkAttachOptions) ( 0 ), 0, 0 );
 			}
 			{
 				GtkSpinButton* spin = GTK_SPIN_BUTTON( gtk_spin_button_new( GTK_ADJUSTMENT( gtk_adjustment_new( 0, -8192, 8192, 2, 45, 0 ) ), 0, 2 ) );
@@ -910,8 +910,8 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 				m_rotateSpinner.connect( spin );
 				gtk_widget_show( GTK_WIDGET( spin ) );
 				gtk_table_attach( GTK_TABLE( table ), GTK_WIDGET( spin ), 1, 2, 4, 5,
-								  (GtkAttachOptions) ( GTK_FILL ),
-								  (GtkAttachOptions) ( 0 ), 0, 0 );
+				                  (GtkAttachOptions) ( GTK_FILL ),
+				                  (GtkAttachOptions) ( 0 ), 0, 0 );
 				gtk_widget_set_size_request( GTK_WIDGET( spin ), 60, -1 );
 				gtk_spin_button_set_wrap( spin, TRUE );
 			}
@@ -920,15 +920,15 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 				gtk_widget_show( label );
 				gtk_misc_set_alignment( GTK_MISC( label ), 0, 0 );
 				gtk_table_attach( GTK_TABLE( table ), label, 2, 3, 4, 5,
-								  (GtkAttachOptions) ( GTK_FILL ),
-								  (GtkAttachOptions) ( 0 ), 0, 0 );
+				                  (GtkAttachOptions) ( GTK_FILL ),
+				                  (GtkAttachOptions) ( 0 ), 0, 0 );
 			}
 			{
 				GtkEntry* entry = GTK_ENTRY( gtk_entry_new() );
 				gtk_widget_show( GTK_WIDGET( entry ) );
 				gtk_table_attach( GTK_TABLE( table ), GTK_WIDGET( entry ), 3, 4, 4, 5,
-								  (GtkAttachOptions) ( GTK_FILL ),
-								  (GtkAttachOptions) ( 0 ), 0, 0 );
+				                  (GtkAttachOptions) ( GTK_FILL ),
+				                  (GtkAttachOptions) ( 0 ), 0, 0 );
 				gtk_widget_set_size_request( GTK_WIDGET( entry ), 50, -1 );
 				m_rotateIncrement.m_entry = entry;
 				m_rotateEntry.connect( entry );
@@ -938,8 +938,8 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 				GtkWidget* button = gtk_button_new_with_label( "Match Grid" );
 				gtk_widget_show( button );
 				gtk_table_attach( GTK_TABLE( table ), button, 2, 4, 5, 6,
-								  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
-								  (GtkAttachOptions) ( 0 ), 0, 0 );
+				                  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
+				                  (GtkAttachOptions) ( 0 ), 0, 0 );
 				g_signal_connect( G_OBJECT( button ), "clicked", G_CALLBACK( OnBtnMatchGrid ), 0 );
 			}
 		}
@@ -959,25 +959,25 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 					GtkWidget* label = gtk_label_new( "Brush" );
 					gtk_widget_show( label );
 					gtk_table_attach( GTK_TABLE( table ), label, 0, 1, 0, 1,
-									  (GtkAttachOptions) ( GTK_FILL ),
-									  (GtkAttachOptions) ( 0 ), 0, 0 );
+					                  (GtkAttachOptions) ( GTK_FILL ),
+					                  (GtkAttachOptions) ( 0 ), 0, 0 );
 				}
 				{
 					GtkWidget* label = gtk_label_new( "Patch" );
 					gtk_widget_show( label );
 					gtk_table_attach( GTK_TABLE( table ), label, 0, 1, 3, 4,
-									  (GtkAttachOptions) ( GTK_FILL ),
-									  (GtkAttachOptions) ( 0 ), 0, 0 );
+					                  (GtkAttachOptions) ( GTK_FILL ),
+					                  (GtkAttachOptions) ( 0 ), 0, 0 );
 				}
 				{
 					GtkWidget* button = gtk_button_new_with_label( "Width" );
 					gtk_widget_set_tooltip_text( button, "Fit texture width, scale height\nRightClick: fit width, keep height" );
 					gtk_widget_show( button );
 					gtk_table_attach( GTK_TABLE( table ), button, 2, 3, 0, 1,
-									  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
-									  (GtkAttachOptions) ( 0 ), 0, 0 );
+					                  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
+					                  (GtkAttachOptions) ( 0 ), 0, 0 );
 					g_signal_connect( G_OBJECT( button ), "clicked",
-									  G_CALLBACK( OnBtnFaceFitWidth ), 0 );
+					                  G_CALLBACK( OnBtnFaceFitWidth ), 0 );
 					g_signal_connect( G_OBJECT( button ), "button_press_event", G_CALLBACK( OnBtnFaceFitWidthOnly ), 0 );
 					gtk_widget_set_size_request( button, 60, -1 );
 				}
@@ -986,10 +986,10 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 					gtk_widget_set_tooltip_text( button, "Fit texture height, scale width\nRightClick: fit height, keep width" );
 					gtk_widget_show( button );
 					gtk_table_attach( GTK_TABLE( table ), button, 3, 4, 0, 1,
-									  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
-									  (GtkAttachOptions) ( 0 ), 0, 0 );
+					                  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
+					                  (GtkAttachOptions) ( 0 ), 0, 0 );
 					g_signal_connect( G_OBJECT( button ), "clicked",
-									  G_CALLBACK( OnBtnFaceFitHeight ), 0 );
+					                  G_CALLBACK( OnBtnFaceFitHeight ), 0 );
 					g_signal_connect( G_OBJECT( button ), "button_press_event", G_CALLBACK( OnBtnFaceFitHeightOnly ), 0 );
 					gtk_widget_set_size_request( button, 60, -1 );
 				}
@@ -997,38 +997,38 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 					GtkWidget* button = gtk_button_new_with_label( "Reset" );
 					gtk_widget_show( button );
 					gtk_table_attach( GTK_TABLE( table ), button, 0, 1, 1, 2,
-									  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
-									  (GtkAttachOptions) ( 0 ), 0, 0 );
+					                  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
+					                  (GtkAttachOptions) ( 0 ), 0, 0 );
 					g_signal_connect( G_OBJECT( button ), "clicked",
-									  G_CALLBACK( OnBtnReset ), 0 );
+					                  G_CALLBACK( OnBtnReset ), 0 );
 					gtk_widget_set_size_request( button, 60, -1 );
 				}
 				{
 					GtkWidget* button = gtk_button_new_with_label( "Fit" );
 					gtk_widget_show( button );
 					gtk_table_attach( GTK_TABLE( table ), button, 1, 2, 1, 2,
-									  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
-									  (GtkAttachOptions) ( 0 ), 0, 0 );
+					                  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
+					                  (GtkAttachOptions) ( 0 ), 0, 0 );
 					g_signal_connect( G_OBJECT( button ), "clicked",
-									  G_CALLBACK( OnBtnFaceFit ), 0 );
+					                  G_CALLBACK( OnBtnFaceFit ), 0 );
 					gtk_widget_set_size_request( button, 60, -1 );
 				}
 				{
 					GtkWidget* label = gtk_label_new( "Project:" );
 					gtk_widget_show( label );
 					gtk_table_attach( GTK_TABLE( table ), label, 0, 1, 2, 3,
-									  (GtkAttachOptions) ( GTK_FILL ),
-									  (GtkAttachOptions) ( 0 ), 0, 0 );
+					                  (GtkAttachOptions) ( GTK_FILL ),
+					                  (GtkAttachOptions) ( 0 ), 0, 0 );
 				}
 				{
 					GtkWidget* button = gtk_button_new_with_label( "Axial" );
 					gtk_widget_set_tooltip_text( button, "Axial projection (along nearest axis)" );
 					gtk_widget_show( button );
 					gtk_table_attach( GTK_TABLE( table ), button, 1, 2, 2, 3,
-									  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
-									  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ), 0, 5 );
+					                  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
+					                  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ), 0, 5 );
 					g_signal_connect( G_OBJECT( button ), "clicked",
-									  G_CALLBACK( OnBtnProject ), (gpointer)eProjectAxial );
+					                  G_CALLBACK( OnBtnProject ), (gpointer)eProjectAxial );
 					GtkRequisition req;
 					gtk_widget_size_request( button, &req );
 					gtk_widget_set_size_request( button, 60, req.height * 3 / 4 );
@@ -1038,10 +1038,10 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 					gtk_widget_set_tooltip_text( button, "Project along active ortho view" );
 					gtk_widget_show( button );
 					gtk_table_attach( GTK_TABLE( table ), button, 2, 3, 2, 3,
-									  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
-									  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ), 0, 5 );
+					                  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
+					                  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ), 0, 5 );
 					g_signal_connect( G_OBJECT( button ), "clicked",
-									  G_CALLBACK( OnBtnProject ), (gpointer)eProjectOrtho );
+					                  G_CALLBACK( OnBtnProject ), (gpointer)eProjectOrtho );
 					GtkRequisition req;
 					gtk_widget_size_request( button, &req );
 					gtk_widget_set_size_request( button, 60, req.height * 3 / 4 );
@@ -1051,10 +1051,10 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 					gtk_widget_set_tooltip_text( button, "Project along camera view direction" );
 					gtk_widget_show( button );
 					gtk_table_attach( GTK_TABLE( table ), button, 3, 4, 2, 3,
-									  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
-									  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ), 0, 5 );
+					                  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
+					                  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ), 0, 5 );
 					g_signal_connect( G_OBJECT( button ), "clicked",
-									  G_CALLBACK( OnBtnProject ), (gpointer)eProjectCam );
+					                  G_CALLBACK( OnBtnProject ), (gpointer)eProjectCam );
 					GtkRequisition req;
 					gtk_widget_size_request( button, &req );
 					gtk_widget_set_size_request( button, 60, req.height * 3 / 4 );
@@ -1063,48 +1063,48 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 					GtkWidget* button = gtk_button_new_with_label( "CAP" );
 					gtk_widget_show( button );
 					gtk_table_attach( GTK_TABLE( table ), button, 0, 1, 4, 5,
-									  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
-									  (GtkAttachOptions) ( 0 ), 0, 0 );
+					                  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
+					                  (GtkAttachOptions) ( 0 ), 0, 0 );
 					g_signal_connect( G_OBJECT( button ), "clicked",
-									  G_CALLBACK( OnBtnPatchCap ), 0 );
+					                  G_CALLBACK( OnBtnPatchCap ), 0 );
 					gtk_widget_set_size_request( button, 60, -1 );
 				}
 				{
 					GtkWidget* button = gtk_button_new_with_label( "Set..." );
 					gtk_widget_show( button );
 					gtk_table_attach( GTK_TABLE( table ), button, 1, 2, 4, 5,
-									  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
-									  (GtkAttachOptions) ( 0 ), 0, 0 );
+					                  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
+					                  (GtkAttachOptions) ( 0 ), 0, 0 );
 					g_signal_connect( G_OBJECT( button ), "clicked",
-									  G_CALLBACK( OnBtnPatchFit ), 0 );
+					                  G_CALLBACK( OnBtnPatchFit ), 0 );
 					gtk_widget_set_size_request( button, 60, -1 );
 				}
 				{
 					GtkWidget* button = gtk_button_new_with_label( "Natural" );
 					gtk_widget_show( button );
 					gtk_table_attach( GTK_TABLE( table ), button, 2, 3, 4, 5,
-									  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
-									  (GtkAttachOptions) ( 0 ), 0, 0 );
+					                  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
+					                  (GtkAttachOptions) ( 0 ), 0, 0 );
 					g_signal_connect( G_OBJECT( button ), "clicked",
-									  G_CALLBACK( OnBtnPatchNatural ), 0 );
+					                  G_CALLBACK( OnBtnPatchNatural ), 0 );
 					gtk_widget_set_size_request( button, 60, -1 );
 				}
 				{
 					GtkWidget* button = gtk_button_new_with_label( "Fit" );
 					gtk_widget_show( button );
 					gtk_table_attach( GTK_TABLE( table ), button, 3, 4, 4, 5,
-									  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
-									  (GtkAttachOptions) ( 0 ), 0, 0 );
+					                  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
+					                  (GtkAttachOptions) ( 0 ), 0, 0 );
 					g_signal_connect( G_OBJECT( button ), "clicked",
-									  G_CALLBACK( OnBtnPatchFit11 ), 0 );
+					                  G_CALLBACK( OnBtnPatchFit11 ), 0 );
 					gtk_widget_set_size_request( button, 60, -1 );
 				}
 				{
 					GtkWidget* spin = gtk_spin_button_new( GTK_ADJUSTMENT( gtk_adjustment_new( 1, 0, 1 << 16, 1, 10, 0 ) ), 0, 3 );
 					gtk_widget_show( spin );
 					gtk_table_attach( GTK_TABLE( table ), spin, 2, 3, 1, 2,
-									  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
-									  (GtkAttachOptions) ( 0 ), 0, 0 );
+					                  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
+					                  (GtkAttachOptions) ( 0 ), 0, 0 );
 					gtk_widget_set_size_request( spin, 60, -1 );
 					AddDialogData( *GTK_SPIN_BUTTON( spin ), m_fitHorizontal );
 				}
@@ -1112,8 +1112,8 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 					GtkWidget* spin = gtk_spin_button_new( GTK_ADJUSTMENT( gtk_adjustment_new( 1, 0, 1 << 16, 1, 10, 0 ) ), 0, 3 );
 					gtk_widget_show( spin );
 					gtk_table_attach( GTK_TABLE( table ), spin, 3, 4, 1, 2,
-									  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
-									  (GtkAttachOptions) ( 0 ), 0, 0 );
+					                  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
+					                  (GtkAttachOptions) ( 0 ), 0, 0 );
 					gtk_widget_set_size_request( spin, 60, -1 );
 					AddDialogData( *GTK_SPIN_BUTTON( spin ), m_fitVertical );
 				}
@@ -1145,8 +1145,8 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 								GtkCheckButton* check = GTK_CHECK_BUTTON( gtk_check_button_new_with_label( getSurfaceFlagName( c * 8 + r ) ) );
 								gtk_widget_show( GTK_WIDGET( check ) );
 								gtk_table_attach( table, GTK_WIDGET( check ), c, c + 1, r, r + 1,
-												  (GtkAttachOptions)( GTK_EXPAND | GTK_FILL ),
-												  (GtkAttachOptions)( 0 ), 0, 0 );
+								                  (GtkAttachOptions)( GTK_EXPAND | GTK_FILL ),
+								                  (GtkAttachOptions)( 0 ), 0, 0 );
 								*p++ = check;
 								guint handler_id = togglebutton_connect_toggled( GTK_TOGGLE_BUTTON( check ), ApplyFlagsCaller( *this ) );
 								g_object_set_data( G_OBJECT( check ), "handler", gint_to_pointer( handler_id ) );
@@ -1181,8 +1181,8 @@ GtkWindow* SurfaceInspector::BuildDialog(){
 								GtkCheckButton* check = GTK_CHECK_BUTTON( gtk_check_button_new_with_label( getContentFlagName( c * 8 + r ) ) );
 								gtk_widget_show( GTK_WIDGET( check ) );
 								gtk_table_attach( table, GTK_WIDGET( check ), c, c + 1, r, r + 1,
-												  (GtkAttachOptions)( GTK_EXPAND | GTK_FILL ),
-												  (GtkAttachOptions)( 0 ), 0, 0 );
+								                  (GtkAttachOptions)( GTK_EXPAND | GTK_FILL ),
+								                  (GtkAttachOptions)( 0 ), 0, 0 );
 								*p++ = check;
 								guint handler_id = togglebutton_connect_toggled( GTK_TOGGLE_BUTTON( check ), ApplyFlagsCaller( *this ) );
 								g_object_set_data( G_OBJECT( check ), "handler", gint_to_pointer( handler_id ) );
@@ -1373,8 +1373,7 @@ void SurfaceInspector::Update(){
    ===============
  */
 void SurfaceInspector::ApplyShader(){
-	StringOutputStream name( 256 );
-	name << GlobalTexturePrefix_get() << PathCleaned( gtk_entry_get_text( m_texture ) );
+	const auto name = StringOutputStream( 256 )( GlobalTexturePrefix_get(), PathCleaned( gtk_entry_get_text( m_texture ) ) );
 
 	// TTimo: detect and refuse invalid texture names (at least the ones with spaces)
 	if ( !texdef_name_valid( name.c_str() ) ) {
@@ -1490,6 +1489,32 @@ bool pastemode_if_setShader( EPasteMode mode, bool alt ){
 }
 
 
+class PatchData
+{
+	size_t m_width = 0;
+	size_t m_height = 0;
+	typedef Array<PatchControl> PatchControlArray;
+	PatchControlArray m_ctrl;
+public:
+	void copy( const Patch& patch ){
+		m_width = patch.getWidth();
+		m_height = patch.getHeight();
+		m_ctrl = patch.getControlPoints();
+	}
+	size_t getWidth() const {
+		return m_width;
+	}
+	size_t getHeight() const {
+		return m_height;
+	}
+	const PatchControl& ctrlAt( size_t row, size_t col ) const {
+		return m_ctrl[row * m_width + col];
+	}
+	const PatchControl *data() const {
+		return m_ctrl.data();
+	}
+};
+
 class FaceTexture
 {
 public:
@@ -1497,13 +1522,21 @@ public:
 	ContentsFlagsValue m_flags;
 
 	Plane3 m_plane;
+	Winding m_winding;
 	std::size_t m_width;
 	std::size_t m_height;
+
+	PatchData m_patch;
 
 	float m_light;
 	Vector3 m_colour;
 
-	FaceTexture() : m_plane( 0, 0, 1, 0 ), m_width( 64 ), m_height( 64 ), m_light( 300 ), m_colour( 1, 1, 1 ) {
+	enum ePasteSource{
+		eBrush,
+		ePatch
+	} m_pasteSource;
+
+	FaceTexture() : m_plane( 0, 0, 1, 0 ), m_width( 64 ), m_height( 64 ), m_light( 300 ), m_colour( 1, 1, 1 ), m_pasteSource( eBrush ) {
 		m_projection.m_basis_s = Vector3( 0.7071067811865, 0.7071067811865, 0 );
 		m_projection.m_basis_t = Vector3( -0.4082482904639, 0.4082482904639, -0.4082482904639 * 2.0 );
 	}
@@ -1523,6 +1556,171 @@ void TextureClipboard_textureSelected( const char* shader ){
 }
 
 
+class PatchEdgeIter
+{
+protected:
+	const PatchControl* const m_ctrl;
+	const int m_width;
+	const int m_height;
+	int m_row;
+	int m_col;
+	const PatchControl& ctrlAt( size_t row, size_t col ) const {
+		return m_ctrl[row * m_width + col];
+	}
+public:
+	PatchEdgeIter( const PatchData& patch ) : m_ctrl( patch.data() ), m_width( patch.getWidth() ), m_height( patch.getHeight() ){
+	}
+	PatchEdgeIter( const PatchEdgeIter& other ) = default;
+	virtual ~PatchEdgeIter(){};
+	virtual std::unique_ptr<PatchEdgeIter> clone() const = 0;
+	const PatchControl& operator*() const {
+		return ctrlAt( m_row, m_col );
+	}
+	operator bool() const {
+		return m_row >=0 && m_row < m_height && m_col >=0 && m_col < m_width;
+	}
+	virtual void operator++() = 0;
+	void operator+=( size_t inc ){
+		while( inc-- )
+			operator++();
+	}
+	std::unique_ptr<PatchEdgeIter> operator+( size_t inc ) const {
+		std::unique_ptr<PatchEdgeIter> it = clone();
+		*it += inc;
+		return it;
+	}
+	virtual std::unique_ptr<PatchEdgeIter> getCrossIter() const = 0;
+};
+
+class PatchRowBackIter : public PatchEdgeIter
+{
+public:
+	PatchRowBackIter( const PatchData& patch, size_t row ) : PatchEdgeIter( patch ){
+		m_row = row;
+		m_col = m_width - 1;
+	}
+	PatchRowBackIter( const PatchEdgeIter& base ) : PatchEdgeIter( base ){}
+	std::unique_ptr<PatchEdgeIter> clone() const override {
+		return std::unique_ptr<PatchEdgeIter>( new PatchRowBackIter( *this ) );
+	}
+	void operator++() override {
+		--m_col;
+	}
+	std::unique_ptr<PatchEdgeIter> getCrossIter() const override;
+};
+class PatchRowForwardIter : public PatchEdgeIter
+{
+public:
+	PatchRowForwardIter( const PatchData& patch, size_t row ) : PatchEdgeIter( patch ){
+		m_row = row;
+		m_col = 0;
+	}
+	PatchRowForwardIter( const PatchEdgeIter& base ) : PatchEdgeIter( base ){}
+	std::unique_ptr<PatchEdgeIter> clone() const override {
+		return std::unique_ptr<PatchEdgeIter>( new PatchRowForwardIter( *this ) );
+	}
+	void operator++() override {
+		++m_col;
+	}
+	std::unique_ptr<PatchEdgeIter> getCrossIter() const override;
+};
+class PatchColBackIter : public PatchEdgeIter
+{
+public:
+	PatchColBackIter( const PatchData& patch, size_t col ) : PatchEdgeIter( patch ){
+		m_row = m_height - 1;
+		m_col = col;
+	}
+	PatchColBackIter( const PatchEdgeIter& base ) : PatchEdgeIter( base ){}
+	std::unique_ptr<PatchEdgeIter> clone() const override {
+		return std::unique_ptr<PatchEdgeIter>( new PatchColBackIter( *this ) );
+	}
+	void operator++() override {
+		--m_row;
+	}
+	std::unique_ptr<PatchEdgeIter> getCrossIter() const override {
+		return std::unique_ptr<PatchEdgeIter>( new PatchRowBackIter( *this ) );
+	}
+};
+class PatchColForwardIter : public PatchEdgeIter
+{
+public:
+	PatchColForwardIter( const PatchData& patch, size_t col ) : PatchEdgeIter( patch ){
+		m_row = 0;
+		m_col = col;
+	}
+	PatchColForwardIter( const PatchEdgeIter& base ) : PatchEdgeIter( base ){}
+	std::unique_ptr<PatchEdgeIter> clone() const override {
+		return std::unique_ptr<PatchEdgeIter>( new PatchColForwardIter( *this ) );
+	}
+	void operator++() override {
+		++m_row;
+	}
+	std::unique_ptr<PatchEdgeIter> getCrossIter() const override {
+		return std::unique_ptr<PatchEdgeIter>( new PatchRowForwardIter( *this ) );
+	}
+};
+
+std::unique_ptr<PatchEdgeIter> PatchRowBackIter::getCrossIter() const {
+	return std::unique_ptr<PatchEdgeIter>( new PatchColForwardIter( *this ) );
+}
+
+std::unique_ptr<PatchEdgeIter> PatchRowForwardIter::getCrossIter() const {
+	return std::unique_ptr<PatchEdgeIter>( new PatchColBackIter( *this ) );
+}
+
+// returns 0 or 3 CW points
+static std::vector<const PatchControl*> Patch_getClosestTriangle( const PatchData& patch, const Winding& w ){
+	/*
+	// height = 3
+	col  0  1  2  3  4
+	    10 11 12 13 14  // row 2
+	     5  6  7  8  9  // row 1
+	     0  1  2  3  4  // row 0 // width = 5
+	*/
+
+	const auto triangle_ok = []( const PatchControl& p0, const PatchControl& p1, const PatchControl& p2 ){
+		return vector3_length_squared( vector3_cross( p1.m_vertex - p0.m_vertex, p2.m_vertex - p0.m_vertex ) ) > 1.0;
+	};
+
+	const double eps = .25;
+
+	const auto line_close = [eps]( const Line& line, const PatchControl& p ){
+		return vector3_length_squared( line_closest_point( line, p.m_vertex ) - p.m_vertex ) < eps;
+	};
+
+	for ( std::size_t i = w.numpoints - 1, j = 0; j < w.numpoints; i = j, ++j ){
+		const Line line( w[i].vertex, w[j].vertex );
+
+		for( auto& iter : {
+			std::unique_ptr<PatchEdgeIter>( new PatchRowBackIter( patch, 0 ) ),
+			std::unique_ptr<PatchEdgeIter>( new PatchRowForwardIter( patch, patch.getHeight() - 1 ) ),
+			std::unique_ptr<PatchEdgeIter>( new PatchColBackIter( patch, patch.getWidth() - 1 ) ),
+			std::unique_ptr<PatchEdgeIter>( new PatchColForwardIter( patch, 0 ) ) } )
+		{
+			for( const std::unique_ptr<PatchEdgeIter>& i0 = iter; *i0; *i0 += 2 ){
+				const PatchControl& p0 = **i0;
+				if( line_close( line, p0 ) ){
+					for( std::unique_ptr<PatchEdgeIter> i1 = *i0 + size_t{ 2 }; *i1; *i1 += 2 ){
+						const PatchControl& p1 = **i1;
+						if( line_close( line, p1 )
+						 && vector3_length_squared( p1.m_vertex - p0.m_vertex ) > eps ){
+							for( std::unique_ptr<PatchEdgeIter> i2 = *i0->getCrossIter() + size_t{ 1 }, i22 = *i1->getCrossIter() + size_t{ 1 }; *i2 && *i22; ++*i2, ++*i22 ){
+								for( const PatchControl& p2 : { **i2, **i22 } ){
+									if( triangle_ok( p0, p1, p2 ) ){
+										return { &p0, &p1, &p2 };
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	return {};
+}
+
 
 void Face_getTexture( Face& face, CopiedString& shader, FaceTexture& clipboard ){
 	shader = face.GetShader();
@@ -1531,10 +1729,13 @@ void Face_getTexture( Face& face, CopiedString& shader, FaceTexture& clipboard )
 	clipboard.m_flags = face.getShader().m_flags;
 
 	clipboard.m_plane = face.getPlane().plane3();
+	clipboard.m_winding = face.getWinding();
 	clipboard.m_width = face.getShader().width();
 	clipboard.m_height = face.getShader().height();
 
 	clipboard.m_colour = face.getShader().state()->getTexture().color;
+
+	clipboard.m_pasteSource = FaceTexture::eBrush;
 }
 typedef Function3<Face&, CopiedString&, FaceTexture&, void, Face_getTexture> FaceGetTexture;
 
@@ -1550,26 +1751,57 @@ void Face_setTexture( Face& face, const char* shader, const FaceTexture& clipboa
 		face.ProjectTexture( clipboard.m_projection, clipboard.m_plane.normal() );
 	}
 	else if( mode == ePasteSeamless ){
-		DoubleRay line = plane3_intersect_plane3( clipboard.m_plane, face.getPlane().plane3() );
-		if( vector3_length_squared( line.direction ) == 0 ){
-			face.ProjectTexture( clipboard.m_projection, clipboard.m_plane.normal() );
-			return;
+		if( clipboard.m_pasteSource == FaceTexture::eBrush ){
+			DoubleRay line = plane3_intersect_plane3( clipboard.m_plane, face.getPlane().plane3() );
+			if( vector3_length_squared( line.direction ) <= 1e-10 ){
+				face.ProjectTexture( clipboard.m_projection, clipboard.m_plane.normal() );
+				return;
+			}
+
+			const Quaternion rotation = quaternion_for_unit_vectors( clipboard.m_plane.normal(), face.getPlane().plane3().normal() );
+//			globalOutputStream() << "rotation: " << rotation.x() << " " << rotation.y() << " " << rotation.z() << " " << rotation.w() << " " << "\n";
+			Matrix4 transform = g_matrix4_identity;
+			matrix4_pivoted_rotate_by_quaternion( transform, rotation, line.origin );
+
+			TextureProjection proj = clipboard.m_projection;
+			proj.m_brushprimit_texdef.addScale( clipboard.m_width, clipboard.m_height );
+			Texdef_transformLocked( proj, clipboard.m_width, clipboard.m_height, clipboard.m_plane, transform, line.origin );
+			proj.m_brushprimit_texdef.removeScale( clipboard.m_width, clipboard.m_height );
+
+			face.SetTexdef( proj );
+
+			CopiedString dummy;
+			Face_getTexture( face, dummy, g_faceTextureClipboard );
+		}
+		else if( clipboard.m_pasteSource == FaceTexture::ePatch ){
+			const auto pc = Patch_getClosestTriangle( clipboard.m_patch, face.getWinding() );
+			// todo in patch->brush, brush->patch shall we apply texture, if alignment part fails?
+			if( pc.empty() )
+				return;
+			DoubleVector3 vertices[3]{ pc[0]->m_vertex, pc[1]->m_vertex, pc[2]->m_vertex };
+			const DoubleVector3 sts[3]{ DoubleVector3( pc[0]->m_texcoord ),
+		                                DoubleVector3( pc[1]->m_texcoord ),
+		                                DoubleVector3( pc[2]->m_texcoord ) };
+			{ // rotate patch points to face plane
+				const Plane3 plane = plane3_for_points( vertices );
+				const DoubleRay line = plane3_intersect_plane3( face.getPlane().plane3(), plane );
+				if( vector3_length_squared( line.direction ) > 1e-10 ){
+					const Quaternion rotation = quaternion_for_unit_vectors( plane.normal(), face.getPlane().plane3().normal() );
+					Matrix4 rot( g_matrix4_identity );
+					matrix4_pivoted_rotate_by_quaternion( rot, rotation, line.origin );
+					for( auto& v : vertices )
+						matrix4_transform_point( rot, v );
+				}
+			}
+			TextureProjection proj;
+			Texdef_from_ST( proj, vertices, sts, clipboard.m_width, clipboard.m_height );
+			proj.m_brushprimit_texdef.removeScale( clipboard.m_width, clipboard.m_height );
+			face.SetTexdef( proj );
+
+			CopiedString dummy;
+			Face_getTexture( face, dummy, g_faceTextureClipboard );
 		}
 
-		const Quaternion rotation = quaternion_for_unit_vectors( clipboard.m_plane.normal(), face.getPlane().plane3().normal() );
-//		globalOutputStream() << "rotation: " << rotation.x() << " " << rotation.y() << " " << rotation.z() << " " << rotation.w() << " " << "\n";
-		Matrix4 transform = g_matrix4_identity;
-		matrix4_pivoted_rotate_by_quaternion( transform, rotation, line.origin );
-
-		TextureProjection proj = clipboard.m_projection;
-		proj.m_brushprimit_texdef.addScale( clipboard.m_width, clipboard.m_height );
-		Texdef_transformLocked( proj, clipboard.m_width, clipboard.m_height, clipboard.m_plane, transform, line.origin );
-		proj.m_brushprimit_texdef.removeScale( clipboard.m_width, clipboard.m_height );
-
-		face.SetTexdef( proj );
-
-		g_faceTextureClipboard.m_plane = face.getPlane().plane3();
-		g_faceTextureClipboard.m_projection = proj;
 	}
 }
 typedef Function5<Face&, const char*, const FaceTexture&, EPasteMode, bool, void, Face_setTexture> FaceSetTexture;
@@ -1583,6 +1815,10 @@ void Patch_getTexture( Patch& patch, CopiedString& shader, FaceTexture& clipboar
 	clipboard.m_height = patch.getShader()->getTexture().height;
 
 	clipboard.m_colour = patch.getShader()->getTexture().color;
+
+	clipboard.m_patch.copy( patch );
+
+	clipboard.m_pasteSource = FaceTexture::ePatch;
 }
 typedef Function3<Patch&, CopiedString&, FaceTexture&, void, Patch_getTexture> PatchGetTexture;
 
@@ -1591,6 +1827,56 @@ void Patch_setTexture( Patch& patch, const char* shader, const FaceTexture& clip
 		patch.SetShader( shader );
 	if( mode == ePasteProject )
 		patch.ProjectTexture( clipboard.m_projection, clipboard.m_plane.normal() );
+	else if( mode == ePasteSeamless ){
+		PatchData patchData;
+		patchData.copy( patch );
+		const auto pc = Patch_getClosestTriangle( patchData, clipboard.m_winding );
+
+		if( pc.empty() )
+			return;
+
+		DoubleVector3 vertices[3]{ pc[0]->m_vertex, pc[1]->m_vertex, pc[2]->m_vertex };
+		const DoubleVector3 sts[3]{ DoubleVector3( pc[0]->m_texcoord ),
+		                            DoubleVector3( pc[1]->m_texcoord ),
+		                            DoubleVector3( pc[2]->m_texcoord ) };
+		Matrix4 local2tex0; // face tex projection
+		{
+			TextureProjection proj0( clipboard.m_projection );
+			proj0.m_brushprimit_texdef.addScale( clipboard.m_width, clipboard.m_height );
+			Texdef_Construct_local2tex( proj0, clipboard.m_width, clipboard.m_height, clipboard.m_plane.normal(), local2tex0 );
+		}
+
+		{ // rotate patch points to face plane
+			const Plane3 plane = plane3_for_points( vertices );
+			const DoubleRay line = plane3_intersect_plane3( clipboard.m_plane, plane );
+			if( vector3_length_squared( line.direction ) > 1e-10 ){
+				const Quaternion rotation = quaternion_for_unit_vectors( plane.normal(), clipboard.m_plane.normal() );
+				Matrix4 rot( g_matrix4_identity );
+				matrix4_pivoted_rotate_by_quaternion( rot, rotation, line.origin );
+				for( auto& v : vertices )
+					matrix4_transform_point( rot, v );
+			}
+		}
+
+		Matrix4 local2tex; // patch BP tex projection
+		Texdef_Construct_local2tex_from_ST( vertices, sts, local2tex );
+		Matrix4 tex2local = matrix4_affine_inverse( local2tex );
+		tex2local.t().vec3() += tex2local.z().vec3() * clipboard.m_plane.dist(); // adjust t() so that st->world points get to the plane
+
+		const Matrix4 mat = matrix4_multiplied_by_matrix4( local2tex0, tex2local ); // unproject st->world, project to new st
+		patch.undoSave();
+		for( auto& p : patch ){
+			p.m_texcoord = matrix4_transformed_point( mat, Vector3( p.m_texcoord ) ).vec2();
+		}
+		patch.controlPointsChanged();
+
+		// Patch_getTexture
+		g_faceTextureClipboard.m_width = patch.getShader()->getTexture().width;
+		g_faceTextureClipboard.m_height = patch.getShader()->getTexture().height;
+		g_faceTextureClipboard.m_colour = patch.getShader()->getTexture().color;
+		g_faceTextureClipboard.m_patch.copy( patch );
+		g_faceTextureClipboard.m_pasteSource = FaceTexture::ePatch;
+	}
 }
 typedef Function5<Patch&, const char*, const FaceTexture&, EPasteMode, bool, void, Patch_setTexture> PatchSetTexture;
 
@@ -1612,7 +1898,7 @@ void Light_setTexture( Entity& entity, const char* shader, const FaceTexture& cl
 		/* copypaste of write_intensity() from entity plugin */
 		char value[64];
 		sprintf( value, "%g", clipboard.m_light );
-		if( !string_empty( entity.getKeyValue( "_light" ) ) ) //primaryIntensity //if set or default is set in .ent
+		if( entity.hasKeyValue( "_light" ) ) //primaryIntensity //if set
 			entity.setKeyValue( "_light", value );
 		else //secondaryIntensity
 			entity.setKeyValue( "light", value ); //otherwise default to "light", which is understood by both q3 and q1
@@ -1638,7 +1924,7 @@ void Face_getClosest( Face& face, SelectionTest& test, SelectionIntersection& be
 	SelectionIntersection intersection;
 	face.testSelect( test, intersection );
 	if ( intersection.valid()
-		 && SelectionIntersection_closer( intersection, bestIntersection ) ) {
+	  && SelectionIntersection_closer( intersection, bestIntersection ) ) {
 		bestIntersection = intersection;
 		texturable.setTexture = makeCallback4( FaceSetTexture(), face );
 		texturable.getTexture = makeCallback2( FaceGetTexture(), face );
@@ -1648,71 +1934,71 @@ void Face_getClosest( Face& face, SelectionTest& test, SelectionIntersection& be
 
 class OccludeSelector : public Selector
 {
-SelectionIntersection& m_bestIntersection;
-bool& m_occluded;
+	SelectionIntersection& m_bestIntersection;
+	bool& m_occluded;
 public:
-OccludeSelector( SelectionIntersection& bestIntersection, bool& occluded ) : m_bestIntersection( bestIntersection ), m_occluded( occluded ){
-	m_occluded = false;
-}
-void pushSelectable( Selectable& selectable ){
-}
-void popSelectable(){
-}
-void addIntersection( const SelectionIntersection& intersection ){
-	if ( SelectionIntersection_closer( intersection, m_bestIntersection ) ) {
-		m_bestIntersection = intersection;
-		m_occluded = true;
+	OccludeSelector( SelectionIntersection& bestIntersection, bool& occluded ) : m_bestIntersection( bestIntersection ), m_occluded( occluded ){
+		m_occluded = false;
 	}
-}
-};
-#include "eclasslib.h"
-class BrushGetClosestFaceVisibleWalker : public scene::Graph::Walker
-{
-SelectionTest& m_test;
-Texturable& m_texturable;
-mutable SelectionIntersection m_bestIntersection;
-public:
-BrushGetClosestFaceVisibleWalker( SelectionTest& test, Texturable& texturable ) : m_test( test ), m_texturable( texturable ){
-}
-bool pre( const scene::Path& path, scene::Instance& instance ) const {
-	if ( !path.top().get().visible() )
-		return false;
-	BrushInstance* brush = Instance_getBrush( instance );
-	if ( brush != 0 ) {
-		m_test.BeginMesh( brush->localToWorld() );
-
-		for ( Brush::const_iterator i = brush->getBrush().begin(); i != brush->getBrush().end(); ++i )
-		{
-			Face_getClosest( *( *i ), m_test, m_bestIntersection, m_texturable );
+	void pushSelectable( Selectable& selectable ){
+	}
+	void popSelectable(){
+	}
+	void addIntersection( const SelectionIntersection& intersection ){
+		if ( SelectionIntersection_closer( intersection, m_bestIntersection ) ) {
+			m_bestIntersection = intersection;
+			m_occluded = true;
 		}
 	}
-	else
-	{
-		SelectionTestable* selectionTestable = Instance_getSelectionTestable( instance );
-		if ( selectionTestable ) {
-			bool occluded;
-			OccludeSelector selector( m_bestIntersection, occluded );
-			selectionTestable->testSelect( selector, m_test );
-			if ( occluded ) {
-				Patch* patch = Node_getPatch( path.top() );
-				if ( patch != 0 ) {
-					m_texturable.setTexture = makeCallback4( PatchSetTexture(), *patch );
-					m_texturable.getTexture = makeCallback2( PatchGetTexture(), *patch );
-					return true;
-				}
-				Entity* entity = Node_getEntity( path.top() );
-				if( entity != 0 && string_equal_n( entity->getEntityClass().name(), "light", 5 ) ){
-					m_texturable.setTexture = makeCallback4( LightSetTexture(), *entity );
-					m_texturable.getTexture = makeCallback2( LightGetTexture(), *entity );
-				}
-				else{
-					m_texturable = Texturable();
+};
+
+class BrushGetClosestFaceVisibleWalker : public scene::Graph::Walker
+{
+	SelectionTest& m_test;
+	Texturable& m_texturable;
+	mutable SelectionIntersection m_bestIntersection;
+public:
+	BrushGetClosestFaceVisibleWalker( SelectionTest& test, Texturable& texturable ) : m_test( test ), m_texturable( texturable ){
+	}
+	bool pre( const scene::Path& path, scene::Instance& instance ) const {
+		if ( !path.top().get().visible() )
+			return false;
+		BrushInstance* brush = Instance_getBrush( instance );
+		if ( brush != 0 ) {
+			m_test.BeginMesh( brush->localToWorld() );
+
+			for ( Brush::const_iterator i = brush->getBrush().begin(); i != brush->getBrush().end(); ++i )
+			{
+				Face_getClosest( *( *i ), m_test, m_bestIntersection, m_texturable );
+			}
+		}
+		else
+		{
+			SelectionTestable* selectionTestable = Instance_getSelectionTestable( instance );
+			if ( selectionTestable ) {
+				bool occluded;
+				OccludeSelector selector( m_bestIntersection, occluded );
+				selectionTestable->testSelect( selector, m_test );
+				if ( occluded ) {
+					Patch* patch = Node_getPatch( path.top() );
+					if ( patch != 0 ) {
+						m_texturable.setTexture = makeCallback4( PatchSetTexture(), *patch );
+						m_texturable.getTexture = makeCallback2( PatchGetTexture(), *patch );
+						return true;
+					}
+					Entity* entity = Node_getEntity( path.top() );
+					if( entity != 0 && string_equal_n( entity->getClassName(), "light", 5 ) ){
+						m_texturable.setTexture = makeCallback4( LightSetTexture(), *entity );
+						m_texturable.getTexture = makeCallback2( LightGetTexture(), *entity );
+					}
+					else{
+						m_texturable = Texturable();
+					}
 				}
 			}
 		}
+		return true;
 	}
-	return true;
-}
 };
 
 Texturable Scene_getClosestTexturable( scene::Graph& graph, SelectionTest& test ){
@@ -2207,7 +2493,7 @@ void focus(){
 //	<< extents.maxX << ", " << extents.minY << ", " << extents.maxY << "\n";
 	// TTimo: Apply a ratio to get the area we'll draw.
 	center.x() = 0.5f * ( extents.minX + extents.maxX ),
-		center.y() = 0.5f * ( extents.minY + extents.maxY );
+	center.y() = 0.5f * ( extents.minY + extents.maxY );
 	extents.minX = center.x() + VP_PADDING * ( extents.minX - center.x() ),
 	extents.minY = center.y() + VP_PADDING * ( extents.minY - center.y() ),
 	extents.maxX = center.x() + VP_PADDING * ( extents.maxX - center.x() ),
@@ -2219,7 +2505,7 @@ void focus(){
 	// TTimo: Compute XY space / window size ratio.
 	float SSize = extents.width(), TSize = extents.height();
 	float ratioX = textureSize.x() * extents.width() / windowSize.x(),
-		  ratioY = textureSize.y() * extents.height() / windowSize.y();
+	      ratioY = textureSize.y() * extents.height() / windowSize.y();
 //globalOutputStream() << "--> Texture size: " << textureSize.x() << ", " << textureSize.y() << "\n";
 //globalOutputStream() << "--> Window size: " << windowSize.x() << ", " << windowSize.y() << "\n";
 
@@ -2438,8 +2724,7 @@ gboolean button_release( GtkWidget * win, GdkEventButton * e, gpointer ){
 			GlobalUndoSystem().finish( "textoolUnknown" );
 		}
 
-		rotating = translatingX = translatingY = scalingX = scalingY
-																= resizingX = resizingY = false;
+		rotating = translatingX = translatingY = scalingX = scalingY = resizingX = resizingY = false;
 
 		queueDraw();
 	}
@@ -2616,23 +2901,22 @@ gboolean motion( GtkWidget * win, GdkEventMotion * e, gpointer ){
 		ny = -ny;
 //Cool! It works! Now just need to do rotation...
 
-		rotating = translatingX = translatingY = scalingX = scalingY
-																= resizingX = resizingY = false;
+		rotating = translatingX = translatingY = scalingX = scalingY = resizingX = resizingY = false;
 
 		if ( dist < ( gridRadius * 0.16f ) ) {
 			translatingX = translatingY = true;
 		}
 		else if ( dist > ( gridRadius * 0.16f ) && dist < ( gridRadius * 1.10f )
-				  && fabs( ny ) < ( gridRadius * 0.05f ) && nx > 0 ) {
+		          && fabs( ny ) < ( gridRadius * 0.05f ) && nx > 0 ) {
 			translatingX = true;
 		}
 		else if ( dist > ( gridRadius * 0.16f ) && dist < ( gridRadius * 1.10f )
-				  && fabs( nx ) < ( gridRadius * 0.05f ) && ny > 0 ) {
+		          && fabs( nx ) < ( gridRadius * 0.05f ) && ny > 0 ) {
 			translatingY = true;
 		}
 		// Should tighten up the angle on this, or put this test after the axis tests...
 		else if ( tran.x() > 0 && tran.y() > 0
-				  && ( dist > ( gridRadius * 0.82f ) && dist < ( gridRadius * 0.98f ) ) ) {
+		          && ( dist > ( gridRadius * 0.82f ) && dist < ( gridRadius * 0.98f ) ) ) {
 			rotating = true;
 		}
 

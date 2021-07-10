@@ -86,35 +86,28 @@ void QE_InitVFS(){
 	if( !string_empty( extrapath ) )
 		GlobalFileSystem().initDirectory( extrapath );
 
+	StringOutputStream str( 256 );
 	// if we have a mod dir
 	if ( !string_equal( gamename, basegame ) ) {
 		// ~/.<gameprefix>/<fs_game>
-		if ( userRoot && !string_equal( globalRoot, userRoot ) ) {
-			StringOutputStream userGamePath( 256 );
-			userGamePath << userRoot << gamename << '/';
-			GlobalFileSystem().initDirectory( userGamePath.c_str() );
+		if ( !string_equal( globalRoot, userRoot ) ) {
+			GlobalFileSystem().initDirectory( str( userRoot, gamename, '/' ) ); // userGamePath
 		}
 
 		// <fs_basepath>/<fs_game>
 		{
-			StringOutputStream globalGamePath( 256 );
-			globalGamePath << globalRoot << gamename << '/';
-			GlobalFileSystem().initDirectory( globalGamePath.c_str() );
+			GlobalFileSystem().initDirectory( str( globalRoot, gamename, '/' ) ); // globalGamePath
 		}
 	}
 
 	// ~/.<gameprefix>/<fs_main>
-	if ( userRoot && !string_equal( globalRoot, userRoot ) ) {
-		StringOutputStream userBasePath( 256 );
-		userBasePath << userRoot << basegame << '/';
-		GlobalFileSystem().initDirectory( userBasePath.c_str() );
+	if ( !string_equal( globalRoot, userRoot ) ) {
+		GlobalFileSystem().initDirectory( str( userRoot, basegame, '/' ) ); // userBasePath
 	}
 
 	// <fs_basepath>/<fs_main>
 	{
-		StringOutputStream globalBasePath( 256 );
-		globalBasePath << globalRoot << basegame << '/';
-		GlobalFileSystem().initDirectory( globalBasePath.c_str() );
+		GlobalFileSystem().initDirectory( str( globalRoot, basegame, '/' ) ); // globalBasePath
 	}
 }
 
@@ -147,7 +140,9 @@ bool ConfirmModified( const char* title ){
 		return true;
 	}
 
-	EMessageBoxReturn result = gtk_MessageBox( GTK_WIDGET( MainFrame_getWindow() ), "The current map has changed since it was last saved.\nDo you want to save the current map before continuing?", title, eMB_YESNOCANCEL, eMB_ICONQUESTION );
+	EMessageBoxReturn result = gtk_MessageBox( GTK_WIDGET( MainFrame_getWindow() ),
+	                                           "The current map has changed since it was last saved.\nDo you want to save the current map before continuing?",
+	                                           title, eMB_YESNOCANCEL, eMB_ICONQUESTION );
 	if ( result == eIDCANCEL ) {
 		return false;
 	}
@@ -168,29 +163,26 @@ void bsp_init(){
 	build_set_variable( "ExecutableType", RADIANT_EXECUTABLE );
 	build_set_variable( "EnginePath", EnginePath_get() );
 	build_set_variable( "UserEnginePath", g_qeglobals.m_userEnginePath.c_str() );
+	build_set_variable( "ExtraResoucePath", string_empty( ExtraResourcePath_get() )? ""
+	                                       : StringOutputStream()( " -fs_pakpath ", makeQuoted( ExtraResourcePath_get() ) ) );
 	build_set_variable( "MonitorAddress", ( g_WatchBSP_Enabled ) ? RADIANT_MONITOR_ADDRESS : "" );
 	build_set_variable( "GameName", gamename_get() );
 
 	const char* mapname = Map_Name( g_map );
+	StringOutputStream stream( 256 );
 	{
-		StringOutputStream name( 256 );
-		name << StringRange( mapname, path_get_filename_base_end( mapname ) ) << ".bsp";
-		build_set_variable( "BspFile", name.c_str() );
+		build_set_variable( "BspFile", stream( PathExtensionless( mapname ), ".bsp" ) );
 	}
 
 	if( g_region_active ){
-		StringOutputStream name( 256 );
-		name << StringRange( mapname, path_get_filename_base_end( mapname ) ) << ".reg";
-		build_set_variable( "MapFile", name.c_str() );
+		build_set_variable( "MapFile", stream( PathExtensionless( mapname ), ".reg" ) );
 	}
 	else{
 		build_set_variable( "MapFile", mapname );
 	}
 
 	{
-		StringOutputStream name( 256 );
-		name << StringRange( path_get_filename_start( mapname ), path_get_filename_base_end( mapname ) );
-		build_set_variable( "MapName", name.c_str() );
+		build_set_variable( "MapName", stream( PathFilename( mapname ) ) );
 	}
 }
 
@@ -200,42 +192,42 @@ void bsp_shutdown(){
 
 class ArrayCommandListener : public CommandListener
 {
-GPtrArray* m_array;
+	GPtrArray* m_array;
 public:
-ArrayCommandListener(){
-	m_array = g_ptr_array_new();
-}
-~ArrayCommandListener(){
-	g_ptr_array_free( m_array, TRUE );
-}
+	ArrayCommandListener(){
+		m_array = g_ptr_array_new();
+	}
+	~ArrayCommandListener(){
+		g_ptr_array_free( m_array, TRUE );
+	}
 
-void execute( const char* command ){
-	g_ptr_array_add( m_array, g_strdup( command ) );
-}
+	void execute( const char* command ){
+		g_ptr_array_add( m_array, g_strdup( command ) );
+	}
 
-GPtrArray* array() const {
-	return m_array;
-}
+	GPtrArray* array() const {
+		return m_array;
+	}
 };
 
 class BatchCommandListener : public CommandListener
 {
-TextOutputStream& m_file;
-std::size_t m_commandCount;
-const char* m_outputRedirect;
+	TextOutputStream& m_file;
+	std::size_t m_commandCount;
+	const char* m_outputRedirect;
 public:
-BatchCommandListener( TextOutputStream& file, const char* outputRedirect ) : m_file( file ), m_commandCount( 0 ), m_outputRedirect( outputRedirect ){
-}
-
-void execute( const char* command ){
-	m_file << command;
-	if( m_outputRedirect ){
-		m_file << ( m_commandCount == 0? " > " : " >> " );
-		m_file << "\"" << m_outputRedirect << "\"";
+	BatchCommandListener( TextOutputStream& file, const char* outputRedirect ) : m_file( file ), m_commandCount( 0 ), m_outputRedirect( outputRedirect ){
 	}
-	m_file << "\n";
-	++m_commandCount;
-}
+
+	void execute( const char* command ){
+		m_file << command;
+		if( m_outputRedirect ){
+			m_file << ( m_commandCount == 0? " > " : " >> " );
+			m_file << "\"" << m_outputRedirect << "\"";
+		}
+		m_file << "\n";
+		++m_commandCount;
+	}
 };
 
 bool Region_cameraValid(){
@@ -272,9 +264,7 @@ void RunBSP( const char* name ){
 
 	if ( g_region_active ) {
 		const char* mapname = Map_Name( g_map );
-		StringOutputStream name( 256 );
-		name << StringRange( mapname, path_get_filename_base_end( mapname ) ) << ".reg";
-		Map_SaveRegion( name.c_str() );
+		Map_SaveRegion( StringOutputStream( 256 )( PathExtensionless( mapname ), ".reg" ).c_str() );
 	}
 
 	Pointfile_Delete();
@@ -291,8 +281,7 @@ void RunBSP( const char* name ){
 	if ( g_WatchBSP_Enabled && monitor ) {
 		// grab the file name for engine running
 		const char* fullname = Map_Name( g_map );
-		StringOutputStream bspname( 64 );
-		bspname << StringRange( path_get_filename_start( fullname ), path_get_filename_base_end( fullname ) );
+		const auto bspname = StringOutputStream( 64 )( PathFilename( fullname ) );
 		BuildMonitor_Run( listener.array(), bspname.c_str() );
 	}
 	else

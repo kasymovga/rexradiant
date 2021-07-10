@@ -99,13 +99,13 @@ GtkMenuItem* g_plugins_menu_separator = 0;
 void PluginsMenu_populate(){
 	class PluginsMenuConstructor : public PluginsVisitor
 	{
-	GtkMenu* m_menu;
-public:
-	PluginsMenuConstructor( GtkMenu* menu ) : m_menu( menu ){
-	}
-	void visit( IPlugIn& plugin ){
-		PlugInMenu_Add( m_menu, &plugin );
-	}
+		GtkMenu* m_menu;
+	public:
+		PluginsMenuConstructor( GtkMenu* menu ) : m_menu( menu ){
+		}
+		void visit( IPlugIn& plugin ){
+			PlugInMenu_Add( m_menu, &plugin );
+		}
 	};
 
 	PluginsMenuConstructor constructor( g_plugins_menu );
@@ -135,7 +135,7 @@ GtkMenuItem* create_plugins_menu(){
 #if 0
 	create_menu_item_with_mnemonic( menu, "Refresh", FreeCaller<Restart>() );
 
-	// NOTE: the seperator is used when doing a refresh of the list, everything past the seperator is removed
+	// NOTE: the separator is used when doing a refresh of the list, everything past the separator is removed
 	g_plugins_menu_separator = menu_separator( menu );
 #endif
 
