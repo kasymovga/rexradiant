@@ -72,7 +72,7 @@
 	1.0f,               /* lightgrid ambient scale */
 	false,             /* light angle attenuation uses half-lambert curve */
 	true,              /* disable shader lightstyles hack */
-	true,              /* keep light entities on bsp */
+	false,              /* keep light entities on bsp */
 	8,                  /* default patchMeta subdivisions tolerance */
 	false,             /* patch casting enabled */
 	false,             /* compile deluxemaps */
