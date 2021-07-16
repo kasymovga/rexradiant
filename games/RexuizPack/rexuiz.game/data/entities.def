@@ -1626,6 +1626,76 @@ respawntime: "off" cycle time (default: same as wait)
 START_ON: assume it is already turned on (when targeted)
 */
 
+/*QUAKED nexball_out (.5 .5 .5) ? TOUCH_PLAYER
+-------- KEYS --------
+noise: out sound
+*/
+
+/*QUAKED nexball_fault (.5 .5 .5) ? TOUCH_PLAYER
+-------- KEYS --------
+noise: fault sound
+*/
+
+/*QUAKED nexball_redgoal (.5 .5 .5) ? TOUCH_PLAYER
+Red team goal area
+-------- KEYS --------
+noise: goal sound
+*/
+
+/*QUAKED nexball_bluegoal (.5 .5 .5) ? TOUCH_PLAYER
+Blue team goal area
+-------- KEYS --------
+noise: goal sound
+*/
+
+/*QUAKED nexball_yellowgoal (.5 .5 .5) ? TOUCH_PLAYER
+Yellow team goal area
+-------- KEYS --------
+noise: goal sound
+*/
+
+/*QUAKED nexball_pinkgoal (.5 .5 .5) ? TOUCH_PLAYER
+Yellow team goal area
+-------- KEYS --------
+noise: goal sound
+*/
+
+/*QUAKED nexball_football (.5 .5 .5) (-16 -16 -16) (16 16 16)
+Football ball
+-------- KEYS --------
+model: ball model
+scale: ball model scale
+noise: bounce sound
+noise1: drop sound
+*/
+
+/*QUAKED nexball_basketball (.5 .5 .5) (-16 -16 -16) (16 16 16)
+Basketball ball
+-------- KEYS --------
+model: ball model
+scale: ball model scale
+noise: bounce sound
+noise1: drop sound
+*/
+
+/*QUAKED nexball_hockey (.5 .5 .5) (-16 -16 -16) (16 16 16)
+Hockey ball
+-------- KEYS --------
+model: ball model
+scale: ball model scale
+noise: bounce sound
+noise1: drop sound
+*/
+
+/*QUAKED nexball_volleyball (.5 .5 .5) (-16 -16 -16) (16 16 16)
+Hockey ball
+-------- KEYS --------
+model: ball model
+scale: ball model scale
+noise: bounce sound
+noise1: drop sound
+*/
+
 /*QUAKED ball_out (.5 .5 .5) ? TOUCH_PLAYER
 -------- KEYS --------
 noise: out sound
@@ -1637,25 +1707,13 @@ noise: fault sound
 */
 
 /*QUAKED ball_redgoal (.5 .5 .5) ? TOUCH_PLAYER
-Red team goal area
+Blue(!) team goal area
 -------- KEYS --------
 noise: goal sound
 */
 
 /*QUAKED ball_bluegoal (.5 .5 .5) ? TOUCH_PLAYER
-Blue team goal area
--------- KEYS --------
-noise: goal sound
-*/
-
-/*QUAKED ball_yellowgoal (.5 .5 .5) ? TOUCH_PLAYER
-Yellow team goal area
--------- KEYS --------
-noise: goal sound
-*/
-
-/*QUAKED ball_pinkgoal (.5 .5 .5) ? TOUCH_PLAYER
-Yellow team goal area
+Red(!) team goal area
 -------- KEYS --------
 noise: goal sound
 */
@@ -1694,4 +1752,28 @@ model: ball model
 scale: ball model scale
 noise: bounce sound
 noise1: drop sound
+*/
+
+/*QUAKED shootingrange_target (.5 .5 .5) ? SPLASH
+Shooting range target
+-------- KEYS --------
+noise: spawn sound
+delay: respawn interval
+target: shooting range area
+-------- SPAWNFLAGS --------
+SPLASH: allow splash damage
+*/
+
+/*QUAKED shootingrange_target (.5 .5 .5) ? SPLASH
+Shooting range target
+-------- KEYS --------
+noise: spawn sound
+delay: respawn interval
+target: shooting range area
+-------- SPAWNFLAGS --------
+SPLASH: allow splash damage
+*/
+
+/*QUAKED shootingrange_area (.5 .5 .5) ?
+Shooting range area
 */
