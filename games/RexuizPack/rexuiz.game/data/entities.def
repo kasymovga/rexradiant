@@ -456,7 +456,7 @@ model="models/items/g_h25.md3"
 
 /*QUAKED item_health_mega (.9 .3 .3) (-30 -30 0) (30 30 48) FLOATING
 Mega Health (default 100 health points)
-In Minstagib, this randomly turns into either an invisibility, an extra lives or a speed power-up with a default respawn time of 120.
+In Minstagib, this turns into extra lives.
 -------- KEYS --------
 respawntime: time till it respawns (default: 30)
 health: amount of health it gives (default: 100 (g_pickup_healthmega))
@@ -481,7 +481,7 @@ model="models/items/g_h1.md3"
 
 /*QUAKED item_invincible (.3 .3 1) (-30 -30 0) (30 30 48) FLOATING
 Strong Shield
-In Minstagib, this randomly turns into either an invisibility, an extra lives or a speed power-up with a default respawn time of 120.
+In Minstagib, this turns into a speed power-up.
 -------- KEYS --------
 respawntime: time till it respawns (default: 120)
 -------- SPAWNFLAGS --------
@@ -492,7 +492,6 @@ model="models/items/g_invincible.md3"
 
 /*QUAKED item_minst_cells (.3 .3 1) (-30 -30 0) (30 30 32) FLOATING
 Minstagib ammo.
-Always contains 5 (g_minstagib_ammo_drop) shots.
 It only appears when playing Minstagib and prevents auto-replacement of weapon_nex & weapon_rocketlauncher when used.
 -------- KEYS --------
 respawntime: time till it respawns (default: 45)
@@ -526,7 +525,7 @@ model="models/items/a_shells.md3"
 
 /*QUAKED item_strength (.3 .3 1) (-30 -30 0) (30 30 48) FLOATING
 Strength aka Quad damage
-In Minstagib, this randomly turns into either an invisibility, an extra lives or a speed power-up with a default respawn time of 120.
+In Minstagib, this turns into invisibility.
 -------- KEYS --------
 respawntime: time till it respawns (default: 120)
 -------- SPAWNFLAGS --------
@@ -1550,10 +1549,16 @@ mdl: name of particle effect
 
 /*QUAKED vehicle_aircraft (.5 .5 0) (-75 -75 5) (75 75 105)
 -------- KEYS --------
+model: override vehicle model
 */
 
 /*QUAKED vehicle_car (.5 .5 0) (-90 -90 5) (90 90 105)
 -------- KEYS --------
+model: override car model
+weaponmodel: override car wheel model
+noise: car noise
+noise2: override engine noise
+noise3: override screech noise
 */
 
 /*QUAKED target_items (0 .5 .0) (-16 -16 -16) (16 16 16) AND_MIN OR_MAX ANDNOT_MIN
@@ -1776,4 +1781,44 @@ SPLASH: allow splash damage
 
 /*QUAKED shootingrange_area (.5 .5 .5) ?
 Shooting range area
+*/
+
+/*QUAKED item_invisibility (.3 .3 1) (-30 -30 0) (30 30 48) FLOATING
+-------- MODEL FOR RADIANT ONLY - DO NOT SET THIS AS A KEY --------
+Invisibilty powerup
+-------- SPAWNFLAGS --------
+FLOATING: the item will float in air, instead of aligning to the floor by falling
+-------- MODEL FOR RADIANT ONLY - DO NOT SET THIS AS A KEY --------
+model="models/items/g_strength.md3"
+*/
+
+/*QUAKED item_sped (.3 .3 1) (-30 -30 0) (30 30 48) FLOATING
+Speed powerup
+-------- KEYS --------
+respawntime: time till it respawns (default: 120)
+-------- SPAWNFLAGS --------
+FLOATING: the item will float in air, instead of aligning to the floor by falling
+-------- MODEL FOR RADIANT ONLY - DO NOT SET THIS AS A KEY --------
+model="models/items/g_invincible.md3"
+*/
+
+/*QUAKED dynlight (.65 .65 1) (-8 -8 -8) (8 8 8)
+-------- KEYS --------
+targetname: The name other entities can use to target this entity
+weaponmodel: model that appear when light on
+-------- SPAWNFLAGS --------
+*/
+
+/*QUAKED vehicle_bigwheel (.5 .5 0) (-75 -75 5) (75 75 150)
+-------- KEYS --------
+*/
+
+/*QUAKED weapon_tuba (1 0 .5) (-30 -30 0) (30 30 32) FLOATING
+the Camping Rifle
+-------- KEYS --------
+respawntime: time till it respawns (default: 15)
+-------- SPAWNFLAGS --------
+FLOATING: the item will float in air, instead of aligning to the floor by falling
+-------- MODEL FOR RADIANT ONLY - DO NOT SET THIS AS A KEY --------
+model="models/weapons/g_tuba.md3"
 */
