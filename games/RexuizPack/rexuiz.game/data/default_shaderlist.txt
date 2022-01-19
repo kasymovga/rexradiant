@@ -1,56 +1,72 @@
-//**********************************************************************//
-//	shaderlist.txt modified for Q3Radiant				//
-//	by Eutectic - 13 May 2000					//
-//                                                                      //
-//      Rev history:                                                    //
-//      08/11/2000
-//      TTimo - changed liquid to liquids and sky to skies for better   //
-//      consistency with the directories and actual shader names        //
-//									//
-//	Added the names of the new shader files created as a result	//
-//	of the cleanup of the old shader files so Q3Radiant will read	//
-//	and display all the shaders in the texture window.		//
-//									//
-//	SHADER FILE NAMES ADDED:					//
-//	base_door							//
-//	gothic_button							//
-//	gothic_door							//
-//**********************************************************************//
-
-// this file lists all the separate shader files
-
+accident
+aggressor
+blacksky
+cel
 common
+cyberparcour01
+desertfactory
+domination
 dsi
 e7
+eggandbacon
+egyptsoc
 el3dm1
+electro
+evil1_grates
+evil2
 evil3
 evil4_techtrims
 evil5
-evil6
 evil6_floors
 evil6_lights
 evil6_support
 evil6_trims
 evil6_walls
 evil8_base
-gfx
+eX
+final_rage
+flags
+flamethrower
 harlequin_sky
-hell
+hip_interstellar
+hlac
 kaznexctf2
+leiprojectile
 liquids
-models
-museum
+mandelbrotsky
+mflag
+morphed
+nexdm18_rmx
 official_cmp1
-organics
+onslaught
+portals
+race
+racetrack
 reaper
+ruiner
+savdm6ish
 sav-graysky1
 sav-liquids
-savdm6ish
+sbshield
 sfx
-skies
-skin
+shotgun
+spiderbot
 stralenex1
-terrademoQ3
-test
+stralenex8
+strength
+stormkeep
+swamp
+teamfx
+terrain_alphafade
+terrain_dotproduct2projected
+terrain_dotproduct2
+test3
+toxic
+trak4
+trak5
+tree
+tuba
+turrets
+tutorial
 tznex01
-tznex03
+water
