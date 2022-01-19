@@ -26,8 +26,7 @@
    please contact Id Software immediately at info@idsoftware.com.
  */
 
-#if !defined( INCLUDED_PREFERENCES_H )
-#define INCLUDED_PREFERENCES_H
+#pragma once
 
 #include "libxml/parser.h"
 #include "dialog.h"
@@ -204,7 +203,7 @@ public:
 		if ( i != m_gameDescription.end() ) {
 			return ( *i ).second.c_str();
 		}
-		ERROR_MESSAGE( "game attribute " << makeQuoted( key ) << " not found in " << makeQuoted( mGameFile.c_str() ) );
+		ERROR_MESSAGE( "game attribute " << makeQuoted( key ) << " not found in " << makeQuoted( mGameFile ) );
 		return "";
 	}
 
@@ -409,6 +408,3 @@ void Preferences_Load();
 void Preferences_Save();
 
 void Preferences_Reset();
-
-
-#endif

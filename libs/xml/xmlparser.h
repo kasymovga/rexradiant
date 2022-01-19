@@ -19,11 +19,10 @@
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#if !defined( INCLUDED_XML_XMLPARSER_H )
-#define INCLUDED_XML_XMLPARSER_H
+#pragma once
 
 #include <cstdio>
-#include <string.h>
+#include <cstring>
 #include "ixml.h"
 #include "libxml/parser.h"
 #include "convert.h"
@@ -63,7 +62,7 @@ private:
 	const char** m_atts;
 };
 
-#include <stdarg.h>
+#include <cstdarg>
 
 class FormattedVA
 {
@@ -123,7 +122,7 @@ class XMLSAXImporter
 	}
 	static void characters( void *user_data, const xmlChar *ch, int len ){
 		reinterpret_cast<XMLSAXImporter*>( user_data )->m_importer
-		        << StringRange( reinterpret_cast<const char*>( ch ), reinterpret_cast<const char*>( ch + len ) );
+		        << StringRange( reinterpret_cast<const char*>( ch ), len );
 	}
 
 	static void warning( void *user_data, const char *msg, ... ){
@@ -181,7 +180,6 @@ public:
 
 class XMLStreamParser : public XMLExporter
 {
-	enum unnamed0 { BUFSIZE = 1024 };
 public:
 	XMLStreamParser( TextInputStream& istream )
 		: m_istream( istream ){
@@ -189,7 +187,7 @@ public:
 	virtual void exportXML( XMLImporter& importer ){
 		//bool wellFormed = false;
 
-		char chars[BUFSIZE];
+		char chars[1024];
 		std::size_t res = m_istream.read( chars, 4 );
 		if ( res > 0 ) {
 			XMLSAXImporter sax( importer );
@@ -197,7 +195,7 @@ public:
 			xmlParserCtxtPtr ctxt = xmlCreatePushParserCtxt( sax.callbacks(), sax.context(), chars, static_cast<int>( res ), 0 );
 			ctxt->replaceEntities = 1;
 
-			while ( ( res = m_istream.read( chars, BUFSIZE ) ) > 0 )
+			while ( ( res = m_istream.read( chars, std::size( chars ) ) ) > 0 )
 			{
 				xmlParseChunk( ctxt, chars, static_cast<int>( res ), 0 );
 			}
@@ -213,7 +211,3 @@ public:
 private:
 	TextInputStream& m_istream;
 };
-
-
-
-#endif

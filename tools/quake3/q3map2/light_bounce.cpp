@@ -32,31 +32,7 @@
 #include "q3map2.h"
 
 
-
 /* functions */
-
-/*
-   RadFreeLights()
-   deletes any existing lights, freeing up memory for the next bounce
- */
-
-void RadFreeLights( void ){
-	light_t     *light, *next;
-
-
-	/* delete lights */
-	for ( light = lights; light; light = next )
-	{
-		next = light->next;
-		if ( light->w != NULL ) {
-			FreeWinding( light->w );
-		}
-		free( light );
-	}
-	numLights = 0;
-	lights = NULL;
-}
-
 
 
 /*
@@ -72,7 +48,6 @@ static void RadClipWindingEpsilon( radWinding_t *in, const Vector3& normal, floa
 	int counts[ 3 ];
 	float dot;                  /* ydnar: changed from static b/c of threading */ /* VC 4.2 optimizer bug if not static? */
 	int i, k;
-	radVert_t       *v1, *v2, mid;
 	int maxPoints;
 
 
@@ -121,20 +96,20 @@ static void RadClipWindingEpsilon( radWinding_t *in, const Vector3& normal, floa
 	for ( i = 0; i < in->numVerts; i++ )
 	{
 		/* do simple vertex copies first */
-		v1 = &in->verts[ i ];
+		const radVert_t& v1 = in->verts[ i ];
 
 		if ( sides[ i ] == eSideOn ) {
-			memcpy( &front->verts[ front->numVerts++ ], v1, sizeof( radVert_t ) );
-			memcpy( &back->verts[ back->numVerts++ ], v1, sizeof( radVert_t ) );
+			front->verts[ front->numVerts++ ] = v1;
+			back->verts[ back->numVerts++ ] = v1;
 			continue;
 		}
 
 		if ( sides[ i ] == eSideFront ) {
-			memcpy( &front->verts[ front->numVerts++ ], v1, sizeof( radVert_t ) );
+			front->verts[ front->numVerts++ ] = v1;
 		}
 
 		if ( sides[ i ] == eSideBack ) {
-			memcpy( &back->verts[ back->numVerts++ ], v1, sizeof( radVert_t ) );
+			back->verts[ back->numVerts++ ] = v1;
 		}
 
 		if ( sides[ i + 1 ] == eSideOn || sides[ i + 1 ] == sides[ i ] ) {
@@ -142,29 +117,30 @@ static void RadClipWindingEpsilon( radWinding_t *in, const Vector3& normal, floa
 		}
 
 		/* generate a split vertex */
-		v2 = &in->verts[ ( i + 1 ) % in->numVerts ];
+		const radVert_t& v2 = in->verts[ ( i + 1 ) % in->numVerts ];
 
 		dot = dists[ i ] / ( dists[ i ] - dists[ i + 1 ] );
 
 		/* average vertex values */
+		radVert_t mid;
 		/* color */
 		for ( k = 0; k < MAX_LIGHTMAPS; k++ ){
-			mid.color[ k ] = v1->color[ k ] + ( v2->color[ k ] - v1->color[ k ] ) * dot;
+			mid.color[ k ] = v1.color[ k ] + ( v2.color[ k ] - v1.color[ k ] ) * dot;
 		}
 		/* xyz, normal */
-		mid.xyz = v1->xyz + ( v2->xyz - v1->xyz ) * dot;
-		mid.normal = v1->normal + ( v2->normal - v1->normal ) * dot;
+		mid.xyz = v1.xyz + ( v2.xyz - v1.xyz ) * dot;
+		mid.normal = v1.normal + ( v2.normal - v1.normal ) * dot;
 		/* st, lightmap */
-		mid.st = v1->st + ( v2->st - v1->st ) * dot;
+		mid.st = v1.st + ( v2.st - v1.st ) * dot;
 		for ( k = 0; k < MAX_LIGHTMAPS; k++ )
-			mid.lightmap[ k ] = v1->lightmap[ k ] + ( v2->lightmap[ k ] - v1->lightmap[ k ] ) * dot;
+			mid.lightmap[ k ] = v1.lightmap[ k ] + ( v2.lightmap[ k ] - v1.lightmap[ k ] ) * dot;
 
 		/* normalize the averaged normal */
 		VectorNormalize( mid.normal );
 
 		/* copy the midpoint to both windings */
-		memcpy( &front->verts[ front->numVerts++ ], &mid, sizeof( radVert_t ) );
-		memcpy( &back->verts[ back->numVerts++ ], &mid, sizeof( radVert_t ) );
+		front->verts[ front->numVerts++ ] = mid;
+		back->verts[ back->numVerts++ ] = mid;
 	}
 
 	/* error check */
@@ -178,7 +154,7 @@ static void RadClipWindingEpsilon( radWinding_t *in, const Vector3& normal, floa
 
 
 
-float Modulo1IfNegative( float f ){
+inline float Modulo1IfNegative( float f ){
 	return f < 0.0f ? f - floor( f ) : f;
 }
 
@@ -189,7 +165,7 @@ float Modulo1IfNegative( float f ){
    returns false if pixels are bad
  */
 
-bool RadSampleImage( byte *pixels, int width, int height, const Vector2& st, Color4f& color ){
+bool RadSampleImage( const byte *pixels, int width, int height, const Vector2& st, Color4f& color ){
 	int x, y;
 
 	/* clear color first */
@@ -231,7 +207,7 @@ bool RadSampleImage( byte *pixels, int width, int height, const Vector2& st, Col
 #define MAX_SAMPLES         150
 #define SAMPLE_GRANULARITY  6
 
-static void RadSample( int lightmapNum, bspDrawSurface_t *ds, rawLightmap_t *lm, shaderInfo_t *si, radWinding_t *rw, Vector3& average, Vector3& gradient, int *style ){
+static void RadSample( int lightmapNum, bspDrawSurface_t *ds, rawLightmap_t *lm, const shaderInfo_t *si, radWinding_t *rw, Vector3& average, Vector3& gradient, int *style ){
 	int i, j, k, l, v, samples;
 	Vector3 color;
 	MinMax minmax;
@@ -383,13 +359,11 @@ static void RadSample( int lightmapNum, bspDrawSurface_t *ds, rawLightmap_t *lm,
 
 
 
-static void RadSubdivideDiffuseLight( int lightmapNum, bspDrawSurface_t *ds, rawLightmap_t *lm, shaderInfo_t *si,
+static void RadSubdivideDiffuseLight( int lightmapNum, bspDrawSurface_t *ds, rawLightmap_t *lm, const shaderInfo_t *si,
                                       float scale, float subdivide, radWinding_t *rw, clipWork_t *cw ){
 	int i, style = 0;
 	float dist, area, value;
 	Vector3 normal, color, gradient;
-	light_t         *light, *splash;
-	winding_t       *w, *splash_w;
 
 
 	/* dummy check */
@@ -399,8 +373,8 @@ static void RadSubdivideDiffuseLight( int lightmapNum, bspDrawSurface_t *ds, raw
 
 	/* get bounds for winding */
 	MinMax minmax;
-	for ( i = 0; i < rw->numVerts; i++ )
-		minmax.extend( rw->verts[ i ].xyz );
+	for ( const radVert_t& vert : Span( rw->verts, rw->numVerts ) )
+		minmax.extend( vert.xyz );
 
 	/* subdivide if necessary */
 	for ( i = 0; i < 3; i++ )
@@ -445,14 +419,11 @@ static void RadSubdivideDiffuseLight( int lightmapNum, bspDrawSurface_t *ds, raw
 		}
 	}
 
-	/* create a regular winding and an average normal */
-	w = AllocWinding( rw->numVerts );
-	w->numpoints = rw->numVerts;
+	/* create an average normal */
 	normal.set( 0 );
-	for ( i = 0; i < rw->numVerts; i++ )
+	for ( const radVert_t& vert : Span( rw->verts, rw->numVerts ) )
 	{
-		w->p[ i ] = rw->verts[ i ].xyz;
-		normal += rw->verts[ i ].normal;
+		normal += vert.normal;
 	}
 	normal /= rw->numVerts;
 	if ( VectorNormalize( normal ) == 0.0f ) {
@@ -485,24 +456,26 @@ static void RadSubdivideDiffuseLight( int lightmapNum, bspDrawSurface_t *ds, raw
 		break;
 	}
 
-	/* create a light */
-	light = safe_calloc( sizeof( *light ) );
 
-	/* attach it */
+	/* create a light */
 	ThreadLock();
-	light->next = lights;
-	lights = light;
+	light_t& light = lights.emplace_front();
 	ThreadUnlock();
 
 	/* initialize the light */
-	light->flags = LightFlags::DefaultArea;
-	light->type = ELightType::Area;
-	light->si = si;
-	light->fade = 1.0f;
-	light->w = w;
+	light.flags = LightFlags::DefaultArea;
+	light.type = ELightType::Area;
+	light.si = si;
+	light.fade = 1.0f;
+	/* create a regular winding */
+	light.w = AllocWinding( rw->numVerts );
+	for ( const radVert_t& vert : Span( rw->verts, rw->numVerts ) )
+	{
+		light.w.push_back( vert.xyz );
+	}
 
 	/* set falloff threshold */
-	light->falloffTolerance = falloffTolerance;
+	light.falloffTolerance = falloffTolerance;
 
 	/* bouncing light? */
 	if ( !bouncing ) {
@@ -511,45 +484,40 @@ static void RadSubdivideDiffuseLight( int lightmapNum, bspDrawSurface_t *ds, raw
 
 		/* handle first-pass lights in normal q3a style */
 		value = si->value;
-		light->photons = value * area * areaScale;
-		light->add = value * formFactorValueScale * areaScale;
-		light->color = si->color;
-		light->style = noStyles ? LS_NORMAL : si->lightStyle;
-		if ( light->style < LS_NORMAL || light->style >= LS_NONE ) {
-			light->style = LS_NORMAL;
+		light.photons = value * area * areaScale;
+		light.add = value * formFactorValueScale * areaScale;
+		light.color = si->color;
+		light.style = noStyles ? LS_NORMAL : si->lightStyle;
+		if ( light.style < LS_NORMAL || light.style >= LS_NONE ) {
+			light.style = LS_NORMAL;
 		}
 
 		/* set origin */
-		light->origin = minmax.origin();
+		light.origin = minmax.origin();
 
 		/* nudge it off the plane a bit */
-		light->normal = normal;
-		light->origin += light->normal;
-		light->dist = vector3_dot( light->origin, normal );
+		light.normal = normal;
+		light.origin += light.normal;
+		light.dist = vector3_dot( light.origin, normal );
 
 #if 0
 		/* optionally create a point backsplash light */
 		if ( si->backsplashFraction > 0 ) {
-
 			/* allocate a new point light */
-			splash = safe_calloc( sizeof( *splash ) );
-
-			splash->next = lights;
-			lights = splash;
-
+			light_t& splash = lights.emplace_front();
 
 			/* set it up */
-			splash->flags = LightFlags::DefaultQ3A;
-			splash->type = ELightType::Point;
-			splash->photons = light->photons * si->backsplashFraction;
+			splash.flags = LightFlags::DefaultQ3A;
+			splash.type = ELightType::Point;
+			splash.photons = light.photons * si->backsplashFraction;
 
-			splash->fade = 1.0f;
-			splash->si = si;
-			splash->origin = normal * si->backsplashDistance + light->origin;
-			splash->color = si->color;
+			splash.fade = 1.0f;
+			splash.si = si;
+			splash.origin = normal * si->backsplashDistance + light.origin;
+			splash.color = si->color;
 
-			splash->falloffTolerance = falloffTolerance;
-			splash->style = noStyles ? LS_NORMAL : light->style;
+			splash.falloffTolerance = falloffTolerance;
+			splash.style = noStyles ? LS_NORMAL : light.style;
 
 			/* add to counts */
 			numPointLights++;
@@ -561,38 +529,34 @@ static void RadSubdivideDiffuseLight( int lightmapNum, bspDrawSurface_t *ds, raw
 		//if ( original && si->backsplashFraction > 0 ) {
 		if ( si->backsplashFraction > 0 && !( si->compileFlags & C_SKY ) ) {
 			/* allocate a new area light */
-			splash = safe_calloc( sizeof( *splash ) );
 			ThreadLock();
-			splash->next = lights;
-			lights = splash;
+			light_t& splash = lights.emplace_front();
 			ThreadUnlock();
 
 			/* set it up */
-			splash->flags = LightFlags::DefaultArea;
-			splash->type = ELightType::Area;
-			splash->photons = light->photons * 7.0f * si->backsplashFraction;
-			splash->add = light->add * 7.0f * si->backsplashFraction;
-			splash->fade = 1.0f;
-			splash->si = si;
-			splash->color = si->color;
-			splash->falloffTolerance = falloffTolerance;
-			splash->style = noStyles ? LS_NORMAL : si->lightStyle;
-			if ( splash->style < LS_NORMAL || splash->style >= LS_NONE ) {
-				splash->style = LS_NORMAL;
+			splash.flags = LightFlags::DefaultArea;
+			splash.type = ELightType::Area;
+			splash.photons = light.photons * 7.0f * si->backsplashFraction;
+			splash.add = light.add * 7.0f * si->backsplashFraction;
+			splash.fade = 1.0f;
+			splash.si = si;
+			splash.color = si->color;
+			splash.falloffTolerance = falloffTolerance;
+			splash.style = noStyles ? LS_NORMAL : si->lightStyle;
+			if ( splash.style < LS_NORMAL || splash.style >= LS_NONE ) {
+				splash.style = LS_NORMAL;
 			}
 
 			/* create a regular winding */
-			splash_w = AllocWinding( rw->numVerts );
-			splash_w->numpoints = rw->numVerts;
+			splash.w = AllocWinding( rw->numVerts );
 			for ( i = 0; i < rw->numVerts; i++ )
-				splash_w->p[ i ] = rw->verts[rw->numVerts - 1 - i].xyz + normal * si->backsplashDistance;
-			splash->w = splash_w;
+				splash.w.push_back( rw->verts[rw->numVerts - 1 - i].xyz + normal * si->backsplashDistance );
 
-			splash->origin = normal * si->backsplashDistance + light->origin;
-			splash->normal = -normal;
-			splash->dist = vector3_dot( splash->origin, splash->normal );
+			splash.origin = normal * si->backsplashDistance + light.origin;
+			splash.normal = -normal;
+			splash.dist = vector3_dot( splash.origin, splash.normal );
 
-//			splash->flags |= LightFlags::Twosided;
+//			splash.flags |= LightFlags::Twosided;
 		}
 #endif
 
@@ -601,35 +565,35 @@ static void RadSubdivideDiffuseLight( int lightmapNum, bspDrawSurface_t *ds, raw
 	{
 		/* handle bounced light (radiosity) a little differently */
 		value = RADIOSITY_VALUE * si->bounceScale * 0.375f;
-		light->photons = value * area * bounceScale;
-		light->add = value * formFactorValueScale * bounceScale;
-		light->color = color;
-		light->style = noStyles ? LS_NORMAL : style;
-		if ( light->style < LS_NORMAL || light->style >= LS_NONE ) {
-			light->style = LS_NORMAL;
+		light.photons = value * area * bounceScale;
+		light.add = value * formFactorValueScale * bounceScale;
+		light.color = color;
+		light.style = noStyles ? LS_NORMAL : style;
+		if ( light.style < LS_NORMAL || light.style >= LS_NONE ) {
+			light.style = LS_NORMAL;
 		}
 
 		/* set origin */
-		light->origin = WindingCenter( w );
+		light.origin = WindingCenter( light.w );
 
 		/* nudge it off the plane a bit */
-		light->normal = normal;
-		light->origin += light->normal;
-		light->dist = vector3_dot( light->origin, normal );
+		light.normal = normal;
+		light.origin += light.normal;
+		light.dist = vector3_dot( light.origin, normal );
 	}
 
-	if (light->photons < 0 || light->add < 0 || light->color[0] < 0 || light->color[1] < 0 || light->color[2] < 0)
+	if (light.photons < 0 || light.add < 0 || light.color[0] < 0 || light.color[1] < 0 || light.color[2] < 0)
 		Sys_Printf( "BUG: RadSubdivideDiffuseLight created a darkbulb\n" );
 
 	/* emit light from both sides? */
 	if ( si->compileFlags & C_FOG || si->twoSided ) {
-		light->flags |= LightFlags::Twosided;
+		light.flags |= LightFlags::Twosided;
 	}
 
 	//%	Sys_Printf( "\nAL: C: (%6f, %6f, %6f) [%6f] N: (%6f, %6f, %6f) %s\n",
-	//%		light->color[ 0 ], light->color[ 1 ], light->color[ 2 ], light->add,
-	//%		light->normal[ 0 ], light->normal[ 1 ], light->normal[ 2 ],
-	//%		light->si->shader );
+	//%		light.color[ 0 ], light.color[ 1 ], light.color[ 2 ], light.add,
+	//%		light.normal[ 0 ], light.normal[ 1 ], light.normal[ 2 ],
+	//%		light.si->shader );
 }
 
 
@@ -638,7 +602,7 @@ static void RadSubdivideDiffuseLight( int lightmapNum, bspDrawSurface_t *ds, raw
    creates unbounced diffuse lights for triangle soup (misc_models, etc)
  */
 
-void RadLightForTriangles( int num, int lightmapNum, rawLightmap_t *lm, shaderInfo_t *si, float scale, float subdivide, clipWork_t *cw ){
+void RadLightForTriangles( int num, int lightmapNum, rawLightmap_t *lm, const shaderInfo_t *si, float scale, float subdivide, clipWork_t *cw ){
 	int i, j, k, v;
 	bspDrawSurface_t    *ds;
 	radWinding_t rw;
@@ -682,7 +646,7 @@ void RadLightForTriangles( int num, int lightmapNum, rawLightmap_t *lm, shaderIn
 
 #define PLANAR_EPSILON  0.1f
 
-void RadLightForPatch( int num, int lightmapNum, rawLightmap_t *lm, shaderInfo_t *si, float scale, float subdivide, clipWork_t *cw ){
+void RadLightForPatch( int num, int lightmapNum, rawLightmap_t *lm, const shaderInfo_t *si, float scale, float subdivide, clipWork_t *cw ){
 	int i, x, y, v, t, pw[ 5 ], r;
 	bspDrawSurface_t    *ds;
 	surfaceInfo_t       *info;
@@ -719,11 +683,10 @@ void RadLightForPatch( int num, int lightmapNum, rawLightmap_t *lm, shaderInfo_t
 	/* FIXME: build interpolation table into color[ 1 ] */
 
 	/* fix up color indexes */
-	for ( i = 0; i < ( mesh->width * mesh->height ); i++ )
+	for ( bspDrawVert_t& vert : Span( mesh->verts, mesh->width * mesh->height ) )
 	{
-		dv[ 0 ] = &mesh->verts[ i ];
-		if ( dv[ 0 ]->color[ 0 ][ 0 ] >= ds->numVerts ) {
-			dv[ 0 ]->color[ 0 ][ 0 ] = ds->numVerts - 1;
+		if ( vert.color[ 0 ][ 0 ] >= ds->numVerts ) {
+			vert.color[ 0 ][ 0 ] = ds->numVerts - 1;
 		}
 	}
 
@@ -820,14 +783,14 @@ void RadLightForPatch( int num, int lightmapNum, rawLightmap_t *lm, shaderInfo_t
    creates unbounced diffuse lights for a given surface
  */
 
-void RadLight( int num ){
+static void RadLight( int num ){
 	int lightmapNum;
 	float scale, subdivide;
 	int contentFlags, surfaceFlags, compileFlags;
 	bspDrawSurface_t    *ds;
 	surfaceInfo_t       *info;
 	rawLightmap_t       *lm;
-	shaderInfo_t        *si;
+	const shaderInfo_t  *si;
 	clipWork_t cw;
 
 
@@ -893,9 +856,7 @@ void RadLight( int num ){
    creates lights for unbounced light on surfaces in the bsp
  */
 
-int iterations = 0;
-
-void RadCreateDiffuseLights( void ){
+void RadCreateDiffuseLights(){
 	/* startup */
 	Sys_FPrintf( SYS_VRB, "--- RadCreateDiffuseLights ---\n" );
 	numDiffuseSurfaces = 0;
@@ -903,23 +864,22 @@ void RadCreateDiffuseLights( void ){
 	numBrushDiffuseLights = 0;
 	numTriangleDiffuseLights = 0;
 	numPatchDiffuseLights = 0;
+	int iterations = 0;
 
 	/* hit every surface (threaded) */
-	RunThreadsOnIndividual( numBSPDrawSurfaces, true, RadLight );
+	RunThreadsOnIndividual( bspDrawSurfaces.size(), true, RadLight );
 
 	/* dump the lights generated to a file */
 	if ( dump ) {
 		char dumpName[ 1024 ], ext[ 64 ];
-		FILE    *file;
-		light_t *light;
 
 		strcpy( dumpName, source );
 		sprintf( ext, "_bounce_%03d.map", iterations );
 		path_set_extension( dumpName, ext );
-		file = fopen( dumpName, "wb" );
+		FILE *file = fopen( dumpName, "wb" );
 		Sys_Printf( "Writing %s...\n", dumpName );
 		if ( file ) {
-			for ( light = lights; light; light = light->next )
+			for ( const light_t& light : lights )
 			{
 				fprintf( file,
 				         "{\n"
@@ -929,15 +889,15 @@ void RadCreateDiffuseLights( void ){
 				         "\"_color\" \"%.3f %.3f %.3f\"\n"
 				         "}\n",
 
-				         (int) light->add,
+				         (int) light.add,
 
-				         light->origin[ 0 ],
-				         light->origin[ 1 ],
-				         light->origin[ 2 ],
+				         light.origin[ 0 ],
+				         light.origin[ 1 ],
+				         light.origin[ 2 ],
 
-				         light->color[ 0 ],
-				         light->color[ 1 ],
-				         light->color[ 2 ] );
+				         light.color[ 0 ],
+				         light.color[ 1 ],
+				         light.color[ 2 ] );
 			}
 			fclose( file );
 		}

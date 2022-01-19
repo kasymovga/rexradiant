@@ -278,12 +278,12 @@ void Texture_InitPalette( byte *pal ){
 	gamma = g_texture_globals.fGamma;
 
 	if ( gamma == 1.0 ) {
-		for ( i = 0 ; i < 256 ; i++ )
+		for ( i = 0; i < 256; i++ )
 			gammatable[i] = i;
 	}
 	else
 	{
-		for ( i = 0 ; i < 256 ; i++ )
+		for ( i = 0; i < 256; i++ )
 		{
 			inf = (int)( 255 * pow( ( i + 0.5 ) / 255.5, gamma ) + 0.5 );
 			if ( inf < 0 ) {
@@ -296,7 +296,7 @@ void Texture_InitPalette( byte *pal ){
 		}
 	}
 
-	for ( i = 0 ; i < 256 ; i++ )
+	for ( i = 0; i < 256; i++ )
 	{
 		r = gammatable[pal[0]];
 		g = gammatable[pal[1]];
@@ -341,12 +341,12 @@ void qtexture_realise( qtexture_t& texture, const TextureKey& key ){
 			texture.contentFlags = image->getContentFlags();
 			texture.value = image->getValue();
 			image->release();
-			globalOutputStream() << "Loaded Texture: \"" << key.second.c_str() << "\"\n";
+			globalOutputStream() << "Loaded Texture: \"" << key.second << "\"\n";
 			GlobalOpenGL_debugAssertNoErrors();
 		}
 		else
 		{
-			globalErrorStream() << "Texture load failed: \"" << key.second.c_str() << "\"\n";
+			globalErrorStream() << "Texture load failed: \"" << key.second << "\"\n";
 		}
 	}
 }
@@ -720,7 +720,7 @@ void Textures_constructPreferences( PreferencesPage& page ){
 		const char* percentages[] = { "100%", "50%", "25%", "12.5%", };
 		page.appendRadio(
 		    "Texture Quality",
-		    STRING_ARRAY_RANGE( percentages ),
+		    StringArrayRange( percentages ),
 		    TextureMiplevelImportCaller( g_Textures_mipLevel ),
 		    IntExportCaller( g_Textures_mipLevel )
 		);
@@ -737,7 +737,7 @@ void Textures_constructPreferences( PreferencesPage& page ){
 		const char* texture_mode[] = { "Nearest", "Nearest Mipmap", "Linear", "Bilinear", "Bilinear Mipmap", "Trilinear" };
 		page.appendCombo(
 		    "Texture Render Mode",
-		    STRING_ARRAY_RANGE( texture_mode ),
+		    StringArrayRange( texture_mode ),
 		    IntImportCallback( TextureModeImportCaller( g_texture_mode ) ),
 		    IntExportCallback( TextureModeExportCaller( g_texture_mode ) )
 		);
@@ -747,14 +747,14 @@ void Textures_constructPreferences( PreferencesPage& page ){
 		const char* compression_opengl[] = { "None", "OpenGL ARB" };
 		const char* compression_s3tc[] = { "None", "S3TC DXT1", "S3TC DXT3", "S3TC DXT5" };
 		const char* compression_opengl_s3tc[] = { "None", "OpenGL ARB", "S3TC DXT1", "S3TC DXT3", "S3TC DXT5" };
-		StringArrayRange compression(
+		const StringArrayRange compression(
 		    ( g_texture_globals.m_bOpenGLCompressionSupported )
 		    ? ( g_texture_globals.m_bS3CompressionSupported )
-		      ? STRING_ARRAY_RANGE( compression_opengl_s3tc )
-		      : STRING_ARRAY_RANGE( compression_opengl )
+		      ? StringArrayRange( compression_opengl_s3tc )
+		      : StringArrayRange( compression_opengl )
 		    : ( g_texture_globals.m_bS3CompressionSupported )
-		      ? STRING_ARRAY_RANGE( compression_s3tc )
-		      : STRING_ARRAY_RANGE( compression_none )
+		      ? StringArrayRange( compression_s3tc )
+		      : StringArrayRange( compression_none )
 		);
 		page.appendCombo(
 		    "Hardware Texture Compression",

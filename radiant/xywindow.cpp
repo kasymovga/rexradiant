@@ -88,7 +88,6 @@ struct xywindow_globals_private_t
 	bool show_workzone;
 
 	bool show_blocks;
-	int blockSize;
 
 	bool m_bChaseMouse;
 	bool m_bShowSize;
@@ -398,7 +397,7 @@ void WXY_Print(){
 Timer g_chasemouse_timer;
 
 void XYWnd::ChaseMouse(){
-	float multiplier = g_chasemouse_timer.elapsed_msec() / 10.0f;
+	const float multiplier = g_chasemouse_timer.elapsed_msec() / 10.0f;
 	Scroll( float_to_integer( multiplier * m_chasemouse_delta_x ), float_to_integer( multiplier * -m_chasemouse_delta_y ) );
 
 	//globalOutputStream() << "chasemouse: multiplier=" << multiplier << " x=" << m_chasemouse_delta_x << " y=" << m_chasemouse_delta_y << '\n';
@@ -911,7 +910,7 @@ void XYWnd::NewBrushDrag( int x, int y, bool square, bool cube ){
 		}
 	}
 
-	for ( int i = 0 ; i < 3 ; i++ )
+	for ( int i = 0; i < 3; i++ )
 	{
 		if ( mins[i] == maxs[i] )
 			return; // don't create a degenerate brush
@@ -1344,12 +1343,12 @@ void BackgroundImage::render( const VIEWTYPE viewtype ){
 const char* BackgroundImage::background_image_dialog(){
 	StringOutputStream buffer( 1024 );
 
-	buffer << g_qeglobals.m_userGamePath.c_str() << "textures/";
+	buffer << g_qeglobals.m_userGamePath << "textures/";
 
 	if ( !file_readable( buffer.c_str() ) ) {
 		// just go to fsmain
 		buffer.clear();
-		buffer << g_qeglobals.m_userGamePath.c_str();
+		buffer << g_qeglobals.m_userGamePath;
 	}
 
 	const char *filename = file_dialog( GTK_WIDGET( MainFrame_getWindow() ), true, "Background Image", buffer.c_str() );
@@ -1428,7 +1427,7 @@ void WXY_SetBackgroundImage(){
    ==============
  */
 
-void XYWnd::XY_DrawAxis( void ){
+void XYWnd::XY_DrawAxis(){
 	const char g_AxisName[3] = { 'X', 'Y', 'Z' };
 	NDIM1NDIM2( m_viewType )
 	const float w = ( m_nWidth / 2 / m_fScale );
@@ -1475,7 +1474,7 @@ void XYWnd::XY_DrawAxis( void ){
 	GlobalOpenGL().drawChar( g_AxisName[nDim2] );
 }
 
-void XYWnd::XY_DrawGrid( void ) {
+void XYWnd::XY_DrawGrid() {
 	float x, y;
 	char text[32];
 	float step, minor_step, stepx, stepy;
@@ -1535,14 +1534,14 @@ void XYWnd::XY_DrawGrid( void ) {
 
 			glBegin( GL_LINES );
 			int i = 0;
-			for ( x = xb ; x < xe ; x += minor_step, ++i ) {
+			for ( x = xb; x < xe; x += minor_step, ++i ) {
 				if ( ( i & mask ) != 0 ) {
 					glVertex2f( x, yb );
 					glVertex2f( x, ye );
 				}
 			}
 			i = 0;
-			for ( y = yb ; y < ye ; y += minor_step, ++i ) {
+			for ( y = yb; y < ye; y += minor_step, ++i ) {
 				if ( ( i & mask ) != 0 ) {
 					glVertex2f( xb, y );
 					glVertex2f( xe, y );
@@ -1556,11 +1555,11 @@ void XYWnd::XY_DrawGrid( void ) {
 			glColor4fv( vector4_to_array( Vector4( g_xywindow_globals.color_gridmajor, a ) ) );
 
 			glBegin( GL_LINES );
-			for ( x = xb ; x <= xe ; x += step ) {
+			for ( x = xb; x <= xe; x += step ) {
 				glVertex2f( x, yb );
 				glVertex2f( x, ye );
 			}
-			for ( y = yb ; y <= ye ; y += step ) {
+			for ( y = yb; y <= ye; y += step ) {
 				glVertex2f( xb, y );
 				glVertex2f( xe, y );
 			}
@@ -1584,14 +1583,14 @@ void XYWnd::XY_DrawGrid( void ) {
 
 				glBegin( GL_LINES );
 				int i = 0;
-				for ( x = xb_ ; x < xe_ ; x += minor_step, ++i ) {
+				for ( x = xb_; x < xe_; x += minor_step, ++i ) {
 					if ( ( i & mask ) != 0 ) {
 						glVertex2f( x, yb_ );
 						glVertex2f( x, ye_ );
 					}
 				}
 				i = 0;
-				for ( y = yb_ ; y < ye_ ; y += minor_step, ++i ) {
+				for ( y = yb_; y < ye_; y += minor_step, ++i ) {
 					if ( ( i & mask ) != 0 ) {
 						glVertex2f( xb_, y );
 						glVertex2f( xe_, y );
@@ -1605,11 +1604,11 @@ void XYWnd::XY_DrawGrid( void ) {
 				glColor4fv( vector4_to_array( Vector4( g_xywindow_globals.color_gridmajor, .5f ) ) );
 
 				glBegin( GL_LINES );
-				for ( x = xb_ ; x <= xe_ ; x += step ) {
+				for ( x = xb_; x <= xe_; x += step ) {
 					glVertex2f( x, yb_ );
 					glVertex2f( x, ye_ );
 				}
-				for ( y = yb_ ; y <= ye_ ; y += step ) {
+				for ( y = yb_; y <= ye_; y += step ) {
 					glVertex2f( xb_, y );
 					glVertex2f( xe_, y );
 				}
@@ -1625,12 +1624,12 @@ void XYWnd::XY_DrawGrid( void ) {
 		const float offx = m_vOrigin[nDim2] + h - ( 1 + GlobalOpenGL().m_font->getPixelHeight() ) / m_fScale;
 		const float offy = m_vOrigin[nDim1] - w +  4                                            / m_fScale;
 		const float fontDescent = ( GlobalOpenGL().m_font->getPixelDescent() - 1 ) / m_fScale;
-		for ( x = xb - fmod( xb, stepx ); x <= xe ; x += stepx ) {
+		for ( x = xb - fmod( xb, stepx ); x <= xe; x += stepx ) {
 			glRasterPos2f( x, offx );
 			sprintf( text, "%g", x );
 			GlobalOpenGL().drawString( text );
 		}
-		for ( y = yb - fmod( yb, stepy ); y <= ye ; y += stepy ) {
+		for ( y = yb - fmod( yb, stepy ); y <= ye; y += stepy ) {
 			glRasterPos2f( offy, y - fontDescent );
 			sprintf( text, "%g", y );
 			GlobalOpenGL().drawString( text );
@@ -1670,21 +1669,25 @@ void XYWnd::XY_DrawGrid( void ) {
    ==============
  */
 void XYWnd::XY_DrawBlockGrid(){
+	int bs[3] = { 1024, 1024, 1024 }; // compiler's default
+
 	if ( Map_FindWorldspawn( g_map ) == 0 ) {
 		return;
 	}
 	const char *value = Node_getEntity( *Map_GetWorldspawn( g_map ) )->getKeyValue( "_blocksize" );
-	if ( strlen( value ) ) {
-		sscanf( value, "%i", &g_xywindow_globals_private.blockSize );
+	if ( !string_empty( value ) ) {
+		const int scanned = sscanf( value, "%i %i %i", bs, bs + 1, bs + 2 );
+		if( scanned == 1 || scanned == 2 ) /* handle legacy case */
+			bs[1] = bs[2] = bs[0];
 	}
 
-	if ( !g_xywindow_globals_private.blockSize || g_xywindow_globals_private.blockSize > 65536 || g_xywindow_globals_private.blockSize < 1024 ) {
-		// don't use custom blocksize if it is less than the default, or greater than the maximum world coordinate
-		g_xywindow_globals_private.blockSize = 1024;
-	}
+	NDIM1NDIM2( m_viewType )
 
-	float x, y;
-	char text[32];
+	int bs1 = bs[nDim1];
+	int bs2 = bs[nDim2];
+
+	if( bs1 <= 0 && bs2 <= 0 ) // zero disables
+		return;
 
 	glDisable( GL_TEXTURE_2D );
 	glDisable( GL_TEXTURE_1D );
@@ -1694,12 +1697,21 @@ void XYWnd::XY_DrawBlockGrid(){
 	const float w = ( m_nWidth / 2 / m_fScale );
 	const float h = ( m_nHeight / 2 / m_fScale );
 
-	NDIM1NDIM2( m_viewType )
+	float xb = std::max( m_vOrigin[nDim1] - w, g_region_mins[nDim1] );
+	float xe = std::min( m_vOrigin[nDim1] + w, g_region_maxs[nDim1] );
+	float yb = std::max( m_vOrigin[nDim2] - h, g_region_mins[nDim2] );
+	float ye = std::min( m_vOrigin[nDim2] + h, g_region_maxs[nDim2] );
 
-	const float xb = g_xywindow_globals_private.blockSize * floor( std::max( m_vOrigin[nDim1] - w, g_region_mins[nDim1] ) / g_xywindow_globals_private.blockSize );
-	const float xe = g_xywindow_globals_private.blockSize * ceil( std::min( m_vOrigin[nDim1] + w, g_region_maxs[nDim1] ) / g_xywindow_globals_private.blockSize );
-	const float yb = g_xywindow_globals_private.blockSize * floor( std::max( m_vOrigin[nDim2] - h, g_region_mins[nDim2] ) / g_xywindow_globals_private.blockSize );
-	const float ye = g_xywindow_globals_private.blockSize * ceil( std::min( m_vOrigin[nDim2] + h, g_region_maxs[nDim2] ) / g_xywindow_globals_private.blockSize );
+	if( bs1 > 0 ){
+		bs1 = std::clamp( bs1, 256, 65536 );
+		xb = bs1 * floor( xb / bs1 );
+		xe = bs1 * ceil( xe / bs1 );
+	}
+	if( bs2 > 0 ){
+		bs2 = std::clamp( bs2, 256, 65536 );
+		yb = bs2 * floor( yb / bs2 );
+		ye = bs2 * ceil( ye / bs2 );
+	}
 
 	// draw major blocks
 
@@ -1708,14 +1720,16 @@ void XYWnd::XY_DrawBlockGrid(){
 
 	glBegin( GL_LINES );
 
-	for ( x = xb ; x <= xe ; x += g_xywindow_globals_private.blockSize )
-	{
-		glVertex2f( x, yb );
-		glVertex2f( x, ye );
+	if( bs1 > 0 ) {
+		for ( float x = xb; x <= xe; x += bs1 )
+		{
+			glVertex2f( x, yb );
+			glVertex2f( x, ye );
+		}
 	}
 
-	if ( m_viewType == XY ) {
-		for ( y = yb ; y <= ye ; y += g_xywindow_globals_private.blockSize )
+	if ( bs2 > 0 ) {
+		for ( float y = yb; y <= ye; y += bs2 )
 		{
 			glVertex2f( xb, y );
 			glVertex2f( xe, y );
@@ -1725,18 +1739,19 @@ void XYWnd::XY_DrawBlockGrid(){
 	glEnd();
 	glLineWidth( 1 );
 
+#if 0
 	// draw coordinate text if needed
-
+	char text[32];
 	if ( m_viewType == XY && m_fScale > .1 ) {
-		for ( x = xb ; x < xe ; x += g_xywindow_globals_private.blockSize )
-			for ( y = yb ; y < ye ; y += g_xywindow_globals_private.blockSize )
+		for ( float x = xb; x < xe; x += bs1 )
+			for ( float y = yb; y < ye; y += bs2 )
 			{
-				glRasterPos2f( x + ( g_xywindow_globals_private.blockSize / 2 ), y + ( g_xywindow_globals_private.blockSize / 2 ) );
-				sprintf( text, "%i,%i",(int)floor( x / g_xywindow_globals_private.blockSize ), (int)floor( y / g_xywindow_globals_private.blockSize ) );
+				glRasterPos2f( x + ( bs1 / 2 ), y + ( bs2 / 2 ) );
+				sprintf( text, "%i,%i",(int)floor( x / bs1 ), (int)floor( y / bs2 ) );
 				GlobalOpenGL().drawString( text );
 			}
 	}
-
+#endif
 	glColor4f( 0, 0, 0, 0 );
 }
 
@@ -2457,7 +2472,7 @@ void Orthographic_constructPreferences( PreferencesPage& page ){
 
 		page.appendCombo(
 		    "MSAA",
-		    STRING_ARRAY_RANGE( samples ),
+		    StringArrayRange( samples ),
 		    IntImportCallback( MSAAImportCaller() ),
 		    IntExportCallback( MSAAExportCaller() )
 		);

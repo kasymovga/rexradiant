@@ -554,7 +554,7 @@ public:
 		vector3_scale( delta, m_axis );
 
 		Vector3 start( vector3_snapped( m_start, GetSnapGridSize() != 0.f ? GetSnapGridSize() : 1e-3f ) );
-		for ( std::size_t i = 0; i < 3 ; ++i ){ //prevent snapping to 0 with big gridsize
+		for ( std::size_t i = 0; i < 3; ++i ){ //prevent snapping to 0 with big gridsize
 			if( float_snapped( m_start[i], 1e-3f ) != 0.f && start[i] == 0.f ){
 				start[i] = GetSnapGridSize();
 			}
@@ -627,7 +627,7 @@ public:
 			delta = vector3_scaled( delta, m_axis ) + vector3_scaled( delta, m_axis2 );
 
 		Vector3 start( vector3_snapped( m_start, GetSnapGridSize() != 0.f ? GetSnapGridSize() : 1e-3f ) );
-		for ( std::size_t i = 0; i < 3 ; ++i ){ //prevent snapping to 0 with big gridsize
+		for ( std::size_t i = 0; i < 3; ++i ){ //prevent snapping to 0 with big gridsize
 			if( float_snapped( m_start[i], 1e-3f ) != 0.f && start[i] == 0.f ){
 				start[i] = GetSnapGridSize();
 			}
@@ -1034,7 +1034,7 @@ private:
 						const auto addSidePlanes = [&outBrush, shader, &projection]( const Winding& winding0, const Winding& winding2, const DoubleVector3 normal, const bool swap ){
 							for( std::size_t index0 = 0; index0 < winding0.numpoints; ++index0 ){
 								const std::size_t next = Winding_next( winding0, index0 );
-								Vector3 BestPoint;
+								DoubleVector3 BestPoint;
 								double bestdot = -1;
 								for( std::size_t index2 = 0; index2 < winding2.numpoints; ++index2 ){
 									const double dot = vector3_dot(
@@ -1066,7 +1066,7 @@ private:
 						const auto addSidePlanes = [&outBrush, shader, &projection]( const Winding& winding0, const Brush& brush2, const Plane3 plane, const bool swap ){
 							for( std::size_t index0 = 0; index0 < winding0.numpoints; ++index0 ){
 								const std::size_t next = Winding_next( winding0, index0 );
-								Vector3 BestPoint;
+								DoubleVector3 BestPoint;
 								double bestdist = 999999;
 								for( const Face* f : brush2 ) {
 									const Winding& winding2 = f->getWinding();
@@ -3170,9 +3170,9 @@ public:
 			BestPoint(
 			    matrix4_clip_triangle(
 			        m_local2view,
-			        reinterpret_cast<const Vector3&>( vertices[0] ),
-			        reinterpret_cast<const Vector3&>( vertices[i + 1] ),
-			        reinterpret_cast<const Vector3&>( vertices[i + 2] ),
+			        reinterpret_cast<const DoubleVector3&>( vertices[0] ),
+			        reinterpret_cast<const DoubleVector3&>( vertices[i + 1] ),
+			        reinterpret_cast<const DoubleVector3&>( vertices[i + 2] ),
 			        clipped
 			    ),
 			    clipped,
@@ -4093,29 +4093,31 @@ public:
 	}
 };
 
-Vector3 testSelected_scene_snapped_point( const SelectionVolume& test, ClipperSelector& clipperSelector ){
-	Vector3 point = vector4_projected( matrix4_transformed_vector4( test.getScreen2world(), Vector4( 0, 0, clipperSelector.best().depth(), 1 ) ) );
+DoubleVector3 testSelected_scene_snapped_point( const SelectionVolume& test, ClipperSelector& clipperSelector ){
+	DoubleVector3 point = vector4_projected( matrix4_transformed_vector4( test.getScreen2world(), Vector4( 0, 0, clipperSelector.best().depth(), 1 ) ) );
 	if( clipperSelector.face() ){
 		const Face& face = *clipperSelector.face();
-		float bestDist = FLT_MAX;
-		Vector3 wannabePoint;
+		double bestDist = FLT_MAX;
+		DoubleVector3 wannabePoint;
 		for ( Winding::const_iterator prev = face.getWinding().end() - 1, curr = face.getWinding().begin(); curr != face.getWinding().end(); prev = curr, ++curr ){
+			const DoubleVector3 v1( prev->vertex );
+			const DoubleVector3 v2( curr->vertex );
 			{	/* try vertices */
-				const float dist = vector3_length_squared( ( *curr ).vertex - point );
+				const double dist = vector3_length_squared( v2 - point );
 				if( dist < bestDist ){
-					wannabePoint = ( *curr ).vertex;
+					wannabePoint = v2;
 					bestDist = dist;
 				}
 			}
 			{	/* try edges */
-				Vector3 edgePoint = line_closest_point( Line( ( *prev ).vertex, ( *curr ).vertex ), point );
-				if( edgePoint != ( *prev ).vertex && edgePoint != ( *curr ).vertex ){
-					const Vector3 edgedir = vector3_normalised( ( *curr ).vertex - ( *prev ).vertex );
+				DoubleVector3 edgePoint = line_closest_point( DoubleLine( v1, v2 ), point );
+				if( edgePoint != v1 && edgePoint != v2 ){
+					const DoubleVector3 edgedir = vector3_normalised( v2 - v1 );
 					const std::size_t maxi = vector3_max_abs_component_index( edgedir );
-					// ( *prev ).vertex[maxi] + edgedir[maxi] * coef = float_snapped( point[maxi], GetSnapGridSize() )
-					const float coef = ( float_snapped( point[maxi], GetSnapGridSize() ) - ( *prev ).vertex[maxi] ) / edgedir[maxi];
-					edgePoint = ( *prev ).vertex + edgedir * coef;
-					const float dist = vector3_length_squared( edgePoint - point );
+					// v1[maxi] + edgedir[maxi] * coef = float_snapped( point[maxi], GetSnapGridSize() )
+					const double coef = ( float_snapped( point[maxi], GetSnapGridSize() ) - v1[maxi] ) / edgedir[maxi];
+					edgePoint = v1 + edgedir * coef;
+					const double dist = vector3_length_squared( edgePoint - point );
 					if( dist < bestDist ){
 						wannabePoint = edgePoint;
 						bestDist = dist;
@@ -4125,12 +4127,12 @@ Vector3 testSelected_scene_snapped_point( const SelectionVolume& test, ClipperSe
 		}
 		if( clipperSelector.best().distance() == 0.f ){ /* try plane, if pointing inside of polygon */
 			const std::size_t maxi = vector3_max_abs_component_index( face.plane3().normal() );
-			Vector3 planePoint( vector3_snapped( point, GetSnapGridSize() ) );
+			DoubleVector3 planePoint( vector3_snapped( point, GetSnapGridSize() ) );
 			// face.plane3().normal().dot( point snapped ) = face.plane3().dist()
 			planePoint[maxi] = ( face.plane3().dist()
 			                     - face.plane3().normal()[( maxi + 1 ) % 3] * planePoint[( maxi + 1 ) % 3]
 			                     - face.plane3().normal()[( maxi + 2 ) % 3] * planePoint[( maxi + 2 ) % 3] ) / face.plane3().normal()[maxi];
-			const float dist = vector3_length_squared( planePoint - point );
+			const double dist = vector3_length_squared( planePoint - point );
 			if( dist < bestDist ){
 				wannabePoint = planePoint;
 				bestDist = dist;
@@ -4165,7 +4167,7 @@ bool scene_insert_brush_vertices( const View& view, TranslateFreeXY_Z& freeDragX
 	test.BeginMesh( g_matrix4_identity, true );
 	if( clipperSelector.isSelected() ){
 		freeDragXY_Z.set0( vector4_projected( matrix4_transformed_vector4( test.getScreen2world(), Vector4( 0, 0, clipperSelector.best().depth(), 1 ) ) ) );
-		Vector3 point = testSelected_scene_snapped_point( test, clipperSelector );
+		DoubleVector3 point = testSelected_scene_snapped_point( test, clipperSelector );
 		if( !view.fill() ){
 			point -= view.getViewDir() * GetGridSize();
 		}
@@ -4182,9 +4184,9 @@ bool scene_insert_brush_vertices( const View& view, TranslateFreeXY_Z& freeDragX
 		freeDragXY_Z.set0( g_vector3_identity );
 		const AABB bounds = GlobalSelectionSystem().getBoundsSelected();
 		if( aabb_valid( bounds ) ){
-			Vector3 xy = vector4_projected( matrix4_transformed_vector4( test.getScreen2world(), Vector4( 0, 0, 0, 1 ) ) );
+			DoubleVector3 xy = vector4_projected( matrix4_transformed_vector4( test.getScreen2world(), Vector4( 0, 0, 0, 1 ) ) );
 			vector3_snap( xy, GetSnapGridSize() );
-			Vector3 a( xy ), b( xy );
+			DoubleVector3 a( xy ), b( xy );
 			const std::size_t max = vector3_max_abs_component_index( view.getViewDir() );
 			a[max] = bounds.origin[max] + bounds.extents[max];
 			b[max] = bounds.origin[max] - bounds.extents[max];
@@ -4526,8 +4528,8 @@ class ClipManipulator : public Manipulator, public ManipulatorSelectionChangeabl
 			m_p.colour = colour;
 		}
 		bool m_set;
-		Vector3 m_point;
-		Vector3 m_pointNonTransformed;
+		DoubleVector3 m_point;
+		DoubleVector3 m_pointNonTransformed;
 		char m_name;
 		Vector3 m_namePos;
 	};
@@ -4646,7 +4648,7 @@ public:
 				break;
 		return i % maxi;
 	}
-	void newPoint( const Vector3& point, const View& view ){
+	void newPoint( const DoubleVector3& point, const View& view ){
 		const std::size_t i = newPointIndex( view.fill() );
 		if( i == 0 )
 			m_points[1].m_set = m_points[2].m_set = false;
@@ -4662,7 +4664,7 @@ public:
 
 		updatePlane();
 	}
-	bool testSelect_scene( const View& view, Vector3& point ){
+	bool testSelect_scene( const View& view, DoubleVector3& point ){
 		SelectionVolume test( view );
 		ClipperSelector clipperSelector;
 		Scene_forEachVisible( GlobalSceneGraph(), view, testselect_scene_4clipper( clipperSelector, test ) );
@@ -4677,12 +4679,12 @@ public:
 		testSelect_points( view );
 		if( !isSelected() ){
 			if( view.fill() ){
-				Vector3 point;
+				DoubleVector3 point;
 				if( testSelect_scene( view, point ) )
 					newPoint( point, view );
 			}
 			else{
-				Vector3 point = vector4_projected( matrix4_transformed_vector4( matrix4_full_inverse( view.GetViewMatrix() ), Vector4( 0, 0, 0, 1 ) ) );
+				DoubleVector3 point = vector4_projected( matrix4_transformed_vector4( matrix4_full_inverse( view.GetViewMatrix() ), Vector4( 0, 0, 0, 1 ) ) );
 				vector3_snap( point, GetSnapGridSize() );
 				{
 					const std::size_t maxi = vector3_max_abs_component_index( view.getViewDir() );
@@ -4719,7 +4721,7 @@ public:
 			m_points[i].m_set = false;
 			m_points[i].setSelected( false ); ///?
 		}
-		if( initFromFace && !g_SelectedFaceInstances.empty() ){
+		if( initFromFace && !g_SelectedFaceInstances.empty() && g_SelectedFaceInstances.last().getFace().contributes() ){
 			const Winding& w = g_SelectedFaceInstances.last().getFace().getWinding();
 			for( std::size_t i = 0; i < 3; ++i ){
 				m_points[i].m_set = true;
@@ -4750,7 +4752,7 @@ public:
 		const float device_point[2] = { x, y };
 		ConstructSelectionTest( scissored, SelectionBoxForPoint( device_point, m_device_epsilon ) );
 
-		Vector3 point;
+		DoubleVector3 point;
 		if( testSelect_scene( scissored, point ) )
 			for( std::size_t i = 0; i < 3; ++i )
 				if( m_points[i].isSelected() ){
@@ -6190,7 +6192,7 @@ public:
 		case eUV:
 			{
 				const Vector3 uv_origin = matrix4_transformed_point( m_local2tex, m_origin );
-				const Vector3 uv_start{ m_selectedV->vertex.x(), m_selectedU->vertex.y(), 0 } ;
+				const Vector3 uv_start{ m_selectedV->vertex.x(), m_selectedU->vertex.y(), 0 };
 				const Vector3 uv_current{ ( m_selectedV->vertex + matrix4_transformed_point( m_local2tex, current ) - matrix4_transformed_point( m_local2tex, m_start ) ).x(),
 				                          ( m_selectedU->vertex + matrix4_transformed_point( m_local2tex, current ) - matrix4_transformed_point( m_local2tex, m_start ) ).y(),
 				                          0 };
@@ -6550,7 +6552,7 @@ public:
 		current = vector3_subtracted( current, m_start );
 
 		if( snap ){
-			for ( std::size_t i = 0; i < 3 ; ++i ){
+			for ( std::size_t i = 0; i < 3; ++i ){
 				if( fabs( current[i] ) >= fabs( current[(i + 1) % 3] ) ){
 					current[(i + 1) % 3] = 0.f;
 				}
@@ -6561,7 +6563,7 @@ public:
 		}
 
 		bool set[3] = { true, true, true };
-		for ( std::size_t i = 0; i < 3 ; ++i ){
+		for ( std::size_t i = 0; i < 3; ++i ){
 			if( fabs( current[i] ) < 1e-3f ){
 				set[i] = false;
 			}
@@ -8002,7 +8004,7 @@ void SelectionSystem_constructPreferences( PreferencesPage& page ){
 		const char* styles[] = { "XY plane + Z with Alt", "View plane + Forward with Alt", };
 		page.appendCombo(
 		    "Move style in 3D",
-		    STRING_ARRAY_RANGE( styles ),
+		    StringArrayRange( styles ),
 		    IntImportCaller( TranslateFreeXY_Z::m_viewdependent ),
 		    IntExportCaller( TranslateFreeXY_Z::m_viewdependent )
 		);

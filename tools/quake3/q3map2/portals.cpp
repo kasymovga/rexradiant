@@ -32,35 +32,12 @@
 #include "q3map2.h"
 
 
-
-/* ydnar: to fix broken portal windings */
-extern bool FixWinding( winding_t *w );
-
-
-/*
-   ===========
-   AllocPortal
-   ===========
- */
-portal_t *AllocPortal( void ){
-	return safe_calloc( sizeof( portal_t ) );
-}
-
-void FreePortal( portal_t *p ){
-	if ( p->winding ) {
-		FreeWinding( p->winding );
-	}
-	free( p );
-}
-
-
-
 /*
    PortalPassable
    returns true if the portal has non-opaque leafs on both sides
  */
 
-bool PortalPassable( portal_t *p ){
+bool PortalPassable( const portal_t *p ){
 	/* is this to global outside leaf? */
 	if ( !p->onnode ) {
 		return false;
@@ -89,15 +66,15 @@ bool PortalPassable( portal_t *p ){
 
 
 
-int c_tinyportals;
-int c_badportals;       /* ydnar */
+static int c_tinyportals;
+static int c_badportals;       /* ydnar */
 
 /*
    =============
    AddPortalToNodes
    =============
  */
-void AddPortalToNodes( portal_t *p, node_t *front, node_t *back ){
+static void AddPortalToNodes( portal_t *p, node_t *front, node_t *back ){
 	if ( p->nodes[0] || p->nodes[1] ) {
 		Error( "AddPortalToNode: already included" );
 	}
@@ -156,14 +133,9 @@ void RemovePortalFromNode( portal_t *portal, node_t *l ){
 
 //============================================================================
 
-void PrintPortal( portal_t *p ){
-	int i;
-	winding_t   *w;
-
-	w = p->winding;
-	for ( i = 0 ; i < w->numpoints ; i++ )
-		Sys_Printf( "(%5.0f,%5.0f,%5.0f)\n", w->p[i][0]
-		            , w->p[i][1], w->p[i][2] );
+static void PrintPortal( const portal_t *p ){
+	for ( const Vector3& point : p->winding )
+		Sys_Printf( "(%5.0f,%5.0f,%5.0f)\n", point[0], point[1], point[2] );
 }
 
 /*
@@ -174,59 +146,46 @@ void PrintPortal( portal_t *p ){
    ================
  */
 #define SIDESPACE   8
-void MakeHeadnodePortals( tree_t *tree ){
-	int i, j, n;
-	portal_t    *p, *portals[6];
-	plane_t bplanes[6];
-	node_t *node;
-
-	node = tree->headnode;
+static void MakeHeadnodePortals( tree_t& tree ){
+	portal_t    *portals[6];
 
 // pad with some space so there will never be null volume leafs
-	const MinMax bounds( tree->minmax.mins - Vector3( SIDESPACE ),
-	                     tree->minmax.maxs + Vector3( SIDESPACE ) );
+	const MinMax bounds( tree.minmax.mins - Vector3( SIDESPACE ),
+	                     tree.minmax.maxs + Vector3( SIDESPACE ) );
 	if ( !bounds.valid() ) {
 		Error( "Backwards tree volume" );
 	}
 
-	tree->outside_node.planenum = PLANENUM_LEAF;
-	tree->outside_node.brushlist = NULL;
-	tree->outside_node.portals = NULL;
-	tree->outside_node.opaque = false;
+	tree.outside_node.planenum = PLANENUM_LEAF;
+	tree.outside_node.brushlist.clear();
+	tree.outside_node.portals = NULL;
+	tree.outside_node.opaque = false;
 
-	for ( i = 0 ; i < 3 ; i++ )
-		for ( j = 0 ; j < 2 ; j++ )
+	for ( int i = 0; i < 3; ++i )
+		for ( int j = 0; j < 2; ++j )
 		{
-			n = j * 3 + i;
+			portal_t *p = portals[j * 3 + i] = AllocPortal();
 
-			p = AllocPortal();
-			portals[n] = p;
-
-			plane_t *pl = &bplanes[n];
-			memset( pl, 0, sizeof( *pl ) );
 			if ( j ) {
-				pl->normal()[i] = -1;
-				pl->dist() = -bounds.maxs[i];
+				p->plane.plane = Plane3f( -g_vector3_axes[i], -bounds.maxs[i] );
 			}
 			else
 			{
-				pl->normal()[i] = 1;
-				pl->dist() = bounds.mins[i];
+				p->plane.plane = Plane3f( g_vector3_axes[i], bounds.mins[i] );
 			}
-			p->plane = *pl;
-			p->winding = BaseWindingForPlane( pl->plane );
-			AddPortalToNodes( p, node, &tree->outside_node );
+			p->winding = BaseWindingForPlane( p->plane.plane );
+			AddPortalToNodes( p, tree.headnode, &tree.outside_node );
 		}
 
 // clip the basewindings by all the other planes
-	for ( i = 0 ; i < 6 ; i++ )
+	for ( int i = 0; i < 6; ++i )
 	{
-		for ( j = 0 ; j < 6 ; j++ )
+		for ( int j = 0; j < 6; ++j )
 		{
 			if ( j == i ) {
 				continue;
 			}
-			ChopWindingInPlace( &portals[i]->winding, bplanes[j].plane, ON_EPSILON );
+			ChopWindingInPlace( portals[i]->winding, portals[j]->plane.plane, ON_EPSILON );
 		}
 	}
 }
@@ -242,23 +201,20 @@ void MakeHeadnodePortals( tree_t *tree ){
 #define BASE_WINDING_EPSILON    0.001
 #define SPLIT_WINDING_EPSILON   0.001
 
-winding_t   *BaseWindingForNode( node_t *node ){
-	winding_t   *w;
-	node_t      *n;
-
-	w = BaseWindingForPlane( mapplanes[node->planenum].plane );
+static winding_t   BaseWindingForNode( const node_t *node ){
+	winding_t w = BaseWindingForPlane( mapplanes[node->planenum].plane );
 
 	// clip by all the parents
-	for ( n = node->parent ; n && w ; )
+	for ( const node_t *n = node->parent; n && !w.empty(); )
 	{
 		const plane_t& plane = mapplanes[n->planenum];
 
 		if ( n->children[0] == node ) { // take front
-			ChopWindingInPlace( &w, plane.plane, BASE_WINDING_EPSILON );
+			ChopWindingInPlace( w, plane.plane, BASE_WINDING_EPSILON );
 		}
 		else
 		{	// take back
-			ChopWindingInPlace( &w, plane3_flipped( plane.plane ), BASE_WINDING_EPSILON );
+			ChopWindingInPlace( w, plane3_flipped( plane.plane ), BASE_WINDING_EPSILON );
 		}
 		node = n;
 		n = n->parent;
@@ -277,23 +233,21 @@ winding_t   *BaseWindingForNode( node_t *node ){
    and clipping it by all of parents of this node
    ==================
  */
-void MakeNodePortal( node_t *node ){
-	portal_t    *new_portal, *p;
-	winding_t   *w;
+static void MakeNodePortal( node_t *node ){
 	int side;
 
-	w = BaseWindingForNode( node );
+	winding_t w = BaseWindingForNode( node );
 
 	// clip the portal by all the other portals in the node
-	for ( p = node->portals ; p && w; p = p->next[side] )
+	for ( const portal_t *p = node->portals; p && !w.empty(); p = p->next[side] )
 	{
 		if ( p->nodes[0] == node ) {
 			side = 0;
-			ChopWindingInPlace( &w, p->plane.plane, CLIP_EPSILON );
+			ChopWindingInPlace( w, p->plane.plane, CLIP_EPSILON );
 		}
 		else if ( p->nodes[1] == node ) {
 			side = 1;
-			ChopWindingInPlace( &w, plane3_flipped( p->plane.plane ), CLIP_EPSILON );
+			ChopWindingInPlace( w, plane3_flipped( p->plane.plane ), CLIP_EPSILON );
 		}
 		else{
 			Error( "CutNodePortals_r: mislinked portal" );
@@ -301,7 +255,7 @@ void MakeNodePortal( node_t *node ){
 
 	}
 
-	if ( !w ) {
+	if ( w.empty() ) {
 		return;
 	}
 
@@ -310,21 +264,19 @@ void MakeNodePortal( node_t *node ){
 	#if 0
 	if ( !FixWinding( w ) ) {
 		c_badportals++;
-		FreeWinding( w );
 		return;
 	}
 	#endif
 
 	if ( WindingIsTiny( w ) ) {
 		c_tinyportals++;
-		FreeWinding( w );
 		return;
 	}
 
-	new_portal = AllocPortal();
+	portal_t *new_portal = AllocPortal();
 	new_portal->plane = mapplanes[node->planenum];
 	new_portal->onnode = node;
-	new_portal->winding = w;
+	new_portal->winding.swap( w );
 	new_portal->compileFlags = node->compileFlags;
 	AddPortalToNodes( new_portal, node->children[0], node->children[1] );
 }
@@ -338,18 +290,16 @@ void MakeNodePortal( node_t *node ){
    children have portals instead of node.
    ==============
  */
-void SplitNodePortals( node_t *node ){
-	portal_t    *p, *next_portal, *new_portal;
+static void SplitNodePortals( node_t *node ){
 	node_t      *f, *b, *other_node;
-	int side;
-	winding_t   *frontwinding, *backwinding;
 
 	const plane_t& plane = mapplanes[node->planenum];
 	f = node->children[0];
 	b = node->children[1];
 
-	for ( p = node->portals ; p ; p = next_portal )
+	for ( portal_t *next_portal, *p = node->portals; p; p = next_portal )
 	{
+		int side;
 		if ( p->nodes[0] == node ) {
 			side = 0;
 		}
@@ -368,45 +318,41 @@ void SplitNodePortals( node_t *node ){
 //
 // cut the portal into two portals, one on each side of the cut plane
 //
-		ClipWindingEpsilon( p->winding, plane.plane,
-		                    SPLIT_WINDING_EPSILON, &frontwinding, &backwinding ); /* not strict, we want to always keep one of them even if coplanar */
+		auto [frontwinding, backwinding] = ClipWindingEpsilon( p->winding, plane.plane, SPLIT_WINDING_EPSILON ); /* not strict, we want to always keep one of them even if coplanar */
 
-		if ( frontwinding && WindingIsTiny( frontwinding ) ) {
+		if ( !frontwinding.empty() && WindingIsTiny( frontwinding ) ) {
 			if ( !f->tinyportals ) {
-				f->referencepoint = frontwinding->p[0];
+				f->referencepoint = frontwinding[0];
 			}
 			f->tinyportals++;
 			if ( !other_node->tinyportals ) {
-				other_node->referencepoint = frontwinding->p[0];
+				other_node->referencepoint = frontwinding[0];
 			}
 			other_node->tinyportals++;
 
-			FreeWinding( frontwinding );
-			frontwinding = NULL;
+			frontwinding.clear();
 			c_tinyportals++;
 		}
 
-		if ( backwinding && WindingIsTiny( backwinding ) ) {
+		if ( !backwinding.empty() && WindingIsTiny( backwinding ) ) {
 			if ( !b->tinyportals ) {
-				b->referencepoint = backwinding->p[0];
+				b->referencepoint = backwinding[0];
 			}
 			b->tinyportals++;
 			if ( !other_node->tinyportals ) {
-				other_node->referencepoint = backwinding->p[0];
+				other_node->referencepoint = backwinding[0];
 			}
 			other_node->tinyportals++;
 
-			FreeWinding( backwinding );
-			backwinding = NULL;
+			backwinding.clear();
 			c_tinyportals++;
 		}
 
-		if ( !frontwinding && !backwinding ) { // tiny windings on both sides
+		if ( frontwinding.empty() && backwinding.empty() ) { // tiny windings on both sides
 			continue;
 		}
 
-		if ( !frontwinding ) {
-			FreeWinding( backwinding );
+		if ( frontwinding.empty() ) {
 			if ( side == 0 ) {
 				AddPortalToNodes( p, b, other_node );
 			}
@@ -415,8 +361,7 @@ void SplitNodePortals( node_t *node ){
 			}
 			continue;
 		}
-		if ( !backwinding ) {
-			FreeWinding( frontwinding );
+		if ( backwinding.empty() ) {
 			if ( side == 0 ) {
 				AddPortalToNodes( p, f, other_node );
 			}
@@ -427,11 +372,10 @@ void SplitNodePortals( node_t *node ){
 		}
 
 		// the winding is split
-		new_portal = AllocPortal();
-		*new_portal = *p;
-		new_portal->winding = backwinding;
-		FreeWinding( p->winding );
-		p->winding = frontwinding;
+		p->winding.clear();
+		portal_t *new_portal = new portal_t( *p ); // AllocPortal()
+		new_portal->winding.swap( backwinding );
+		p->winding.swap( frontwinding );
 
 		if ( side == 0 ) {
 			AddPortalToNodes( p, f, other_node );
@@ -453,13 +397,13 @@ void SplitNodePortals( node_t *node ){
    CalcNodeBounds
    ================
  */
-void CalcNodeBounds( node_t *node ){
+static void CalcNodeBounds( node_t *node ){
 	portal_t    *p;
 	int s;
 
 	// calc mins/maxs for both leafs and nodes
 	node->minmax.clear();
-	for ( p = node->portals ; p ; p = p->next[s] )
+	for ( p = node->portals; p; p = p->next[s] )
 	{
 		s = ( p->nodes[1] == node );
 		WindingExtendBounds( p->winding, node->minmax );
@@ -471,7 +415,7 @@ void CalcNodeBounds( node_t *node ){
    MakeTreePortals_r
    ==================
  */
-void MakeTreePortals_r( node_t *node ){
+static void MakeTreePortals_r( node_t *node ){
 	CalcNodeBounds( node );
 	if ( !node->minmax.valid() ) {
 		Sys_Warning( "node without a volume\n"
@@ -484,8 +428,8 @@ void MakeTreePortals_r( node_t *node ){
 	}
 
 	if ( !c_worldMinmax.surrounds( node->minmax ) ) {
-		if ( node->portals && node->portals->winding ) {
-			xml_Winding( "WARNING: Node With Unbounded Volume", node->portals->winding->p, node->portals->winding->numpoints, false );
+		if ( node->portals && !node->portals->winding.empty() ) {
+			xml_Winding( "WARNING: Node With Unbounded Volume", node->portals->winding.data(), node->portals->winding.size(), false );
 		}
 	}
 	if ( node->planenum == PLANENUM_LEAF ) {
@@ -504,10 +448,10 @@ void MakeTreePortals_r( node_t *node ){
    MakeTreePortals
    ==================
  */
-void MakeTreePortals( tree_t *tree ){
+void MakeTreePortals( tree_t& tree ){
 	Sys_FPrintf( SYS_VRB, "--- MakeTreePortals ---\n" );
 	MakeHeadnodePortals( tree );
-	MakeTreePortals_r( tree->headnode );
+	MakeTreePortals_r( tree.headnode );
 	Sys_FPrintf( SYS_VRB, "%9d tiny portals\n", c_tinyportals );
 	Sys_FPrintf( SYS_VRB, "%9d bad portals\n", c_badportals );  /* ydnar */
 }
@@ -520,9 +464,9 @@ void MakeTreePortals( tree_t *tree ){
    =========================================================
  */
 
-int c_floodedleafs;
+static int c_floodedleafs;
 
-void FloodPortals( node_t *node, bool skybox ){
+static void FloodPortals( node_t *node, bool skybox ){
 	int dist = 1;
 	std::vector<node_t*> nodes{ node };
 	while( !nodes.empty() ){
@@ -562,7 +506,7 @@ void FloodPortals( node_t *node, bool skybox ){
    =============
  */
 
-bool PlaceOccupant( node_t *headnode, const Vector3& origin, const entity_t *occupant, bool skybox ){
+static bool PlaceOccupant( node_t *headnode, const Vector3& origin, const entity_t *occupant, bool skybox ){
 	node_t  *node;
 
 	// find the leaf to start in
@@ -596,16 +540,13 @@ bool PlaceOccupant( node_t *headnode, const Vector3& origin, const entity_t *occ
    =============
  */
 
-EFloodEntities FloodEntities( tree_t *tree ){
+EFloodEntities FloodEntities( tree_t& tree ){
 	bool r, inside, skybox;
-	node_t      *headnode;
-	const char  *value;
 
 
-	headnode = tree->headnode;
 	Sys_FPrintf( SYS_VRB, "--- FloodEntities ---\n" );
 	inside = false;
-	tree->outside_node.occupied = 0;
+	tree.outside_node.occupied = 0;
 
 	c_floodedleafs = 0;
 	for ( std::size_t i = 1; i < entities.size(); ++i )
@@ -622,7 +563,7 @@ EFloodEntities FloodEntities( tree_t *tree ){
 		}
 #endif
 		/* also allow bmodel entities outside, as they could be on a moving path that will go into the map */
-		if ( e.brushes != NULL || e.patches != NULL || e.classname_is( "_decal" ) ) { //_decal primitive is freed at this point
+		if ( !e.brushes.empty() || e.patches != NULL || e.classname_is( "_decal" ) ) { //_decal primitive is freed at this point
 			continue;
 		}
 
@@ -638,9 +579,8 @@ EFloodEntities FloodEntities( tree_t *tree ){
 
 			/* get "angle" (yaw) or "angles" (pitch yaw roll), store as (roll pitch yaw) */
 			Vector3 angles( 0 );
-			if ( !e.read_keyvalue( value, "angles" ) ||
-			     3 != sscanf( value, "%f %f %f", &angles[ 1 ], &angles[ 2 ], &angles[ 0 ] ) )
-				e.read_keyvalue( angles[ 2 ], "angle" );
+			if ( e.read_keyvalue( angles, "angles" ) || e.read_keyvalue( angles.y(), "angle" ) )
+				angles = angles_pyr2rpy( angles );
 
 			/* set transform matrix (thanks spog) */
 			skyboxTransform = g_matrix4_identity;
@@ -658,7 +598,7 @@ EFloodEntities FloodEntities( tree_t *tree ){
 		//%		origin[ 2 ] += 4096;
 
 		/* find leaf */
-		r = PlaceOccupant( headnode, origin, &e, skybox );
+		r = PlaceOccupant( tree.headnode, origin, &e, skybox );
 		if ( r ) {
 			inside = true;
 		}
@@ -673,7 +613,7 @@ EFloodEntities FloodEntities( tree_t *tree ){
 		Sys_FPrintf( SYS_WRN | SYS_VRBflag, "no entities in open -- no filling\n" );
 		return EFloodEntities::Empty;
 	}
-	if ( tree->outside_node.occupied ) {
+	if ( tree.outside_node.occupied ) {
 		Sys_FPrintf( SYS_WRN | SYS_VRBflag, "entity reached from outside -- leak detected\n" );
 		return EFloodEntities::Leaked;
 	}
@@ -689,7 +629,7 @@ EFloodEntities FloodEntities( tree_t *tree ){
    =========================================================
  */
 
-int c_areas;
+static int c_areas;
 
 
 
@@ -698,10 +638,9 @@ int c_areas;
    floods through leaf portals to tag leafs with an area
  */
 
-void FloodAreas_r( node_t *node ){
+static void FloodAreas_r( node_t *node ){
 	int s;
 	portal_t    *p;
-	brush_t     *b;
 
 
 	if ( node->areaportal ) {
@@ -710,7 +649,7 @@ void FloodAreas_r( node_t *node ){
 		}
 
 		/* this node is part of an area portal brush */
-		b = node->brushlist->original;
+		brush_t *b = node->brushlist.front().original;
 
 		/* if the current area has already touched this portal, we are done */
 		if ( b->portalareas[ 0 ] == c_areas || b->portalareas[ 1 ] == c_areas ) {
@@ -771,7 +710,7 @@ void FloodAreas_r( node_t *node ){
    area set, flood fill out from there
    =============
  */
-void FindAreas_r( node_t *node ){
+static void FindAreas_r( node_t *node ){
 	if ( node->planenum != PLANENUM_LEAF ) {
 		FindAreas_r( node->children[ 0 ] );
 		FindAreas_r( node->children[ 1 ] );
@@ -791,9 +730,7 @@ void FindAreas_r( node_t *node ){
    CheckAreas_r
    =============
  */
-void CheckAreas_r( node_t *node ){
-	brush_t *b;
-
+static void CheckAreas_r( const node_t *node ){
 	if ( node->planenum != PLANENUM_LEAF ) {
 		CheckAreas_r( node->children[0] );
 		CheckAreas_r( node->children[1] );
@@ -810,7 +747,7 @@ void CheckAreas_r( node_t *node ){
 		}
 	}
 	if ( node->areaportal ) {
-		b = node->brushlist->original;
+		const brush_t *b = node->brushlist.front().original;
 
 		// check if the areaportal touches two areas
 		if ( b->portalareas[0] == -1 || b->portalareas[1] == -1 ) {
@@ -826,7 +763,7 @@ void CheckAreas_r( node_t *node ){
    sets all nodes with the skybox area to skybox
  */
 
-void FloodSkyboxArea_r( node_t *node ){
+static void FloodSkyboxArea_r( node_t *node ){
 	if ( skyboxArea < 0 ) {
 		return;
 	}
@@ -851,16 +788,16 @@ void FloodSkyboxArea_r( node_t *node ){
    mark each leaf with an area, bounded by C_AREAPORTAL
  */
 
-void FloodAreas( tree_t *tree ){
+void FloodAreas( tree_t& tree ){
 	Sys_FPrintf( SYS_VRB, "--- FloodAreas ---\n" );
-	FindAreas_r( tree->headnode );
+	FindAreas_r( tree.headnode );
 
 	/* ydnar: flood all skybox nodes */
-	FloodSkyboxArea_r( tree->headnode );
+	FloodSkyboxArea_r( tree.headnode );
 
 	/* check for areaportal brushes that don't touch two areas */
 	/* ydnar: fix this rather than just silence the warnings */
-	//%	CheckAreas_r( tree->headnode );
+	//%	CheckAreas_r( tree.headnode );
 
 	Sys_FPrintf( SYS_VRB, "%9d areas\n", c_areas );
 }
@@ -869,11 +806,11 @@ void FloodAreas( tree_t *tree ){
 
 //======================================================
 
-int c_outside;
-int c_inside;
-int c_solid;
+static int c_outside;
+static int c_inside;
+static int c_solid;
 
-void FillOutside_r( node_t *node ){
+static void FillOutside_r( node_t *node ){
 	if ( node->planenum != PLANENUM_LEAF ) {
 		FillOutside_r( node->children[0] );
 		FillOutside_r( node->children[1] );

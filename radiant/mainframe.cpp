@@ -45,7 +45,7 @@
 #include <gdk/gdkkeysyms.h>
 #include <gtk/gtk.h>
 
-#include "cmdlib.h"
+#include "commandlib.h"
 #include "scenelib.h"
 #include "stream/stringstream.h"
 #include "signal/isignal.h"
@@ -252,10 +252,10 @@ void HomePaths_Realise(){
 
 	{
 		StringOutputStream path( 256 );
-		path << g_qeglobals.m_userEnginePath.c_str() << gamename_get() << '/';
+		path << g_qeglobals.m_userEnginePath << gamename_get() << '/';
 		g_qeglobals.m_userGamePath = path.c_str();
 	}
-	ASSERT_MESSAGE( !string_empty( g_qeglobals.m_userGamePath.c_str() ), "HomePaths_Realise: user-game-path is empty" );
+	ASSERT_MESSAGE( !g_qeglobals.m_userGamePath.empty(), "HomePaths_Realise: user-game-path is empty" );
 	Q_mkdir( g_qeglobals.m_userGamePath.c_str() );
 }
 
@@ -382,7 +382,7 @@ const char* LocalRcPath_get(){
 	static CopiedString rc_path;
 	if ( rc_path.empty() ) {
 		StringOutputStream stream( 256 );
-		stream << GlobalRadiant().getSettingsPath() << g_pGameDescription->mGameFile.c_str() << "/";
+		stream << GlobalRadiant().getSettingsPath() << g_pGameDescription->mGameFile << "/";
 		rc_path = stream.c_str();
 	}
 	return rc_path.c_str();
@@ -499,11 +499,10 @@ const char* basegame_get(){
 }
 
 const char* gamename_get(){
-	const char* gamename = g_gamename.c_str();
-	if ( string_empty( gamename ) ) {
+	if ( g_gamename.empty() ) {
 		return basegame_get();
 	}
-	return gamename;
+	return g_gamename.c_str();
 }
 
 void gamename_set( const char* gamename ){
@@ -883,6 +882,31 @@ void ColorScheme_Blender(){
 	XY_UpdateAllWindows();
 }
 
+/* color scheme to fit the GTK Adwaita Dark theme */
+void ColorScheme_AdwaitaDark()
+{
+	TextureBrowser_setBackgroundColour( GlobalTextureBrowser(), Vector3( 0.25f, 0.25f, 0.25f ) );
+
+	g_camwindow_globals.color_cameraback = Vector3( 0.25f, 0.25f, 0.25f );
+	g_camwindow_globals.color_selbrushes3d = Vector3( 1.0f, 0.0f, 0.0f );
+	CamWnd_reconstructStatic();
+	CamWnd_Update( *g_pParentWnd->GetCamWnd() );
+
+	g_xywindow_globals.color_gridback = Vector3( 0.25f, 0.25f, 0.25f );
+	g_xywindow_globals.color_gridminor = Vector3( 0.21f, 0.23f, 0.23f );
+	g_xywindow_globals.color_gridmajor = Vector3( 0.14f, 0.15f, 0.15f );
+	g_xywindow_globals.color_gridblock = Vector3( 1.0f, 1.0f, 1.0f );
+	g_xywindow_globals.color_gridtext = Vector3( 0.0f, 0.0f, 0.0f );
+	g_xywindow_globals.color_selbrushes = Vector3( 1.0f, 0.0f, 0.0f );
+	XYWnd::recaptureStates();
+	g_xywindow_globals.color_clipper = Vector3( 0.0f, 0.0f, 1.0f );
+	Brush_clipperColourChanged();
+	g_xywindow_globals.color_brushes = Vector3( 0.73f, 0.73f, 0.73f );
+	SetWorldspawnColour( g_xywindow_globals.color_brushes );
+	g_xywindow_globals.color_viewname = Vector3( 0.5f, 0.0f, 0.75f );
+	XY_UpdateAllWindows();
+}
+
 typedef Callback1<Vector3&> GetColourCallback;
 typedef Callback1<const Vector3&> SetColourCallback;
 
@@ -1005,6 +1029,7 @@ GtkMenuItem* create_colours_menu(){
 	create_menu_item_with_mnemonic( menu_3, "Black and Green", "ColorSchemeBlackAndGreen" );
 	create_menu_item_with_mnemonic( menu_3, "Maya/Max/Lightwave Emulation", "ColorSchemeYdnar" );
 	create_menu_item_with_mnemonic( menu_3, "Blender/Dark", "ColorSchemeBlender" );
+	create_menu_item_with_mnemonic( menu_3, "Adwaita Dark", "ColorSchemeAdwaitaDark" );
 
 	create_menu_item_with_mnemonic( menu_in_menu, "GTK Theme...", "gtkThemeDlg" );
 	create_menu_item_with_mnemonic( menu_in_menu, "OpenGL Font...", "OpenGLFont" );
@@ -1238,6 +1263,7 @@ class CloneSelected : public scene::Graph::Walker
 	const bool m_makeUnique;
 	const scene::Node* m_world;
 public:
+	mutable std::vector<scene::Node*> m_cloned;
 	CloneSelected( bool makeUnique ) : m_makeUnique( makeUnique ), m_world( Map_FindWorldspawn( g_map ) ){
 	}
 	bool pre( const scene::Path& path, scene::Instance& instance ) const {
@@ -1253,10 +1279,7 @@ public:
 			if ( Instance_isSelected( instance ) ) {
 				return false;
 			}
-			if( m_makeUnique && instance.childSelected() ){ /* clone group entity primitives to new group entity */
-				NodeSmartReference clone( Node_Clone_Selected( path.top() ) );
-				Map_gatherNamespaced( clone );
-				Node_getTraversable( path.parent().get() )->insert( clone );
+			if( m_makeUnique && instance.childSelected() ){ /* clone selected group entity primitives to new group entity */
 				return false;
 			}
 		}
@@ -1277,15 +1300,49 @@ public:
 				NodeSmartReference clone( Node_Clone( path.top() ) );
 				Map_gatherNamespaced( clone );
 				Node_getTraversable( path.parent().get() )->insert( clone );
+				m_cloned.push_back( clone.get_pointer() );
+			}
+			else if( m_makeUnique && instance.childSelected() ){ /* clone selected group entity primitives to new group entity */
+				NodeSmartReference clone( Node_Clone_Selected( path.top() ) );
+				Map_gatherNamespaced( clone );
+				Node_getTraversable( path.parent().get() )->insert( clone );
+				m_cloned.push_back( clone.get_pointer() );
 			}
 		}
 	}
 };
 
 void Scene_Clone_Selected( scene::Graph& graph, bool makeUnique ){
-	graph.traverse( CloneSelected( makeUnique ) );
+	CloneSelected cloneSelected( makeUnique );
+	graph.traverse( cloneSelected );
 
 	Map_mergeClonedNames( makeUnique );
+
+	/* deselect originals */
+	GlobalSelectionSystem().setSelectedAll( false );
+	/* select cloned */
+	for( scene::Node *node : cloneSelected.m_cloned )
+	{
+		class walker : public scene::Traversable::Walker
+		{
+		public:
+			bool pre( scene::Node& node ) const override {
+				if( scene::Instantiable *instantiable = Node_getInstantiable( node ) ){
+					class visitor : public scene::Instantiable::Visitor
+					{
+					public:
+						void visit( scene::Instance& instance ) const override {
+							Instance_setSelected( instance, true );
+						}
+					};
+
+					instantiable->forEachInstance( visitor() );
+				}
+				return true;
+			}
+		};
+		Node_traverseSubgraph( *node, walker() );
+	}
 }
 
 enum ENudgeDirection
@@ -2971,14 +3028,14 @@ gboolean toolbar_redirect_scroll( GtkWidget* widget, GdkEventScroll* event, gpoi
 
 void user_shortcuts_init(){
 	StringOutputStream path( 256 );
-	path << SettingsPath_get() << g_pGameDescription->mGameFile.c_str() << '/';
+	path << SettingsPath_get() << g_pGameDescription->mGameFile << '/';
 	LoadCommandMap( path.c_str() );
 	SaveCommandMap( path.c_str() );
 }
 
 void user_shortcuts_save(){
 	StringOutputStream path( 256 );
-	path << SettingsPath_get() << g_pGameDescription->mGameFile.c_str() << '/';
+	path << SettingsPath_get() << g_pGameDescription->mGameFile << '/';
 	SaveCommandMap( path.c_str() );
 }
 
@@ -3501,7 +3558,7 @@ void Layout_constructPreferences( PreferencesPage& page ){
 		const char* layouts[] = { "window1.png", "window2.png", "window3.png", "window4.png" };
 		page.appendRadioIcons(
 		    "Window Layout",
-		    STRING_ARRAY_RANGE( layouts ),
+		    StringArrayRange( layouts ),
 		    LatchedImportCaller( g_Layout_viewStyle ),
 		    IntExportCaller( g_Layout_viewStyle.m_latched )
 		);
@@ -3639,6 +3696,7 @@ void MainFrame_Construct(){
 	GlobalCommands_insert( "ColorSchemeBlackAndGreen", FreeCaller<ColorScheme_Black>() );
 	GlobalCommands_insert( "ColorSchemeYdnar", FreeCaller<ColorScheme_Ydnar>() );
 	GlobalCommands_insert( "ColorSchemeBlender", FreeCaller<ColorScheme_Blender>() );
+	GlobalCommands_insert( "ColorSchemeAdwaitaDark", FreeCaller<ColorScheme_AdwaitaDark>() );
 	GlobalCommands_insert( "ChooseTextureBackgroundColor", makeCallback( g_ColoursMenu.m_textureback ) );
 	GlobalCommands_insert( "ChooseGridBackgroundColor", makeCallback( g_ColoursMenu.m_xyback ) );
 	GlobalCommands_insert( "ChooseGridMajorColor", makeCallback( g_ColoursMenu.m_gridmajor ) );

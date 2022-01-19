@@ -30,6 +30,9 @@
 
 /* dependencies */
 #include "q3map2.h"
+#include "bspfile_rbsp.h"
+#include "surface_extra.h"
+#include "timer.h"
 
 
 
@@ -51,10 +54,10 @@
 
 /*
    WriteTGA24()
-   based on WriteTGA() from imagelib.c
+   based on WriteTGA() from qimagelib.cpp
  */
 
-void WriteTGA24( char *filename, byte *data, int width, int height, bool flip ){
+static void WriteTGA24( char *filename, byte *data, int width, int height, bool flip ){
 	int i;
 	const int headSz = 18;
 	const int sz = width * height * 3 + headSz;
@@ -105,7 +108,7 @@ void WriteTGA24( char *filename, byte *data, int width, int height, bool flip ){
    exports the lightmaps as a list of numbered tga images
  */
 
-void ExportLightmaps( void ){
+void ExportLightmaps(){
 	int i;
 	char dirname[ 1024 ], filename[ 1024 ];
 	byte        *lightmap;
@@ -119,7 +122,7 @@ void ExportLightmaps( void ){
 	StripExtension( dirname );
 
 	/* sanity check */
-	if ( bspLightBytes == NULL ) {
+	if ( bspLightBytes.empty() ) {
 		Sys_Warning( "No BSP lightmap data\n" );
 		return;
 	}
@@ -128,12 +131,12 @@ void ExportLightmaps( void ){
 	Q_mkdir( dirname );
 
 	/* iterate through the lightmaps */
-	for ( i = 0, lightmap = bspLightBytes; lightmap < ( bspLightBytes + numBSPLightBytes ); i++, lightmap += ( game->lightmapSize * game->lightmapSize * 3 ) )
+	for ( i = 0, lightmap = bspLightBytes.data(); lightmap < ( bspLightBytes.data() + bspLightBytes.size() ); i++, lightmap += ( g_game->lightmapSize * g_game->lightmapSize * 3 ) )
 	{
 		/* write a tga image out */
 		sprintf( filename, "%s/lightmap_%04d.tga", dirname, i );
 		Sys_Printf( "Writing %s\n", filename );
-		WriteTGA24( filename, lightmap, game->lightmapSize, game->lightmapSize, false );
+		WriteTGA24( filename, lightmap, g_game->lightmapSize, g_game->lightmapSize, false );
 	}
 }
 
@@ -144,15 +147,15 @@ void ExportLightmaps( void ){
    exports the lightmaps as a list of numbered tga images
  */
 
-int ExportLightmapsMain( int argc, char **argv ){
+int ExportLightmapsMain( Args& args ){
 	/* arg checking */
-	if ( argc < 2 ) {
+	if ( args.empty() ) {
 		Sys_Printf( "Usage: q3map2 -export [-v] <mapname>\n" );
 		return 0;
 	}
 
 	/* do some path mangling */
-	strcpy( source, ExpandArg( argv[ argc - 1 ] ) );
+	strcpy( source, ExpandArg( args.takeBack() ) );
 	path_set_extension( source, ".bsp" );
 
 	/* load the bsp */
@@ -173,20 +176,20 @@ int ExportLightmapsMain( int argc, char **argv ){
    imports the lightmaps from a list of numbered tga images
  */
 
-int ImportLightmapsMain( int argc, char **argv ){
-	int i, x, y, len, width, height;
+int ImportLightmapsMain( Args& args ){
+	int i, x, y, width, height;
 	char dirname[ 1024 ], filename[ 1024 ];
-	byte        *lightmap, *buffer, *pixels, *in, *out;
+	byte        *lightmap, *pixels, *in, *out;
 
 
 	/* arg checking */
-	if ( argc < 2 ) {
+	if ( args.empty() ) {
 		Sys_Printf( "Usage: q3map2 -import [-v] <mapname>\n" );
 		return 0;
 	}
 
 	/* do some path mangling */
-	strcpy( source, ExpandArg( argv[ argc - 1 ] ) );
+	strcpy( source, ExpandArg( args.takeBack() ) );
 	path_set_extension( source, ".bsp" );
 
 	/* load the bsp */
@@ -201,7 +204,7 @@ int ImportLightmapsMain( int argc, char **argv ){
 	StripExtension( dirname );
 
 	/* sanity check */
-	if ( bspLightBytes == NULL ) {
+	if ( bspLightBytes.empty() ) {
 		Error( "No lightmap data" );
 	}
 
@@ -209,39 +212,37 @@ int ImportLightmapsMain( int argc, char **argv ){
 	Q_mkdir( dirname );
 
 	/* iterate through the lightmaps */
-	for ( i = 0, lightmap = bspLightBytes; lightmap < ( bspLightBytes + numBSPLightBytes ); i++, lightmap += ( game->lightmapSize * game->lightmapSize * 3 ) )
+	for ( i = 0, lightmap = bspLightBytes.data(); lightmap < ( bspLightBytes.data() + bspLightBytes.size() ); i++, lightmap += ( g_game->lightmapSize * g_game->lightmapSize * 3 ) )
 	{
 		/* read a tga image */
 		sprintf( filename, "%s/lightmap_%04d.tga", dirname, i );
 		Sys_Printf( "Loading %s\n", filename );
-		buffer = NULL;
-		len = vfsLoadFile( filename, (void**) &buffer, -1 );
-		if ( len < 0 ) {
+		MemBuffer buffer = vfsLoadFile( filename, -1 );
+		if ( !buffer ) {
 			Sys_Warning( "Unable to load image %s\n", filename );
 			continue;
 		}
 
 		/* parse file into an image */
 		pixels = NULL;
-		LoadTGABuffer( buffer, buffer + len, &pixels, &width, &height );
-		free( buffer );
+		LoadTGABuffer( buffer.data(), buffer.size(), &pixels, &width, &height );
 
 		/* sanity check it */
 		if ( pixels == NULL ) {
 			Sys_Warning( "Unable to load image %s\n", filename );
 			continue;
 		}
-		if ( width != game->lightmapSize || height != game->lightmapSize ) {
+		if ( width != g_game->lightmapSize || height != g_game->lightmapSize ) {
 			Sys_Warning( "Image %s is not the right size (%d, %d) != (%d, %d)\n",
-			             filename, width, height, game->lightmapSize, game->lightmapSize );
+			             filename, width, height, g_game->lightmapSize, g_game->lightmapSize );
 		}
 
 		/* copy the pixels */
 		in = pixels;
-		for ( y = 1; y <= game->lightmapSize; y++ )
+		for ( y = 1; y <= g_game->lightmapSize; y++ )
 		{
-			out = lightmap + ( ( game->lightmapSize - y ) * game->lightmapSize * 3 );
-			for ( x = 0; x < game->lightmapSize; x++, in += 4, out += 3 )
+			out = lightmap + ( ( g_game->lightmapSize - y ) * g_game->lightmapSize * 3 );
+			for ( x = 0; x < g_game->lightmapSize; x++, in += 4, out += 3 )
 				VectorCopy( in, out );
 		}
 
@@ -265,12 +266,24 @@ int ImportLightmapsMain( int argc, char **argv ){
 
    ------------------------------------------------------------------------------- */
 
+namespace
+{
+int numSurfsVertexLit;
+int numSurfsVertexForced;
+int numSurfsVertexApproximated;
+int numSurfsLightmapped;
+int numPlanarsLightmapped;
+int numNonPlanarsLightmapped;
+int numPatchesLightmapped;
+int numPlanarPatchesLightmapped;
+}
+
 /*
    FinishRawLightmap()
    allocates a raw lightmap's necessary buffers
  */
 
-void FinishRawLightmap( rawLightmap_t *lm ){
+static void FinishRawLightmap( rawLightmap_t *lm ){
 	int i, j, c, size, *sc;
 	float is;
 	surfaceInfo_t       *info;
@@ -439,7 +452,7 @@ void FinishRawLightmap( rawLightmap_t *lm ){
    based on AllocateLightmapForPatch()
  */
 
-bool AddPatchToRawLightmap( int num, rawLightmap_t *lm ){
+static bool AddPatchToRawLightmap( int num, rawLightmap_t *lm ){
 	bspDrawSurface_t    *ds;
 	surfaceInfo_t       *info;
 	int x, y;
@@ -556,7 +569,7 @@ bool AddPatchToRawLightmap( int num, rawLightmap_t *lm ){
    based on AllocateLightmapForSurface()
  */
 
-bool AddSurfaceToRawLightmap( int num, rawLightmap_t *lm ){
+static bool AddSurfaceToRawLightmap( int num, rawLightmap_t *lm ){
 	bspDrawSurface_t    *ds, *ds2;
 	surfaceInfo_t       *info;
 	int num2, n, i, axisNum;
@@ -923,14 +936,13 @@ struct CompareSurfaceInfo
    this depends on yDrawVerts being allocated
  */
 
-void SetupSurfaceLightmaps( void ){
+void SetupSurfaceLightmaps(){
 	int i, j, k, s,num, num2;
-	bspModel_t          *model;
-	bspLeaf_t           *leaf;
 	bspDrawSurface_t    *ds;
 	surfaceInfo_t       *info, *info2;
 	rawLightmap_t       *lm;
 	bool added;
+	const int numBSPDrawSurfaces = bspDrawSurfaces.size();
 
 
 	/* note it */
@@ -948,7 +960,7 @@ void SetupSurfaceLightmaps( void ){
 
 	/* allocate a list of surface clusters */
 	numSurfaceClusters = 0;
-	maxSurfaceClusters = numBSPLeafSurfaces;
+	maxSurfaceClusters = bspLeafSurfaces.size();
 	surfaceClusters = safe_calloc( maxSurfaceClusters * sizeof( *surfaceClusters ) );
 
 	/* allocate a list for per-surface info */
@@ -957,19 +969,16 @@ void SetupSurfaceLightmaps( void ){
 		surfaceInfos[ i ].childSurfaceNum = -1;
 
 	/* allocate a list of surface indexes to be sorted */
-	sortSurfaces = safe_calloc( numBSPDrawSurfaces * sizeof( int ) );
+	int *sortSurfaces = safe_calloc( numBSPDrawSurfaces * sizeof( int ) );
 
 	/* walk each model in the bsp */
-	for ( i = 0; i < numBSPModels; i++ )
+	for ( const bspModel_t& model : bspModels )
 	{
-		/* get model */
-		model = &bspModels[ i ];
-
 		/* walk the list of surfaces in this model and fill out the info structs */
-		for ( j = 0; j < model->numBSPSurfaces; j++ )
+		for ( j = 0; j < model.numBSPSurfaces; j++ )
 		{
 			/* make surface index */
-			num = model->firstBSPSurface + j;
+			num = model.firstBSPSurface + j;
 
 			/* copy index to sort list */
 			sortSurfaces[ num ] = num;
@@ -984,19 +993,21 @@ void SetupSurfaceLightmaps( void ){
 			info->plane = NULL;
 			info->firstSurfaceCluster = numSurfaceClusters;
 
-			/* get extra data */
-			info->si = GetSurfaceExtraShaderInfo( num );
-			if ( info->si == NULL ) {
-				info->si = ShaderInfoForShader( bspShaders[ ds->shaderNum ].shader );
+			{ /* get extra data */
+				const surfaceExtra_t& se = GetSurfaceExtra( num );
+				info->si = se.si;
+				if ( info->si == NULL ) {
+					info->si = ShaderInfoForShader( bspShaders[ ds->shaderNum ].shader );
+				}
+				info->parentSurfaceNum = se.parentSurfaceNum;
+				info->entityNum = se.entityNum;
+				info->castShadows = se.castShadows;
+				info->recvShadows = se.recvShadows;
+				info->sampleSize = se.sampleSize;
+				info->longestCurve = se.longestCurve;
+				info->patchIterations = IterationsForCurve( info->longestCurve, patchSubdivisions );
+				info->axis = se.lightmapAxis;
 			}
-			info->parentSurfaceNum = GetSurfaceExtraParentSurfaceNum( num );
-			info->entityNum = GetSurfaceExtraEntityNum( num );
-			info->castShadows = GetSurfaceExtraCastShadows( num );
-			info->recvShadows = GetSurfaceExtraRecvShadows( num );
-			info->sampleSize = GetSurfaceExtraSampleSize( num );
-			info->longestCurve = GetSurfaceExtraLongestCurve( num );
-			info->patchIterations = IterationsForCurve( info->longestCurve, patchSubdivisions );
-			info->axis = GetSurfaceExtraLightmapAxis( num );
 
 			/* mark parent */
 			if ( info->parentSurfaceNum >= 0 ) {
@@ -1012,24 +1023,21 @@ void SetupSurfaceLightmaps( void ){
 			}
 
 			/* find all the bsp clusters the surface falls into */
-			for ( k = 0; k < numBSPLeafs; k++ )
+			for ( const bspLeaf_t& leaf : bspLeafs )
 			{
-				/* get leaf */
-				leaf = &bspLeafs[ k ];
-
 				/* test bbox */
-				if( !leaf->minmax.test( info->minmax ) ) {
+				if( !leaf.minmax.test( info->minmax ) ) {
 					continue;
 				}
 
 				/* test leaf surfaces */
-				for ( s = 0; s < leaf->numBSPLeafSurfaces; s++ )
+				for ( s = 0; s < leaf.numBSPLeafSurfaces; s++ )
 				{
-					if ( bspLeafSurfaces[ leaf->firstBSPLeafSurface + s ] == num ) {
+					if ( bspLeafSurfaces[ leaf.firstBSPLeafSurface + s ] == num ) {
 						if ( numSurfaceClusters >= maxSurfaceClusters ) {
 							Error( "maxSurfaceClusters exceeded" );
 						}
-						surfaceClusters[ numSurfaceClusters ] = leaf->cluster;
+						surfaceClusters[ numSurfaceClusters ] = leaf.cluster;
 						numSurfaceClusters++;
 						info->numSurfaceClusters++;
 					}
@@ -1048,7 +1056,7 @@ void SetupSurfaceLightmaps( void ){
 			if ( ds->surfaceType == MST_TRIANGLE_SOUP ||
 			     ds->surfaceType == MST_FOLIAGE ||
 			     ( info->si->compileFlags & C_VERTEXLIT ) ||
-			     nolm ) {
+			     noLightmaps ) {
 				numSurfsVertexLit++;
 			}
 			else
@@ -1075,7 +1083,6 @@ void SetupSurfaceLightmaps( void ){
 	{
 		/* get info and attempt early out */
 		num = sortSurfaces[ i ];
-		ds = &bspDrawSurfaces[ num ];
 		info = &surfaceInfos[ num ];
 		if ( !info->hasLightmap || info->lm != NULL || info->parentSurfaceNum >= 0 ) {
 			continue;
@@ -1156,8 +1163,8 @@ void SetupSurfaceLightmaps( void ){
 	/* allocate vertex luxel storage */
 	for ( k = 0; k < MAX_LIGHTMAPS; k++ )
 	{
-		vertexLuxels[ k ] = safe_calloc( numBSPDrawVerts * sizeof( *vertexLuxels[ 0 ] ) );
-		radVertexLuxels[ k ] = safe_calloc( numBSPDrawVerts * sizeof( *radVertexLuxels[ 0 ] ) );
+		vertexLuxels[ k ] = safe_calloc( bspDrawVerts.size() * sizeof( *vertexLuxels[ 0 ] ) );
+		radVertexLuxels[ k ] = safe_calloc( bspDrawVerts.size() * sizeof( *radVertexLuxels[ 0 ] ) );
 	}
 
 	/* emit some stats */
@@ -1182,9 +1189,9 @@ void SetupSurfaceLightmaps( void ){
 #define MAX_STITCH_CANDIDATES   32
 #define MAX_STITCH_LUXELS       64
 
-void StitchSurfaceLightmaps( void ){
+void StitchSurfaceLightmaps(){
 	int i, j, x, y, x2, y2,
-	    numStitched, numCandidates, numLuxels, f, fOld, start;
+	    numStitched, numCandidates, numLuxels, fOld;
 	rawLightmap_t   *lm, *a, *b, *c[ MAX_STITCH_CANDIDATES ];
 	float           sampleSize, totalColor;
 
@@ -1197,15 +1204,14 @@ void StitchSurfaceLightmaps( void ){
 
 	/* init pacifier */
 	fOld = -1;
-	start = I_FloatTime();
+	Timer timer;
 
 	/* walk the list of raw lightmaps */
 	numStitched = 0;
 	for ( i = 0; i < numRawLightmaps; i++ )
 	{
 		/* print pacifier */
-		f = 10 * i / numRawLightmaps;
-		if ( f != fOld ) {
+		if ( const int f = 10 * i / numRawLightmaps; f != fOld ) {
 			fOld = f;
 			Sys_Printf( "%i...", f );
 		}
@@ -1322,7 +1328,7 @@ void StitchSurfaceLightmaps( void ){
 	}
 
 	/* emit statistics */
-	Sys_Printf( " (%i)\n", (int) ( I_FloatTime() - start ) );
+	Sys_Printf( " (%i)\n", int( timer.elapsed_sec() ) );
 	Sys_FPrintf( SYS_VRB, "%9d luxels stitched\n", numStitched );
 }
 
@@ -1680,7 +1686,7 @@ static bool ApproximateLightmap( rawLightmap_t *lm ){
 		{
 		case MST_PLANAR:
 			/* get verts */
-			verts = yDrawVerts + ds->firstVert;
+			verts = &yDrawVerts[ ds->firstVert ];
 
 			/* map the triangles */
 			info->approximated = true;
@@ -1770,9 +1776,6 @@ static bool ApproximateLightmap( rawLightmap_t *lm ){
  */
 
 static bool TestOutLightmapStamp( rawLightmap_t *lm, int lightmapNum, outLightmap_t *olm, int x, int y ){
-	int sx, sy, ox, oy, offset;
-
-
 	/* bounds check */
 	if ( x < 0 || y < 0 || ( x + lm->w ) > olm->customWidth || ( y + lm->h ) > olm->customHeight ) {
 		return false;
@@ -1780,17 +1783,16 @@ static bool TestOutLightmapStamp( rawLightmap_t *lm, int lightmapNum, outLightma
 
 	/* solid lightmaps test a 1x1 stamp */
 	if ( lm->solid[ lightmapNum ] ) {
-		offset = ( y * olm->customWidth ) + x;
-		if ( olm->lightBits[ offset >> 3 ] & ( 1 << ( offset & 7 ) ) ) {
+		if ( bit_is_enabled( olm->lightBits, ( y * olm->customWidth ) + x ) ) {
 			return false;
 		}
 		return true;
 	}
 
 	/* test the stamp */
-	for ( sy = 0; sy < lm->h; sy++ )
+	for ( int sy = 0; sy < lm->h; ++sy )
 	{
-		for ( sx = 0; sx < lm->w; sx++ )
+		for ( int sx = 0; sx < lm->w; ++sx )
 		{
 			/* get luxel */
 			if ( lm->getBspLuxel( lightmapNum, sx, sy )[ 0 ] < 0.0f ) {
@@ -1798,10 +1800,9 @@ static bool TestOutLightmapStamp( rawLightmap_t *lm, int lightmapNum, outLightma
 			}
 
 			/* get bsp lightmap coords and test */
-			ox = x + sx;
-			oy = y + sy;
-			offset = ( oy * olm->customWidth ) + ox;
-			if ( olm->lightBits[ offset >> 3 ] & ( 1 << ( offset & 7 ) ) ) {
+			const int ox = x + sx;
+			const int oy = y + sy;
+			if ( bit_is_enabled( olm->lightBits, ( oy * olm->customWidth ) + ox ) ) {
 				return false;
 			}
 		}
@@ -1825,7 +1826,7 @@ static void SetupOutLightmap( rawLightmap_t *lm, outLightmap_t *olm ){
 	}
 
 	/* is this a "normal" bsp-stored lightmap? */
-	if ( ( lm->customWidth == game->lightmapSize && lm->customHeight == game->lightmapSize ) || externalLightmaps ) {
+	if ( ( lm->customWidth == g_game->lightmapSize && lm->customHeight == g_game->lightmapSize ) || externalLightmaps ) {
 		olm->lightmapNum = numBSPLightmaps;
 		numBSPLightmaps++;
 
@@ -1865,7 +1866,7 @@ static void SetupOutLightmap( rawLightmap_t *lm, outLightmap_t *olm ){
 
 #define LIGHTMAP_RESERVE_COUNT 1
 static void FindOutLightmaps( rawLightmap_t *lm, bool fastAllocate ){
-	int i, j, k, lightmapNum, xMax, yMax, x = -1, y = -1, sx, sy, ox, oy, offset;
+	int i, j, k, lightmapNum, xMax, yMax, x = -1, y = -1, sx, sy, ox, oy;
 	outLightmap_t       *olm;
 	surfaceInfo_t       *info;
 	bool ok;
@@ -1970,7 +1971,7 @@ static void FindOutLightmaps( rawLightmap_t *lm, bool fastAllocate ){
 			else{
 				i = ( ( numOutLightmaps - LIGHTMAP_RESERVE_COUNT ) / lightmapSearchBlockSize ) * lightmapSearchBlockSize;
 			}
-			for ( ; i < numOutLightmaps; i++ )
+			for ( ; i < numOutLightmaps; ++i )
 			{
 				/* get the output lightmap */
 				olm = &outLightmaps[ i ];
@@ -2046,7 +2047,7 @@ static void FindOutLightmaps( rawLightmap_t *lm, bool fastAllocate ){
 		if ( !ok ) {
 			/* allocate LIGHTMAP_RESERVE_COUNT new output lightmaps */
 			numOutLightmaps += LIGHTMAP_RESERVE_COUNT;
-			olm = safe_malloc_info( numOutLightmaps * sizeof( outLightmap_t ), "FindOutLightmaps" );
+			olm = safe_malloc( numOutLightmaps * sizeof( outLightmap_t ) );
 
 			if ( outLightmaps != NULL && numOutLightmaps > LIGHTMAP_RESERVE_COUNT ) {
 				memcpy( olm, outLightmaps, ( numOutLightmaps - LIGHTMAP_RESERVE_COUNT ) * sizeof( outLightmap_t ) );
@@ -2070,7 +2071,7 @@ static void FindOutLightmaps( rawLightmap_t *lm, bool fastAllocate ){
 		}
 
 		/* if this is a style-using lightmap, it must be exported */
-		if ( lightmapNum > 0 && game->load != LoadRBSPFile ) {
+		if ( lightmapNum > 0 && g_game->load != LoadRBSPFile ) {
 			olm->extLightmapNum = 0;
 		}
 
@@ -2149,10 +2150,9 @@ static void FindOutLightmaps( rawLightmap_t *lm, bool fastAllocate ){
 				/* get bsp lightmap coords  */
 				ox = x + lm->lightmapX[ lightmapNum ];
 				oy = y + lm->lightmapY[ lightmapNum ];
-				offset = ( oy * olm->customWidth ) + ox;
 
 				/* flag pixel as used */
-				olm->lightBits[ offset >> 3 ] |= ( 1 << ( offset & 7 ) );
+				bit_enable( olm->lightBits, ( oy * olm->customWidth ) + ox );
 				olm->freeLuxels--;
 
 				/* store color */
@@ -2220,7 +2220,7 @@ struct CompareRawLightmap
 	}
 };
 
-void FillOutLightmap( outLightmap_t *olm ){
+static void FillOutLightmap( outLightmap_t *olm ){
 	int x, y;
 	int ofs;
 	int cnt, filled;
@@ -2258,7 +2258,7 @@ void FillOutLightmap( outLightmap_t *olm ){
 			for ( x = 0; x < olm->customWidth; ++x )
 			{
 				ofs = y * olm->customWidth + x;
-				if ( olm->lightBits[ofs >> 3] & ( 1 << ( ofs & 7 ) ) ) { /* already filled */
+				if ( bit_is_enabled( olm->lightBits, ofs ) ) { /* already filled */
 					continue;
 				}
 				cnt = 0;
@@ -2266,7 +2266,7 @@ void FillOutLightmap( outLightmap_t *olm ){
 
 				/* try all four neighbors */
 				ofs = ( ( y + olm->customHeight - 1 ) % olm->customHeight ) * olm->customWidth + x;
-				if ( olm->lightBits[ofs >> 3] & ( 1 << ( ofs & 7 ) ) ) { /* already filled */
+				if ( bit_is_enabled( olm->lightBits, ofs ) ) { /* already filled */
 					++cnt;
 					light_sum += olm->bspLightBytes[ofs];
 					if ( deluxemap ) {
@@ -2275,7 +2275,7 @@ void FillOutLightmap( outLightmap_t *olm ){
 				}
 
 				ofs = ( ( y + 1 ) % olm->customHeight ) * olm->customWidth + x;
-				if ( olm->lightBits[ofs >> 3] & ( 1 << ( ofs & 7 ) ) ) { /* already filled */
+				if ( bit_is_enabled( olm->lightBits, ofs ) ) { /* already filled */
 					++cnt;
 					light_sum += olm->bspLightBytes[ofs];
 					if ( deluxemap ) {
@@ -2284,7 +2284,7 @@ void FillOutLightmap( outLightmap_t *olm ){
 				}
 
 				ofs = y * olm->customWidth + ( x + olm->customWidth - 1 ) % olm->customWidth;
-				if ( olm->lightBits[ofs >> 3] & ( 1 << ( ofs & 7 ) ) ) { /* already filled */
+				if ( bit_is_enabled( olm->lightBits, ofs ) ) { /* already filled */
 					++cnt;
 					light_sum += olm->bspLightBytes[ofs];
 					if ( deluxemap ) {
@@ -2293,7 +2293,7 @@ void FillOutLightmap( outLightmap_t *olm ){
 				}
 
 				ofs = y * olm->customWidth + ( x + 1 ) % olm->customWidth;
-				if ( olm->lightBits[ofs >> 3] & ( 1 << ( ofs & 7 ) ) ) { /* already filled */
+				if ( bit_is_enabled( olm->lightBits, ofs ) ) { /* already filled */
 					++cnt;
 					light_sum += olm->bspLightBytes[ofs];
 					if ( deluxemap ) {
@@ -2304,7 +2304,7 @@ void FillOutLightmap( outLightmap_t *olm ){
 				if ( cnt ) {
 					++filled;
 					ofs = y * olm->customWidth + x;
-					lightBitsNew[ofs >> 3] |= ( 1 << ( ofs & 7 ) );
+					bit_enable( lightBitsNew, ofs );
 					lightBytesNew[ofs] = light_sum * ( 1.0 / cnt );
 					if ( deluxemap ) {
 						dirBytesNew[ofs] = dir_sum * ( 1.0 / cnt );
@@ -2337,7 +2337,7 @@ void FillOutLightmap( outLightmap_t *olm ){
  */
 
 void StoreSurfaceLightmaps( bool fastAllocate ){
-	int i, j, k, x, y, lx, ly, sx, sy, mappedSamples, timer_start;
+	int i, j, k, x, y, lx, ly, sx, sy, mappedSamples;
 	int style, lightmapNum, lightmapNum2;
 	float               samples, occludedSamples;
 	Vector3 sample, occludedSample, dirSample;
@@ -2350,7 +2350,7 @@ void StoreSurfaceLightmaps( bool fastAllocate ){
 	outLightmap_t       *olm;
 	bspDrawVert_t       *dv, *ydv, *dvParent;
 	char dirname[ 1024 ], filename[ 1024 ];
-	shaderInfo_t        *csi;
+	const shaderInfo_t  *csi;
 	char lightmapName[ 128 ];
 	const char              *rgbGenValues[ 256 ] = {0};
 	const char              *alphaGenValues[ 256 ] = {0};
@@ -2376,7 +2376,7 @@ void StoreSurfaceLightmaps( bool fastAllocate ){
 	/* note it */
 	Sys_Printf( "Subsampling..." );
 
-	timer_start = I_FloatTime();
+	Timer timer;
 
 	/* walk the list of raw lightmaps */
 	numUsed = 0;
@@ -2693,7 +2693,7 @@ void StoreSurfaceLightmaps( bool fastAllocate ){
 		}
 	}
 
-	Sys_Printf( "%d.", (int) ( I_FloatTime() - timer_start ) );
+	Sys_Printf( "%d.", int( timer.elapsed_sec() ) );
 
 	/* -----------------------------------------------------------------
 	   convert modelspace deluxemaps to tangentspace
@@ -2701,7 +2701,7 @@ void StoreSurfaceLightmaps( bool fastAllocate ){
 	/* note it */
 	if ( !bouncing ) {
 		if ( deluxemap && deluxemode == 1 ) {
-			timer_start = I_FloatTime();
+			timer.start();
 
 			Sys_Printf( "converting..." );
 
@@ -2763,7 +2763,7 @@ void StoreSurfaceLightmaps( bool fastAllocate ){
 				}
 			}
 
-			Sys_Printf( "%d.", (int) ( I_FloatTime() - timer_start ) );
+			Sys_Printf( "%d.", int( timer.elapsed_sec() ) );
 		}
 	}
 
@@ -2820,7 +2820,7 @@ void StoreSurfaceLightmaps( bool fastAllocate ){
 		/* note it */
 		Sys_Printf( "collapsing..." );
 
-		timer_start = I_FloatTime();
+		timer.start();
 
 		/* set all twin refs to null */
 		for ( i = 0; i < numRawLightmaps; i++ )
@@ -2883,7 +2883,7 @@ void StoreSurfaceLightmaps( bool fastAllocate ){
 			}
 		}
 
-		Sys_Printf( "%d.", (int) ( I_FloatTime() - timer_start ) );
+		Sys_Printf( "%d.", int( timer.elapsed_sec() ) );
 	}
 
 	/* -----------------------------------------------------------------
@@ -2893,7 +2893,7 @@ void StoreSurfaceLightmaps( bool fastAllocate ){
 	/* note it */
 	Sys_Printf( "sorting..." );
 
-	timer_start = I_FloatTime();
+	timer.start();
 
 	/* allocate a new sorted list */
 	if ( sortLightmaps == NULL ) {
@@ -2905,7 +2905,7 @@ void StoreSurfaceLightmaps( bool fastAllocate ){
 		sortLightmaps[ i ] = i;
 	std::sort( sortLightmaps, sortLightmaps + numRawLightmaps, CompareRawLightmap() );
 
-	Sys_Printf( "%d.", (int) ( I_FloatTime() - timer_start ) );
+	Sys_Printf( "%d.", int( timer.elapsed_sec() ) );
 
 	/* -----------------------------------------------------------------
 	   allocate output lightmaps
@@ -2914,7 +2914,7 @@ void StoreSurfaceLightmaps( bool fastAllocate ){
 	/* note it */
 	Sys_Printf( "allocating..." );
 
-	timer_start = I_FloatTime();
+	timer.start();
 
 	/* kill all existing output lightmaps */
 	if ( outLightmaps != NULL ) {
@@ -2962,7 +2962,7 @@ void StoreSurfaceLightmaps( bool fastAllocate ){
 		}
 	}
 
-	Sys_Printf( "%d.", (int) ( I_FloatTime() - timer_start ) );
+	Sys_Printf( "%d.", int( timer.elapsed_sec() ) );
 
 	/* -----------------------------------------------------------------
 	   store output lightmaps
@@ -2971,19 +2971,16 @@ void StoreSurfaceLightmaps( bool fastAllocate ){
 	/* note it */
 	Sys_Printf( "storing..." );
 
-	timer_start = I_FloatTime();
+	timer.start();
 
 	/* count the bsp lightmaps and allocate space */
-	free( bspLightBytes );
-	const size_t gameLmSize = game->lightmapSize * game->lightmapSize * sizeof( Vector3b );
+	const size_t gameLmSize = g_game->lightmapSize * g_game->lightmapSize * sizeof( Vector3b );
 	if ( numBSPLightmaps == 0 || externalLightmaps ) {
-		numBSPLightBytes = 0;
-		bspLightBytes = NULL;
+		bspLightBytes.clear();
 	}
 	else
 	{
-		numBSPLightBytes = numBSPLightmaps * gameLmSize;
-		bspLightBytes = safe_calloc( numBSPLightBytes );
+		bspLightBytes = decltype( bspLightBytes )( numBSPLightmaps * gameLmSize, 0 );
 	}
 
 	/* walk the list of output lightmaps */
@@ -2998,7 +2995,7 @@ void StoreSurfaceLightmaps( bool fastAllocate ){
 		}
 		else if( lightmapPink ){
 			for ( x = 0; x < olm->customHeight * olm->customWidth; ++x ){
-				if ( ( olm->lightBits[x >> 3] & ( 1 << ( x & 7 ) ) ) == 0 ) { /* not filled */
+				if ( !bit_is_enabled( olm->lightBits, x ) ) { /* not filled */
 					olm->bspLightBytes[x] = { 255, 0, 255 };
 				}
 			}
@@ -3007,12 +3004,12 @@ void StoreSurfaceLightmaps( bool fastAllocate ){
 		/* is this a valid bsp lightmap? */
 		if ( olm->lightmapNum >= 0 && !externalLightmaps ) {
 			/* copy lighting data */
-			lb = bspLightBytes + ( olm->lightmapNum * gameLmSize );
+			lb = bspLightBytes.data() + ( olm->lightmapNum * gameLmSize );
 			memcpy( lb, olm->bspLightBytes, gameLmSize );
 
 			/* copy direction data */
 			if ( deluxemap ) {
-				lb = bspLightBytes + ( ( olm->lightmapNum + 1 ) * gameLmSize );
+				lb = bspLightBytes.data() + ( ( olm->lightmapNum + 1 ) * gameLmSize );
 				memcpy( lb, olm->bspDirBytes, gameLmSize );
 			}
 		}
@@ -3062,7 +3059,7 @@ void StoreSurfaceLightmaps( bool fastAllocate ){
 		remove( filename );
 	}
 
-	Sys_Printf( "%d.", (int) ( I_FloatTime() - timer_start ) );
+	Sys_Printf( "%d.", int( timer.elapsed_sec() ) );
 
 	/* -----------------------------------------------------------------
 	   project the lightmaps onto the bsp surfaces
@@ -3071,10 +3068,10 @@ void StoreSurfaceLightmaps( bool fastAllocate ){
 	/* note it */
 	Sys_Printf( "projecting..." );
 
-	timer_start = I_FloatTime();
+	timer.start();
 
 	/* walk the list of surfaces */
-	for ( i = 0; i < numBSPDrawSurfaces; i++ )
+	for ( size_t i = 0; i < bspDrawSurfaces.size(); ++i )
 	{
 		/* get the surface and info */
 		ds = &bspDrawSurfaces[ i ];
@@ -3199,7 +3196,7 @@ void StoreSurfaceLightmaps( bool fastAllocate ){
 		}
 
 		/* surfaces with styled lightmaps and a style marker get a custom generated shader (fixme: make this work with external lightmaps) */
-		if ( olm != NULL && lm != NULL && lm->styles[ 1 ] != LS_NONE && game->load != LoadRBSPFile && strcmp(game->arg, "nexuiz") && strcmp(game->arg, "rexuiz")) { //%	info->si->styleMarker > 0 )
+		if ( olm != NULL && lm != NULL && lm->styles[ 1 ] != LS_NONE && g_game->load != LoadRBSPFile && strcmp(g_game->arg, "nexuiz") && strcmp(g_game->arg, "rexuiz")) { //%	info->si->styleMarker > 0 )
 			char key[ 32 ], styleStage[ 512 ], styleStages[ 4096 ], rgbGen[ 128 ], alphaGen[ 128 ];
 
 
@@ -3320,7 +3317,7 @@ void StoreSurfaceLightmaps( bool fastAllocate ){
 
 		/* devise a custom shader for this surface (fixme: make this work with light styles) */
 		else if ( olm != NULL && lm != NULL && !externalLightmaps &&
-		          ( olm->customWidth != game->lightmapSize || olm->customHeight != game->lightmapSize ) ) {
+		          ( olm->customWidth != g_game->lightmapSize || olm->customHeight != g_game->lightmapSize ) ) {
 			/* get output lightmap */
 			olm = &outLightmaps[ lm->outLightmapNums[ 0 ] ];
 
@@ -3346,13 +3343,13 @@ void StoreSurfaceLightmaps( bool fastAllocate ){
 		}
 	}
 
-	Sys_Printf( "%d.", (int) ( I_FloatTime() - timer_start ) );
+	Sys_Printf( "%d.", int( timer.elapsed_sec() ) );
 
 	/* finish */
 	Sys_Printf( "done.\n" );
 
 	/* calc num stored */
-	numStored = numBSPLightBytes / 3;
+	numStored = bspLightBytes.size() / 3;
 	efficiency = ( numStored <= 0 )
 	             ? 0
 	             : (float) numUsed / (float) numStored;

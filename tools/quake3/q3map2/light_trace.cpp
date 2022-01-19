@@ -32,11 +32,6 @@
 #include "q3map2.h"
 
 
-/* dependencies */
-#include "q3map2.h"
-
-
-
 #define MAX_NODE_ITEMS          5
 #define MAX_NODE_TRIANGLES      5
 #define MAX_TRACE_DEPTH         32
@@ -63,7 +58,7 @@ struct traceVert_t
 
 struct traceInfo_t
 {
-	shaderInfo_t                *si;
+	const shaderInfo_t          *si;
 	int surfaceNum, castShadows;
 	bool skipGrid;
 };
@@ -93,6 +88,8 @@ struct traceNode_t
 };
 
 
+namespace
+{
 int noDrawContentFlags, noDrawSurfaceFlags, noDrawCompileFlags;
 
 int numTraceInfos = 0, maxTraceInfos = 0, firstTraceInfo = 0;
@@ -107,6 +104,7 @@ traceTriangle_t                 *traceTriangles = NULL;
 int headNodeNum = 0, skyboxNodeNum = 0, maxTraceDepth = 0, numTraceLeafNodes = 0;
 int numTraceNodes = 0, maxTraceNodes = 0;
 traceNode_t                     *traceNodes = NULL;
+}
 
 
 
@@ -155,7 +153,7 @@ static int AddTraceInfo( traceInfo_t *ti ){
    allocates a new trace node
  */
 
-static int AllocTraceNode( void ){
+static int AllocTraceNode(){
 	/* enough space? */
 	AUTOEXPAND_BY_REALLOC_ADD( traceNodes, numTraceNodes, maxTraceNodes, GROW_TRACE_NODES );
 
@@ -818,28 +816,23 @@ static int TriangulateTraceNode_r( int nodeNum ){
    filters a bsp model's surfaces into the raytracing tree
  */
 
-static void PopulateWithBSPModel( bspModel_t *model, const Matrix4& transform ){
+static void PopulateWithBSPModel( const bspModel_t& model, const Matrix4& transform ){
 	int i, j, x, y, pw[ 5 ], r, nodeNum;
 	bspDrawSurface_t    *ds;
 	surfaceInfo_t       *info;
-	bspDrawVert_t       *verts;
-	int                 *indexes;
+	const bspDrawVert_t *verts;
+	const int           *indexes;
 	mesh_t srcMesh, *mesh, *subdivided;
 	traceInfo_t ti;
 	traceWinding_t tw;
 
 
-	/* dummy check */
-	if ( model == NULL ) {
-		return;
-	}
-
 	/* walk the list of surfaces in this model and fill out the info structs */
-	for ( i = 0; i < model->numBSPSurfaces; i++ )
+	for ( i = 0; i < model.numBSPSurfaces; i++ )
 	{
 		/* get surface and info */
-		ds = &bspDrawSurfaces[ model->firstBSPSurface + i ];
-		info = &surfaceInfos[ model->firstBSPSurface + i ];
+		ds = &bspDrawSurfaces[ model.firstBSPSurface + i ];
+		info = &surfaceInfos[ model.firstBSPSurface + i ];
 		if ( info->si == NULL ) {
 			continue;
 		}
@@ -873,7 +866,7 @@ static void PopulateWithBSPModel( bspModel_t *model, const Matrix4& transform ){
 		/* setup trace info */
 		ti.si = info->si;
 		ti.castShadows = info->castShadows;
-		ti.surfaceNum = model->firstBSPBrush + i;
+		ti.surfaceNum = model.firstBSPBrush + i;
 		ti.skipGrid = ( ds->surfaceType == MST_PATCH );
 
 		/* choose which node (normal or skybox) */
@@ -1053,24 +1046,24 @@ static void PopulateWithPicoModel( int castShadows, const std::vector<const AssM
    fills the raytracing tree with world and entity occluders
  */
 
-static void PopulateTraceNodes( void ){
-	int m;
+static void PopulateTraceNodes(){
+	size_t m;
 	const char      *value;
 
 
 	/* add worldspawn triangles */
 	Matrix4 transform( g_matrix4_identity );
-	PopulateWithBSPModel( &bspModels[ 0 ], transform );
+	PopulateWithBSPModel( bspModels[ 0 ], transform );
 
 	/* walk each entity list */
 	for ( std::size_t i = 1; i < entities.size(); ++i )
 	{
 		/* get entity */
-		entity_t *e = &entities[ i ];
+		const entity_t& e = entities[ i ];
 
 		/* get shadow flags */
 		int castShadows = ENTITY_CAST_SHADOWS;
-		GetEntityShadowFlags( e, NULL, &castShadows, NULL );
+		GetEntityShadowFlags( &e, NULL, &castShadows, NULL );
 
 		/* early out? */
 		if ( !castShadows ) {
@@ -1078,19 +1071,18 @@ static void PopulateTraceNodes( void ){
 		}
 
 		/* get entity origin */
-		const Vector3 origin( e->vectorForKey( "origin" ) );
+		const Vector3 origin( e.vectorForKey( "origin" ) );
 
 		/* get scale */
 		Vector3 scale( 1 );
-		if( !e->read_keyvalue( scale, "modelscale_vec" ) )
-			if( e->read_keyvalue( scale[0], "modelscale" ) )
+		if( !e.read_keyvalue( scale, "modelscale_vec" ) )
+			if( e.read_keyvalue( scale[0], "modelscale" ) )
 				scale[1] = scale[2] = scale[0];
 
 		/* get "angle" (yaw) or "angles" (pitch yaw roll), store as (roll pitch yaw) */
 		Vector3 angles( 0 );
-		if ( !e->read_keyvalue( value, "angles" ) ||
-		     3 != sscanf( value, "%f %f %f", &angles[ 1 ], &angles[ 2 ], &angles[ 0 ] ) )
-			e->read_keyvalue( angles[ 2 ], "angle" );
+		if ( e.read_keyvalue( angles, "angles" ) || e.read_keyvalue( angles.y(), "angle" ) )
+			angles = angles_pyr2rpy( angles );
 
 		/* set transform matrix (thanks spog) */
 		transform = g_matrix4_identity;
@@ -1102,7 +1094,7 @@ static void PopulateTraceNodes( void ){
 		//%	m4x4_transpose( transform );
 
 		/* get model */
-		value = e->valueForKey( "model" );
+		value = e.valueForKey( "model" );
 
 		/* switch on model type */
 		switch ( value[ 0 ] )
@@ -1114,20 +1106,20 @@ static void PopulateTraceNodes( void ){
 		/* bsp model */
 		case '*':
 			m = atoi( &value[ 1 ] );
-			if ( m <= 0 || m >= numBSPModels ) {
+			if ( m <= 0 || m >= bspModels.size() ) {
 				continue;
 			}
-			PopulateWithBSPModel( &bspModels[ m ], transform );
+			PopulateWithBSPModel( bspModels[ m ], transform );
 			break;
 
 		/* external model */
 		default:
-			PopulateWithPicoModel( castShadows, LoadModelWalker( value, e->intForKey( "_frame", "frame" ) ), transform );
+			PopulateWithPicoModel( castShadows, LoadModelWalker( value, e.intForKey( "_frame", "frame" ) ), transform );
 			continue;
 		}
 
 		/* get model2 */
-		value = e->valueForKey( "model2" );
+		value = e.valueForKey( "model2" );
 
 		/* switch on model type */
 		switch ( value[ 0 ] )
@@ -1139,15 +1131,15 @@ static void PopulateTraceNodes( void ){
 		/* bsp model */
 		case '*':
 			m = atoi( &value[ 1 ] );
-			if ( m <= 0 || m >= numBSPModels ) {
+			if ( m <= 0 || m >= bspModels.size() ) {
 				continue;
 			}
-			PopulateWithBSPModel( &bspModels[ m ], transform );
+			PopulateWithBSPModel( bspModels[ m ], transform );
 			break;
 
 		/* external model */
 		default:
-			PopulateWithPicoModel( castShadows, LoadModelWalker( value, e->intForKey( "_frame2" ) ), transform );
+			PopulateWithPicoModel( castShadows, LoadModelWalker( value, e.intForKey( "_frame2" ) ), transform );
 			continue;
 		}
 	}
@@ -1167,7 +1159,7 @@ static void PopulateTraceNodes( void ){
    creates a balanced bsp with axis-aligned splits for efficient raytracing
  */
 
-void SetupTraceNodes( void ){
+void SetupTraceNodes(){
 	/* note it */
 	Sys_FPrintf( SYS_VRB, "--- SetupTraceNodes ---\n" );
 
@@ -1260,14 +1252,14 @@ void SetupTraceNodes( void ){
 #define NEAR_SHADOW_EPSILON     1.5f    //%	1.25f
 #define SELF_SHADOW_EPSILON     0.5f
 
-bool TraceTriangle( traceInfo_t *ti, traceTriangle_t *tt, trace_t *trace ){
+static bool TraceTriangle( traceInfo_t *ti, traceTriangle_t *tt, trace_t *trace ){
 	int i;
 	Vector3 tvec, pvec, qvec;
 	float det, invDet, depth;
 	float u, v, w, s, t;
 	int is, it;
-	byte            *pixel;
-	shaderInfo_t    *si;
+	const byte            *pixel;
+	const shaderInfo_t    *si;
 
 
 	/* don't double-trace against sky */
@@ -1425,7 +1417,7 @@ bool TraceTriangle( traceInfo_t *ti, traceTriangle_t *tt, trace_t *trace ){
    temporary hack
  */
 
-bool TraceWinding( traceWinding_t *tw, trace_t *trace ){
+static bool TraceWinding( traceWinding_t *tw, trace_t *trace ){
 	int i;
 	traceTriangle_t tt;
 

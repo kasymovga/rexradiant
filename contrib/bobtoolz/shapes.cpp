@@ -40,7 +40,7 @@
 #include <list>
 #include <map>
 #include <algorithm>
-#include <time.h>
+#include <ctime>
 
 #include "scenelib.h"
 #include "texturelib.h"
@@ -622,7 +622,7 @@ void MakeBevel( vec3_t vMin, vec3_t vMax ){
 		}
 	}
 	//does invert the matrix, else the patch face is on wrong side.
-	for ( int i = 0 ; i < 3 ; i++ )
+	for ( int i = 0; i < 3; i++ )
 	{
 		for ( int j = 0; j < 1; j++ )
 		{

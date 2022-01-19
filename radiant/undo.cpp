@@ -44,10 +44,9 @@ class DebugScopeTimer
 public:
 	DebugScopeTimer( const char* operation )
 		: m_operation( operation ){
-		m_timer.start();
 	}
 	~DebugScopeTimer(){
-		unsigned int elapsed = m_timer.elapsed_msec();
+		const int elapsed = m_timer.elapsed_msec();
 		if ( elapsed > 0 ) {
 			globalOutputStream() << m_operation << ": " << elapsed << " msec\n";
 		}
@@ -308,7 +307,7 @@ public:
 		else
 		{
 			Operation* operation = m_undo_stack.back();
-			globalOutputStream() << "Undo: " << operation->m_command.c_str() << "\n";
+			globalOutputStream() << "Undo: " << operation->m_command << "\n";
 
 			startRedo();
 			trackersUndo();
@@ -324,7 +323,7 @@ public:
 		else
 		{
 			Operation* operation = m_redo_stack.back();
-			globalOutputStream() << "Redo: " << operation->m_command.c_str() << "\n";
+			globalOutputStream() << "Redo: " << operation->m_command << "\n";
 
 			startUndo();
 			trackersRedo();

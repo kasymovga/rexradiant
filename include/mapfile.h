@@ -19,21 +19,14 @@
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#if !defined( INCLUDED_MAPFILE_H )
-#define INCLUDED_MAPFILE_H
+#pragma once
 
 #include <limits>
 
 #include "iscenegraph.h"
 #include "generic/callbackfwd.h"
 
-#ifdef __GNUC__
-#define VARIABLE_IS_NOT_USED __attribute__ ((unused))
-#else
-#define VARIABLE_IS_NOT_USED
-#endif
-
-const std::size_t VARIABLE_IS_NOT_USED MAPFILE_MAX_CHANGES = std::numeric_limits<std::size_t>::max();
+const std::size_t MAPFILE_MAX_CHANGES = std::numeric_limits<std::size_t>::max();
 
 class MapFile
 {
@@ -72,7 +65,3 @@ inline MapFile* path_find_mapfile( Iterator first, Iterator last ){
 	ERROR_MESSAGE( "failed to find parent mapfile for path" );
 	return 0;
 }
-
-
-
-#endif

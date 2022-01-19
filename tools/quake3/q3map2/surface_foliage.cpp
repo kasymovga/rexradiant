@@ -155,8 +155,8 @@ static void SubdivideFoliageTriangle_r( mapDrawSurface_t *ds, const foliage_t& f
    generates a foliage file for a bsp
  */
 
-void Foliage( mapDrawSurface_t *src ){
-	int i, j, k, x, y, pw[ 5 ], r, oldNumMapDrawSurfs;
+void Foliage( mapDrawSurface_t *src, entity_t& entity ){
+	int i, j, x, y, pw[ 5 ], r, oldNumMapDrawSurfs;
 	mapDrawSurface_t    *ds;
 	shaderInfo_t        *si;
 	mesh_t srcMesh, *subdivided, *mesh;
@@ -255,7 +255,7 @@ void Foliage( mapDrawSurface_t *src ){
 		oldNumMapDrawSurfs = numMapDrawSurfs;
 
 		/* add the model to the bsp */
-		InsertModel( foliage.model.c_str(), 0, 0, matrix4_scale_for_vec3( Vector3( foliage.scale ) ), NULL, NULL, src->entityNum, src->castShadows, src->recvShadows, 0, src->lightmapScale, 0, 0, clipDepthGlobal );
+		InsertModel( foliage.model.c_str(), NULL, 0, matrix4_scale_for_vec3( Vector3( foliage.scale ) ), NULL, NULL, entity, src->castShadows, src->recvShadows, 0, src->lightmapScale, 0, 0, clipDepthGlobal );
 
 		/* walk each new surface */
 		for ( i = oldNumMapDrawSurfs; i < numMapDrawSurfs; i++ )
@@ -291,9 +291,9 @@ void Foliage( mapDrawSurface_t *src ){
 				fi->normal = foliageInstances[ j ].normal;
 
 				/* ydnar: set color */
-				for ( k = 0; k < MAX_LIGHTMAPS; k++ )
+				for ( auto& color : fi->color )
 				{
-					fi->color[ k ].set( 255 );
+					color.set( 255 );
 				}
 			}
 

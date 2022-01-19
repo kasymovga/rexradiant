@@ -234,9 +234,13 @@ private:
 #ifdef _DEBUG
 						globalOutputStream() << "matname: " << matname.C_Str() << "\n";
 #endif
-			aiString texname;
-			if( aiReturn_SUCCESS == material->Get( AI_MATKEY_TEXTURE_DIFFUSE(0), texname )
-			 && texname.length != 0 ){
+			if( aiString texname;
+			    aiReturn_SUCCESS == material->Get( AI_MATKEY_TEXTURE_DIFFUSE(0), texname )
+			 && texname.length != 0
+			 && !string_equal_prefix_nocase( matname.C_Str(), "textures/" ) /* matname looks intentionally named as ingame shader */
+			 && !string_equal_prefix_nocase( matname.C_Str(), "textures\\" )
+			 && !string_equal_prefix_nocase( matname.C_Str(), "models/" )
+			 && !string_equal_prefix_nocase( matname.C_Str(), "models\\" ) ){
 #ifdef _DEBUG
 							globalOutputStream() << "texname: " << texname.C_Str() << "\n";
 #endif
@@ -249,7 +253,7 @@ private:
 
 			const CopiedString oldShader( m_shader );
 			if( strchr( m_shader.c_str(), '/' ) == nullptr ){ /* texture is likely in the folder, where model is */
-				m_shader = StringOutputStream()( scene.m_rootPath, m_shader.c_str() );
+				m_shader = StringOutputStream()( scene.m_rootPath, m_shader );
 			}
 			else{
 				const char *name = m_shader.c_str();
@@ -266,7 +270,7 @@ private:
 			}
 
 			if( oldShader != m_shader )
-				globalOutputStream() << "substituting: " << oldShader.c_str() << " -> " << m_shader.c_str() << "\n";
+				globalOutputStream() << "substituting: " << oldShader << " -> " << m_shader << "\n";
 		}
 
 		m_vertices.resize( mesh->mNumVertices );
@@ -693,10 +697,9 @@ scene::Node& loadPicoModel( Assimp::Importer& importer, ArchiveFile& file ){
 	if( scene != nullptr ){
 		if( scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE )
 			globalWarningStream() << "AI_SCENE_FLAGS_INCOMPLETE\n";
-		const char *ext = path_get_extension( file.getName() );
 		const auto rootPath = StringOutputStream()( PathFilenameless( file.getName() ) );
 		const auto matName = StringOutputStream()( PathExtensionless( file.getName() ) );
-		return ( new PicoModelNode( AssScene{ scene, rootPath, string_equal_nocase( ext, "mdl" )? matName.c_str() : nullptr } ) )->node();
+		return ( new PicoModelNode( AssScene{ scene, rootPath, path_extension_is( file.getName(), "mdl" )? matName.c_str() : nullptr } ) )->node();
 	}
 	else{
 		return ( new PicoModelNode() )->node();

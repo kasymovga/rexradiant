@@ -129,7 +129,7 @@ char* TranslateString( char *buf ){
 
 	std::size_t l = strlen( buf );
 	char* out = buf2;
-	for ( std::size_t i = 0 ; i < l ; i++ )
+	for ( std::size_t i = 0; i < l; i++ )
 	{
 		if ( buf[i] == '\n' ) {
 			*out++ = '\r';
@@ -182,7 +182,7 @@ extern char* PLUGIN_NAME;
     return buffer;
    }*/
 
-#include "cmdlib.h"
+#include "commandlib.h"
 
 void StartBSP(){
 	char exename[256];

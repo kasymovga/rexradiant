@@ -560,7 +560,7 @@ static void graph_tree_model_drag_dest_init( GtkTreeDragDestIface *iface ){
 	iface->row_drop_possible = graph_tree_model_row_drop_possible;
 }
 
-GType graph_tree_model_get_type( void ){
+GType graph_tree_model_get_type(){
 	static GType graph_tree_model_type = 0;
 
 	if ( !graph_tree_model_type ) {
@@ -774,11 +774,7 @@ public:
 		m_instance.get().setChildSelectedChangedCallback( Callback() );
 		ASSERT_MESSAGE( empty(), "GraphTreeNode::~GraphTreeNode: memory leak" );
 	}
-	GraphTreeNode() = delete;
-	GraphTreeNode( const GraphTreeNode& ) = delete;
 	GraphTreeNode( GraphTreeNode&& ) noexcept = delete;
-	GraphTreeNode& operator=( const GraphTreeNode& ) = delete;
-	GraphTreeNode& operator=( GraphTreeNode&& ) noexcept = delete;
 
 	iterator begin(){
 		return m_childnodes.begin();
@@ -1054,7 +1050,7 @@ static void graph_tree_model_tree_model_init( GtkTreeModelIface *iface ){
 	iface->iter_parent = graph_tree_model_iter_parent;
 }
 
-GType graph_tree_model_get_type( void ){
+GType graph_tree_model_get_type(){
 	static GType graph_tree_model_type = 0;
 
 	if ( !graph_tree_model_type ) {

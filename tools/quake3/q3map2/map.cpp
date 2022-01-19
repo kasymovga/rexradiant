@@ -39,6 +39,7 @@
 #define USE_HASHING
 #define PLANE_HASHES    8192
 
+namespace{
 int planehash[ PLANE_HASHES ];
 
 int c_boxbevels;
@@ -46,6 +47,8 @@ int c_edgebevels;
 int c_areaportals;
 int c_detail;
 int c_structural;
+int c_patches;
+}
 
 
 
@@ -81,14 +84,11 @@ bool PlaneEqual( const plane_t& p, const Plane3f& plane ){
    AddPlaneToHash()
  */
 
-void AddPlaneToHash( plane_t *p ){
-	int hash;
+inline void AddPlaneToHash( plane_t& p ){
+	const int hash = ( PLANE_HASHES - 1 ) & (int) fabs( p.dist() );
 
-
-	hash = ( PLANE_HASHES - 1 ) & (int) fabs( p->dist() );
-
-	p->hash_chain = planehash[hash];
-	planehash[hash] = p - mapplanes + 1;
+	p.hash_chain = planehash[hash];
+	planehash[hash] = &p - mapplanes.data() + 1;
 }
 
 /*
@@ -96,7 +96,7 @@ void AddPlaneToHash( plane_t *p ){
    CreateNewFloatPlane
    ================
  */
-int CreateNewFloatPlane( const Plane3f& plane ){
+static int CreateNewFloatPlane( const Plane3f& plane ){
 
 	if ( vector3_length( plane.normal() ) < 0.5 ) {
 		Sys_Printf( "FloatPlane: bad normal\n" );
@@ -104,30 +104,28 @@ int CreateNewFloatPlane( const Plane3f& plane ){
 	}
 
 	// create a new plane
-	AUTOEXPAND_BY_REALLOC( mapplanes, nummapplanes + 1, allocatedmapplanes, 1024 );
-
-	plane_t *p = &mapplanes[nummapplanes];
-	p->plane = plane;
-	( p + 1 )->plane = plane3_flipped( plane );
-	p->type = ( p + 1 )->type = PlaneTypeForNormal( p->normal() );
-
-	nummapplanes += 2;
+	mapplanes.resize( mapplanes.size() + 2 );
+	plane_t& p = *( mapplanes.end() - 2 );
+	plane_t& p2 = *( mapplanes.end() - 1 );
+	p.plane = plane;
+	p2.plane = plane3_flipped( plane );
+	p.type = p2.type = PlaneTypeForNormal( p.normal() );
 
 	// always put axial planes facing positive first
-	if ( p->type < ePlaneNonAxial ) {
-		if ( p->normal()[0] < 0 || p->normal()[1] < 0 || p->normal()[2] < 0 ) {
+	if ( p.type < ePlaneNonAxial ) {
+		if ( p.normal()[0] < 0 || p.normal()[1] < 0 || p.normal()[2] < 0 ) {
 			// flip order
-			std::swap( *p, *( p + 1 ) );
+			std::swap( p, p2 );
 
 			AddPlaneToHash( p );
-			AddPlaneToHash( p + 1 );
-			return nummapplanes - 1;
+			AddPlaneToHash( p2 );
+			return mapplanes.size() - 1;
 		}
 	}
 
 	AddPlaneToHash( p );
-	AddPlaneToHash( p + 1 );
-	return nummapplanes - 2;
+	AddPlaneToHash( p2 );
+	return mapplanes.size() - 2;
 }
 
 
@@ -138,7 +136,7 @@ int CreateNewFloatPlane( const Plane3f& plane ){
    Returns true if and only if the normal was adjusted.
  */
 
-bool SnapNormal( Vector3& normal ){
+static bool SnapNormal( Vector3& normal ){
 #if Q3MAP2_EXPERIMENTAL_SNAP_NORMAL_FIX
 	int i;
 	bool adjusted = false;
@@ -261,7 +259,7 @@ bool SnapNormal( Vector3& normal ){
    snaps a plane to normal/distance epsilons
  */
 
-void SnapPlane( Plane3f& plane ){
+static void SnapPlane( Plane3f& plane ){
 // SnapPlane disabled by LordHavoc because it often messes up collision
 // brushes made from triangles of embedded models, and it has little effect
 // on anything else (axial planes are usually derived from snapped points)
@@ -301,14 +299,14 @@ void SnapPlane( Plane3f& plane ){
    SnapPlaneImproved()
    snaps a plane to normal/distance epsilons, improved code
  */
-void SnapPlaneImproved( Plane3f& plane, int numPoints, const Vector3 *points ){
+static void SnapPlaneImproved( Plane3f& plane, int numPoints, const Vector3 *points ){
 	if ( SnapNormal( plane.normal() ) ) {
 		if ( numPoints > 0 ) {
 			// Adjust the dist so that the provided points don't drift away.
-			Vector3 center( 0 );
-			for ( int i = 0; i < numPoints; i++ )
+			DoubleVector3 center( 0 );
+			for ( const Vector3& point : Span( points, numPoints ) )
 			{
-				center += points[i];
+				center += point;
 			}
 			center /= numPoints;
 			plane.dist() = vector3_dot( plane.normal(), center );
@@ -338,28 +336,25 @@ int FindFloatPlane( const Plane3f& inplane, int numPoints, const Vector3 *points
 #ifdef USE_HASHING
 
 {
-	int i, j, hash, h;
-	int pidx;
 	Plane3f plane( inplane );
-
 #if Q3MAP2_EXPERIMENTAL_SNAP_PLANE_FIX
 	SnapPlaneImproved( plane, numPoints, points );
 #else
 	SnapPlane( plane );
 #endif
 	/* hash the plane */
-	hash = ( PLANE_HASHES - 1 ) & (int) fabs( plane.dist() );
+	const int hash = ( PLANE_HASHES - 1 ) & (int) fabs( plane.dist() );
 
 	/* search the border bins as well */
-	for ( i = -1; i <= 1; i++ )
+	for ( int i = -1; i <= 1; i++ )
 	{
-		h = ( hash + i ) & ( PLANE_HASHES - 1 );
-		for ( pidx = planehash[ h ] - 1; pidx != -1; pidx = mapplanes[pidx].hash_chain - 1 )
+		const int h = ( hash + i ) & ( PLANE_HASHES - 1 );
+		for ( int pidx = planehash[ h ] - 1; pidx != -1; pidx = mapplanes[pidx].hash_chain - 1 )
 		{
-			plane_t *p = &mapplanes[pidx];
+			const plane_t& p = mapplanes[pidx];
 
 			/* do standard plane compare */
-			if ( !PlaneEqual( *p, plane ) ) {
+			if ( !PlaneEqual( p, plane ) ) {
 				continue;
 			}
 
@@ -367,6 +362,7 @@ int FindFloatPlane( const Plane3f& inplane, int numPoints, const Vector3 *points
 			//%	return p - mapplanes;
 
 			/* ydnar: test supplied points against this plane */
+			int j;
 			for ( j = 0; j < numPoints; j++ )
 			{
 				// NOTE: When dist approaches 2^16, the resolution of 32 bit floating
@@ -374,7 +370,7 @@ int FindFloatPlane( const Plane3f& inplane, int numPoints, const Vector3 *points
 				// very small when world coordinates extend to 2^16.  Making the
 				// dot product here in 64 bit land will not really help the situation
 				// because the error will already be carried in dist.
-				const double d = fabs( plane3_distance_to_point( p->plane, points[ j ] ) );
+				const double d = fabs( plane3_distance_to_point( p.plane, points[ j ] ) );
 				if ( d != 0.0 && d >= distanceEpsilon ) {
 					break; // Point is too far from plane.
 				}
@@ -382,7 +378,7 @@ int FindFloatPlane( const Plane3f& inplane, int numPoints, const Vector3 *points
 
 			/* found a matching plane */
 			if ( j >= numPoints ) {
-				return p - mapplanes;
+				return pidx;
 			}
 		}
 	}
@@ -441,14 +437,15 @@ int FindFloatPlane( const Plane3f& inplane, int numPoints, const Vector3 *points
    takes 3 points and finds the plane they lie in
  */
 
-int MapPlaneFromPoints( Vector3 p[3] ){
+inline int MapPlaneFromPoints( DoubleVector3 p[3] ){
 #if Q3MAP2_EXPERIMENTAL_HIGH_PRECISION_MATH_FIXES
 	Plane3 plane;
-	PlaneFromPoints( plane, DoubleVector3( p[0] ), DoubleVector3( p[1] ), DoubleVector3( p[2] ) );
+	PlaneFromPoints( plane, p );
 	// TODO: A 32 bit float for the plane distance isn't enough resolution
 	// if the plane is 2^16 units away from the origin (the "epsilon" approaches
 	// 0.01 in that case).
-	return FindFloatPlane( Plane3f( plane.normal(), plane.dist() ), 3, p );
+	const Vector3 points[3] = { p[0], p[1], p[2] };
+	return FindFloatPlane( Plane3f( plane ), 3, points );
 #else
 	Plane3f plane;
 	PlaneFromPoints( plane, p );
@@ -463,25 +460,20 @@ int MapPlaneFromPoints( Vector3 p[3] ){
    the content flags and compile flags on all sides of a brush should be the same
  */
 
-void SetBrushContents( brush_t *b ){
-	int contentFlags, compileFlags;
-	side_t      *s;
-	int i;
-	//%	bool	mixed;
+static void SetBrushContents( brush_t& b ){
+	if( b.sides.empty() )
+		return;
 
-
+	//%	bool	mixed = false;
 	/* get initial compile flags from first side */
-	s = &b->sides[ 0 ];
-	contentFlags = s->contentFlags;
-	compileFlags = s->compileFlags;
-	b->contentShader = s->shaderInfo;
-	//%	mixed = false;
+	auto s = b.sides.cbegin();
+	int contentFlags = s->contentFlags;
+	int compileFlags = s->compileFlags;
+	b.contentShader = s->shaderInfo;
 
 	/* get the content/compile flags for every side in the brush */
-	//for ( i = 1; i < b->numsides; i++, s++ )
-	for ( i = 1; i < b->numsides; i++ )
+	for ( ++s; s != b.sides.cend(); ++s )
 	{
-		s = &b->sides[ i ];
 		if ( s->shaderInfo == NULL ) {
 			continue;
 		}
@@ -492,40 +484,39 @@ void SetBrushContents( brush_t *b ){
 		compileFlags |= s->compileFlags;
 
 		/* resolve inconsistency, when brush content was determined by 1st face */
-		if ( b->contentShader->compileFlags & C_LIQUID ){
+		if ( b.contentShader->compileFlags & C_LIQUID ){
 			continue;
 		}
 		else if ( s->compileFlags & C_LIQUID ){
-			b->contentShader = s->shaderInfo;
+			b.contentShader = s->shaderInfo;
 		}
-		else if ( b->contentShader->compileFlags & C_FOG ){
+		else if ( b.contentShader->compileFlags & C_FOG ){
 			continue;
 		}
 		else if ( s->compileFlags & C_FOG ){
-			b->contentShader = s->shaderInfo;
+			b.contentShader = s->shaderInfo;
 		}
-		//playerclip
-		else if ( b->contentShader->contentFlags & 0x10000 ){
+		else if ( b.contentShader->contentFlags & GetRequiredSurfaceParm( "playerclip"_Tstring ).contentFlags ){
 			continue;
 		}
-		else if ( s->contentFlags & 0x10000 ){
-			b->contentShader = s->shaderInfo;
+		else if ( s->contentFlags & GetRequiredSurfaceParm( "playerclip"_Tstring ).contentFlags ){
+			b.contentShader = s->shaderInfo;
 		}
-		else if (!( b->contentShader->compileFlags & C_SOLID )){
+		else if (!( b.contentShader->compileFlags & C_SOLID )){
 			continue;
 		}
 		else if (!( s->compileFlags & C_SOLID )){
-			b->contentShader = s->shaderInfo;
+			b.contentShader = s->shaderInfo;
 		}
 	}
 
 	/* ydnar: getting rid of this stupid warning */
 	//%	if( mixed )
-	//%		Sys_FPrintf( SYS_WRN | SYS_VRBflag, "Entity %i, Brush %i: mixed face contentFlags\n", b->entitynum, b->brushnum );
+	//%		Sys_FPrintf( SYS_WRN | SYS_VRBflag, "Entity %i, Brush %i: mixed face contentFlags\n", b.entitynum, b.brushnum );
 
 	/* check for detail & structural */
 	if ( ( compileFlags & C_DETAIL ) && ( compileFlags & C_STRUCTURAL ) ) {
-		xml_Select( "Mixed detail and structural (defaulting to structural)", mapEnt->mapEntityNum, entitySourceBrushes, false );
+		xml_Select( "Mixed detail and structural (defaulting to structural)", b.entityNum, b.brushNum, false );
 		compileFlags &= ~C_DETAIL;
 	}
 
@@ -542,20 +533,20 @@ void SetBrushContents( brush_t *b ){
 	/* detail? */
 	if ( compileFlags & C_DETAIL ) {
 		c_detail++;
-		b->detail = true;
+		b.detail = true;
 	}
 	else
 	{
 		c_structural++;
-		b->detail = false;
+		b.detail = false;
 	}
 
 	/* opaque? */
 	if ( compileFlags & C_TRANSLUCENT ) {
-		b->opaque = false;
+		b.opaque = false;
 	}
 	else{
-		b->opaque = true;
+		b.opaque = true;
 	}
 
 	/* areaportal? */
@@ -564,8 +555,8 @@ void SetBrushContents( brush_t *b ){
 	}
 
 	/* set brush flags */
-	b->contentFlags = contentFlags;
-	b->compileFlags = compileFlags;
+	b.contentFlags = contentFlags;
+	b.compileFlags = compileFlags;
 }
 
 
@@ -577,103 +568,90 @@ void SetBrushContents( brush_t *b ){
    ydnar 2003-01-20: added mrelusive fixes
  */
 
-void AddBrushBevels( void ){
-	int axis, dir;
-	int i, j, k, l, order;
-	side_t sidetemp;
-	side_t      *s, *s2;
-	winding_t   *w, *w2;
-	Plane3f plane;
-	Vector3 vec, vec2;
-	float d, minBack;
-	int surfaceFlagsMask = game->brushBevelsSurfaceFlagsMask;
+void AddBrushBevels(){
+	const int surfaceFlagsMask = g_game->brushBevelsSurfaceFlagsMask;
+	auto& sides = buildBrush.sides;
 
 	//
 	// add the axial planes
 	//
-	order = 0;
-	for ( axis = 0; axis < 3; axis++ ) {
-		for ( dir = -1; dir <= 1; dir += 2, order++ ) {
+	size_t order = 0;
+	for ( size_t axis = 0; axis < 3; axis++ ) {
+		for ( int dir = -1; dir <= 1; dir += 2, order++ ) {
 			// see if the plane is already present
-			for ( i = 0, s = buildBrush->sides; i < buildBrush->numsides; i++, s++ )
+			size_t i = 0;
+			for ( ; i < sides.size(); ++i )
 			{
 				/* ydnar: testing disabling of mre code */
 				#if 0
 				if ( dir > 0 ) {
-					if ( mapplanes[s->planenum].normal()[axis] >= 0.9999f ) {
+					if ( mapplanes[sides[i].planenum].normal()[axis] >= 0.9999f ) {
 						break;
 					}
 				}
 				else {
-					if ( mapplanes[s->planenum].normal()[axis] <= -0.9999f ) {
+					if ( mapplanes[sides[i].planenum].normal()[axis] <= -0.9999f ) {
 						break;
 					}
 				}
 				#else
-				if ( ( dir > 0 && mapplanes[ s->planenum ].normal()[ axis ] == 1.0f ) ||
-				     ( dir < 0 && mapplanes[ s->planenum ].normal()[ axis ] == -1.0f ) ) {
+				if ( ( dir > 0 && mapplanes[ sides[i].planenum ].normal()[ axis ] == 1.0f ) ||
+				     ( dir < 0 && mapplanes[ sides[i].planenum ].normal()[ axis ] == -1.0f ) ) {
 					break;
 				}
 				#endif
 			}
 
-			if ( i == buildBrush->numsides ) {
+			if ( i == sides.size() ) {
 				// add a new side
-				if ( buildBrush->numsides == MAX_BUILD_SIDES ) {
-					xml_Select( "MAX_BUILD_SIDES", buildBrush->entityNum, buildBrush->brushNum, true );
+				if ( sides.size() == MAX_BUILD_SIDES ) {
+					xml_Select( "MAX_BUILD_SIDES", buildBrush.entityNum, buildBrush.brushNum, true );
 				}
-				memset( s, 0, sizeof( *s ) );
-				buildBrush->numsides++;
+				side_t& s = sides.emplace_back();
+				Plane3f plane;
 				plane.normal().set( 0 );
 				plane.normal()[axis] = dir;
 
 				if ( dir == 1 ) {
 					/* ydnar: adding bevel plane snapping for fewer bsp planes */
 					if ( bevelSnap > 0 ) {
-						plane.dist() = floor( buildBrush->minmax.maxs[ axis ] / bevelSnap ) * bevelSnap;
+						plane.dist() = floor( buildBrush.minmax.maxs[ axis ] / bevelSnap ) * bevelSnap;
 					}
 					else{
-						plane.dist() = buildBrush->minmax.maxs[ axis ];
+						plane.dist() = buildBrush.minmax.maxs[ axis ];
 					}
 				}
 				else
 				{
 					/* ydnar: adding bevel plane snapping for fewer bsp planes */
 					if ( bevelSnap > 0 ) {
-						plane.dist() = -ceil( buildBrush->minmax.mins[ axis ] / bevelSnap ) * bevelSnap;
+						plane.dist() = -ceil( buildBrush.minmax.mins[ axis ] / bevelSnap ) * bevelSnap;
 					}
 					else{
-						plane.dist() = -buildBrush->minmax.mins[ axis ];
+						plane.dist() = -buildBrush.minmax.mins[ axis ];
 					}
 				}
 
-				s->planenum = FindFloatPlane( plane, 0, NULL );
-				s->contentFlags = buildBrush->sides[ 0 ].contentFlags;
+				s.planenum = FindFloatPlane( plane, 0, NULL );
+				s.contentFlags = sides[ 0 ].contentFlags;
 				/* handle bevel surfaceflags for topmost one only: assuming that only walkable ones are meaningful */
 				if( axis == 2 && dir == 1 ){
-					for ( j = 0; j < buildBrush->numsides; j++ ) {
-						s2 = buildBrush->sides + j;
-						w = s2->winding;
-						if ( !w ) {
-							continue;
-						}
-						for ( k = 0; k < w->numpoints; k++ ) {
-							if ( fabs( plane.dist() - w->p[k][axis] ) < .1f ) {
-								s->surfaceFlags |= ( s2->surfaceFlags & surfaceFlagsMask );
+					for ( const side_t& side : sides ) {
+						for ( const Vector3& point : side.winding ) {
+							if ( fabs( plane.dist() - point[axis] ) < .1f ) {
+								s.surfaceFlags |= ( side.surfaceFlags & surfaceFlagsMask );
 								break;
 							}
 						}
 					}
 				}
-				s->bevel = true;
+				s.bevel = true;
 				c_boxbevels++;
 			}
 
 			// if the plane is not in it canonical order, swap it
 			if ( i != order ) {
-				sidetemp = buildBrush->sides[order];
-				buildBrush->sides[order] = buildBrush->sides[i];
-				buildBrush->sides[i] = sidetemp;
+				std::swap( sides[order], sides[i] );
 			}
 		}
 	}
@@ -681,74 +659,70 @@ void AddBrushBevels( void ){
 	//
 	// add the edge bevels
 	//
-	if ( buildBrush->numsides == 6 ) {
+	if ( sides.size() == 6 ) {
 		return;     // pure axial
 	}
 
 	// test the non-axial plane edges
-	for ( i = 6; i < buildBrush->numsides; i++ ) {
-		s = buildBrush->sides + i;
-		w = s->winding;
-		if ( !w ) {
-			continue;
-		}
-		for ( j = 0; j < w->numpoints; j++ ) {
-			k = ( j + 1 ) % w->numpoints;
-			vec = w->p[j] - w->p[k];
+	for ( size_t i = 6; i < sides.size(); ++i ) {
+		for ( size_t j = 0; j < sides[i].winding.size(); j++ ) {
+			Vector3 vec = sides[i].winding[j] - sides[i].winding[winding_next( sides[i].winding, j )];
 			if ( VectorNormalize( vec ) < 0.5f ) {
 				continue;
 			}
 			SnapNormal( vec );
-			for ( k = 0; k < 3; k++ ) {
-				if ( vec[k] == -1.0f || vec[k] == 1.0f || ( vec[k] == 0.0f && vec[( k + 1 ) % 3] == 0.0f ) ) {
-					break;  // axial
-				}
-			}
-			if ( k != 3 ) {
-				continue;   // only test non-axial edges
+			if ( vec[0] == -1.0f || vec[0] == 1.0f || ( vec[0] == 0.0f && vec[1] == 0.0f )
+			  || vec[1] == -1.0f || vec[1] == 1.0f || ( vec[1] == 0.0f && vec[2] == 0.0f )
+			  || vec[2] == -1.0f || vec[2] == 1.0f || ( vec[2] == 0.0f && vec[0] == 0.0f ) ) {
+				continue; // axial, only test non-axial edges
 			}
 
 			/* debug code */
 			//%	Sys_Printf( "-------------\n" );
 
 			// try the six possible slanted axials from this edge
-			for ( axis = 0; axis < 3; axis++ ) {
-				for ( dir = -1; dir <= 1; dir += 2 ) {
+			for ( int axis = 0; axis < 3; axis++ ) {
+				for ( int dir = -1; dir <= 1; dir += 2 ) {
 					// construct a plane
-					vec2.set( 0 );
+					Vector3 vec2( 0 );
 					vec2[axis] = dir;
+					Plane3f plane;
 					plane.normal() = vector3_cross( vec, vec2 );
 					if ( VectorNormalize( plane.normal() ) < 0.5f ) {
 						continue;
 					}
-					plane.dist() = vector3_dot( w->p[j], plane.normal() );
+					plane.dist() = vector3_dot( sides[i].winding[j], plane.normal() );
 
 					// if all the points on all the sides are
 					// behind this plane, it is a proper edge bevel
-					for ( k = 0; k < buildBrush->numsides; k++ ) {
+					auto iside = sides.begin();
+					for ( ; iside != sides.end(); ++iside ) {
 
 						// if this plane has already been used, skip it
-						if ( PlaneEqual( mapplanes[buildBrush->sides[k].planenum], plane ) ) {
-							if( buildBrush->sides[k].bevel ){ /* handle bevel surfaceflags */
-								buildBrush->sides[k].surfaceFlags |= ( s->surfaceFlags & surfaceFlagsMask );
+						if ( PlaneEqual( mapplanes[iside->planenum], plane ) ) {
+							if( iside->bevel ){ /* handle bevel surfaceflags */
+								iside->surfaceFlags |= ( sides[i].surfaceFlags & surfaceFlagsMask );
 							}
 							break;
 						}
 
-						w2 = buildBrush->sides[k].winding;
-						if ( !w2 ) {
+						const winding_t& w2 = iside->winding;
+						if ( w2.empty() ) {
 							continue;
 						}
-						minBack = 0.0f;
-						for ( l = 0; l < w2->numpoints; l++ ) {
-							d = plane3_distance_to_point( plane, w2->p[l] );
-							if ( d > 0.1f ) {
-								break;  // point in front
+						float minBack = 0.0f;
+						const auto point_in_front = [&w2, &plane, &minBack](){
+							for ( const Vector3& point : w2 ) {
+								const float d = plane3_distance_to_point( plane, point );
+								if ( d > 0.1f ) {
+									return true;
+								}
+								value_minimize( minBack, d );
 							}
-							value_minimize( minBack, d );
-						}
+							return false;
+						};
 						// if some point was at the front
-						if ( l != w2->numpoints ) {
+						if ( point_in_front() ) {
 							break;
 						}
 
@@ -759,7 +733,7 @@ void AddBrushBevels( void ){
 						}
 					}
 
-					if ( k != buildBrush->numsides ) {
+					if ( iside != sides.end() ) {
 						continue;   // wasn't part of the outer hull
 					}
 
@@ -767,17 +741,15 @@ void AddBrushBevels( void ){
 					//%	Sys_Printf( "n = %f %f %f\n", normal[ 0 ], normal[ 1 ], normal[ 2 ] );
 
 					// add this plane
-					if ( buildBrush->numsides == MAX_BUILD_SIDES ) {
-						xml_Select( "MAX_BUILD_SIDES", buildBrush->entityNum, buildBrush->brushNum, true );
+					if ( sides.size() == MAX_BUILD_SIDES ) {
+						xml_Select( "MAX_BUILD_SIDES", buildBrush.entityNum, buildBrush.brushNum, true );
 					}
-					s2 = &buildBrush->sides[buildBrush->numsides];
-					buildBrush->numsides++;
-					memset( s2, 0, sizeof( *s2 ) );
+					side_t& s2 = sides.emplace_back();
 
-					s2->planenum = FindFloatPlane( plane, 1, &w->p[ j ] );
-					s2->contentFlags = buildBrush->sides[0].contentFlags;
-					s2->surfaceFlags = ( s->surfaceFlags & surfaceFlagsMask ); /* handle bevel surfaceflags */
-					s2->bevel = true;
+					s2.planenum = FindFloatPlane( plane, 1, &sides[i].winding[ j ] );
+					s2.contentFlags = sides[0].contentFlags;
+					s2.surfaceFlags = ( sides[i].surfaceFlags & surfaceFlagsMask ); /* handle bevel surfaceflags */
+					s2.bevel = true;
 					c_edgebevels++;
 				}
 			}
@@ -787,56 +759,53 @@ void AddBrushBevels( void ){
 
 
 
+static void MergeOrigin( entity_t& ent, const Vector3& origin ){
+	char string[128];
+
+	/* we have not parsed the brush completely yet... */
+	ent.origin = ent.vectorForKey( "origin" ) + origin - ent.originbrush_origin;
+
+	ent.originbrush_origin = origin;
+
+	sprintf( string, "%f %f %f", ent.origin[0], ent.origin[1], ent.origin[2] );
+	ent.setKeyValue( "origin", string );
+}
+
 /*
    FinishBrush()
    produces a final brush based on the buildBrush->sides array
    and links it to the current entity
  */
 
-static void MergeOrigin( entity_t *ent, const Vector3& origin ){
-	char string[128];
-
-	/* we have not parsed the brush completely yet... */
-	ent->origin = ent->vectorForKey( "origin" ) + origin - ent->originbrush_origin;
-
-	ent->originbrush_origin = origin;
-
-	sprintf( string, "%f %f %f", ent->origin[0], ent->origin[1], ent->origin[2] );
-	ent->setKeyValue( "origin", string );
-}
-
-brush_t *FinishBrush( bool noCollapseGroups ){
-	brush_t     *b;
-
-
+static void FinishBrush( bool noCollapseGroups, entity_t& mapEnt ){
 	/* create windings for sides and bounds for brush */
 	if ( !CreateBrushWindings( buildBrush ) ) {
-		return NULL;
+		return;
 	}
 
 	/* origin brushes are removed, but they set the rotation origin for the rest of the brushes in the entity.
 	   after the entire entity is parsed, the planenums and texinfos will be adjusted for the origin brush */
-	if ( buildBrush->compileFlags & C_ORIGIN ) {
+	if ( buildBrush.compileFlags & C_ORIGIN ) {
 		Sys_Printf( "Entity %i (%s), Brush %i: origin brush detected\n",
-		            mapEnt->mapEntityNum, mapEnt->classname(), entitySourceBrushes );
+		            mapEnt.mapEntityNum, mapEnt.classname(), buildBrush.brushNum );
 
 		if ( entities.size() == 1 ) {
 			Sys_FPrintf( SYS_WRN, "Entity %i, Brush %i: origin brushes not allowed in world\n",
-			             mapEnt->mapEntityNum, entitySourceBrushes );
-			return NULL;
+			             mapEnt.mapEntityNum, buildBrush.brushNum );
+			return;
 		}
 
-		MergeOrigin( &entities.back(), buildBrush->minmax.origin() );
+		MergeOrigin( mapEnt, buildBrush.minmax.origin() );
 
 		/* don't keep this brush */
-		return NULL;
+		return;
 	}
 
 	/* determine if the brush is an area portal */
-	if ( buildBrush->compileFlags & C_AREAPORTAL ) {
+	if ( buildBrush.compileFlags & C_AREAPORTAL ) {
 		if ( entities.size() != 1 ) {
-			Sys_FPrintf( SYS_WRN, "Entity %zu (%s), Brush %i: areaportals only allowed in world\n", entities.size() - 1, mapEnt->classname(), entitySourceBrushes );
-			return NULL;
+			Sys_FPrintf( SYS_WRN, "Entity %i (%s), Brush %i: areaportals only allowed in world\n", mapEnt.mapEntityNum, mapEnt.classname(), buildBrush.brushNum );
+			return;
 		}
 	}
 
@@ -846,51 +815,30 @@ brush_t *FinishBrush( bool noCollapseGroups ){
 	}
 
 	/* keep it */
-	b = CopyBrush( buildBrush );
-
-	/* set map entity and brush numbering */
-	b->entityNum = mapEnt->mapEntityNum;
-	b->brushNum = entitySourceBrushes;
+	/* link opaque brushes to head of list, translucent brushes to end */
+	brush_t& b = ( buildBrush.opaque )? mapEnt.brushes.emplace_front( buildBrush )
+	                                   : mapEnt.brushes.emplace_back( buildBrush );
 
 	/* set original */
-	b->original = b;
-
-	/* link opaque brushes to head of list, translucent brushes to end */
-	if ( b->opaque || mapEnt->lastBrush == NULL ) {
-		b->next = mapEnt->brushes;
-		mapEnt->brushes = b;
-		if ( mapEnt->lastBrush == NULL ) {
-			mapEnt->lastBrush = b;
-		}
-	}
-	else
-	{
-		b->next = NULL;
-		mapEnt->lastBrush->next = b;
-		mapEnt->lastBrush = b;
-	}
+	b.original = &b;
 
 	/* link colorMod volume brushes to the entity directly */
-	if ( b->contentShader != NULL &&
-	     b->contentShader->colorMod != NULL &&
-	     b->contentShader->colorMod->type == EColorMod::Volume ) {
-		b->nextColorModBrush = mapEnt->colorModBrushes;
-		mapEnt->colorModBrushes = b;
+	if ( b.contentShader != NULL &&
+	     b.contentShader->colorMod != NULL &&
+	     b.contentShader->colorMod->type == EColorMod::Volume ) {
+		mapEnt.colorModBrushes.push_back( &b );
 	}
-
-	/* return to sender */
-	return b;
 }
 
 
 
 /*
    TextureAxisFromPlane()
-   determines best orthagonal axis to project a texture onto a wall
+   determines best orthogonal axis to project a texture onto a wall
    (must be identical in radiant!)
  */
 
-const Vector3 baseaxis[18] =
+static const Vector3 baseaxis[18] =
 {
 	 g_vector3_axis_z, g_vector3_axis_x, -g_vector3_axis_y,        // floor
 	-g_vector3_axis_z, g_vector3_axis_x, -g_vector3_axis_y,        // ceiling
@@ -904,7 +852,7 @@ std::array<Vector3, 2> TextureAxisFromPlane( const plane_t& plane ){
 	float best = 0;
 	int bestaxis = 0;
 
-	for ( int i = 0 ; i < 6 ; i++ )
+	for ( int i = 0; i < 6; ++i )
 	{
 		const float dot = vector3_dot( plane.normal(), baseaxis[i * 3] );
 		if ( dot > best + 0.0001f ) { /* ydnar: bug 637 fix, suggested by jmonroe */
@@ -924,7 +872,7 @@ std::array<Vector3, 2> TextureAxisFromPlane( const plane_t& plane ){
    creates world-to-texture mapping vecs for crappy quake plane arrangements
  */
 
-void QuakeTextureVecs( const plane_t& plane, float shift[ 2 ], float rotate, float scale[ 2 ], Vector4 mappingVecs[ 2 ] ){
+static void QuakeTextureVecs( const plane_t& plane, float shift[ 2 ], float rotate, float scale[ 2 ], Vector4 mappingVecs[ 2 ] ){
 	int sv, tv;
 	float sinv, cosv;
 	auto vecs = TextureAxisFromPlane( plane );
@@ -939,16 +887,16 @@ void QuakeTextureVecs( const plane_t& plane, float shift[ 2 ], float rotate, flo
 
 	// rotate axis
 	if ( rotate == 0 ) {
-		sinv = 0 ; cosv = 1;
+		sinv = 0; cosv = 1;
 	}
 	else if ( rotate == 90 ) {
-		sinv = 1 ; cosv = 0;
+		sinv = 1; cosv = 0;
 	}
 	else if ( rotate == 180 ) {
-		sinv = 0 ; cosv = -1;
+		sinv = 0; cosv = -1;
 	}
 	else if ( rotate == 270 ) {
-		sinv = -1 ; cosv = 0;
+		sinv = -1; cosv = 0;
 	}
 	else
 	{
@@ -977,7 +925,7 @@ void QuakeTextureVecs( const plane_t& plane, float shift[ 2 ], float rotate, flo
 		tv = 2;
 	}
 
-	for ( int i = 0 ; i < 2 ; i++ ) {
+	for ( int i = 0; i < 2; ++i ) {
 		const float ns = cosv * vecs[i][sv] - sinv * vecs[i][tv];
 		const float nt = sinv * vecs[i][sv] + cosv * vecs[i][tv];
 		vecs[i][sv] = ns;
@@ -1007,19 +955,9 @@ void QuakeTextureVecs( const plane_t& plane, float shift[ 2 ], float rotate, flo
  */
 
 static void ParseRawBrush( bool onlyLights ){
-	side_t          *side;
-	Vector3 planePoints[ 3 ];
-	int planenum;
-	shaderInfo_t    *si;
-	float shift[ 2 ];
-	float rotate = 0;
-	float scale[ 2 ];
-	int flags;
-
-
 	/* initial setup */
-	buildBrush->numsides = 0;
-	buildBrush->detail = false;
+	buildBrush.sides.clear();
+	buildBrush.detail = false;
 
 	/* bp */
 	if ( g_brushType == EBrushType::Bp ) {
@@ -1027,53 +965,53 @@ static void ParseRawBrush( bool onlyLights ){
 	}
 
 	/* parse sides */
-	while ( 1 )
+	while ( GetToken( true ) && !strEqual( token, "}" ) )
 	{
-		if ( !GetToken( true ) ) {
-			break;
-		}
-		if ( strEqual( token, "}" ) ) {
-			break;
-		}
-
 		/* ttimo : bp: here we may have to jump over brush epairs (only used in editor) */
 		if ( g_brushType == EBrushType::Bp ) {
-			while ( 1 )
+			while ( !strEqual( token, "(" ) )
 			{
-				if ( !strEqual( token, "(" ) ) {
-					GetToken( false );
-				}
-				else{
-					break;
-				}
+				GetToken( false );
 				GetToken( true );
 			}
 		}
 		UnGetToken();
 
 		/* test side count */
-		if ( buildBrush->numsides >= MAX_BUILD_SIDES ) {
-			xml_Select( "MAX_BUILD_SIDES", buildBrush->entityNum, buildBrush->brushNum, true );
+		if ( buildBrush.sides.size() >= MAX_BUILD_SIDES ) {
+			xml_Select( "MAX_BUILD_SIDES", buildBrush.entityNum, buildBrush.brushNum, true );
 		}
 
 		/* add side */
-		side = &buildBrush->sides[ buildBrush->numsides ];
-		memset( side, 0, sizeof( *side ) );
-		buildBrush->numsides++;
+		side_t& side = buildBrush.sides.emplace_back();
 
 		/* read the three point plane definition */
+		DoubleVector3 planePoints[ 3 ];
 		Parse1DMatrix( 3, planePoints[ 0 ].data() );
 		Parse1DMatrix( 3, planePoints[ 1 ].data() );
 		Parse1DMatrix( 3, planePoints[ 2 ].data() );
 
+		/* find the plane number */
+		side.planenum = MapPlaneFromPoints( planePoints );
+		PlaneFromPoints( side.plane, planePoints );
+
 		/* bp: read the texture matrix */
 		if ( g_brushType == EBrushType::Bp ) {
-			Parse2DMatrix( 2, 3, side->texMat->data() );
+			Parse2DMatrix( 2, 3, side.texMat->data() );
 		}
 
 		/* read shader name */
 		GetToken( false );
 		const auto shader = String64()( "textures/", token );
+
+		/* set default flags and values */
+		shaderInfo_t *si = onlyLights? &shaderInfo[ 0 ]
+		                             : ShaderInfoForShader( shader );
+		side.shaderInfo = si;
+		side.surfaceFlags = si->surfaceFlags;
+		side.contentFlags = si->contentFlags;
+		side.compileFlags = si->compileFlags;
+		side.value = si->value;
 
 		/* AP or 220? */
 		if ( g_brushType == EBrushType::Undefined ){
@@ -1090,6 +1028,8 @@ static void ParseRawBrush( bool onlyLights ){
 		}
 
 		if ( g_brushType == EBrushType::Quake ) {
+			float shift[ 2 ], rotate, scale[ 2 ];
+
 			GetToken( false );
 			shift[ 0 ] = atof( token );
 			GetToken( false );
@@ -1100,19 +1040,27 @@ static void ParseRawBrush( bool onlyLights ){
 			scale[ 0 ] = atof( token );
 			GetToken( false );
 			scale[ 1 ] = atof( token );
+
+			/* ydnar: gs mods: bias texture shift */
+			if ( !si->globalTexture ) {
+				shift[ 0 ] -= ( floor( shift[ 0 ] / si->shaderWidth ) * si->shaderWidth );
+				shift[ 1 ] -= ( floor( shift[ 1 ] / si->shaderHeight ) * si->shaderHeight );
+			}
+
+			/* get the texture mapping for this texturedef / plane combination */
+			QuakeTextureVecs( mapplanes[ side.planenum ], shift, rotate, scale, side.vecs );
 		}
 		else if ( g_brushType == EBrushType::Valve220 ){
-			int axis, comp;
-			for ( axis = 0; axis < 2; ++axis ){
+			for ( int axis = 0; axis < 2; ++axis ){
 				MatchToken( "[" );
-				for ( comp = 0; comp < 4; ++comp ){
+				for ( int comp = 0; comp < 4; ++comp ){
 					GetToken( false );
-					side->vecs[axis][comp] = atof( token );
+					side.vecs[axis][comp] = atof( token );
 				}
 				MatchToken( "]" );
 			}
-			GetToken( false );
-			rotate = atof( token );
+			GetToken( false ); // rotate
+			float scale[2];
 			GetToken( false );
 			scale[ 0 ] = atof( token );
 			GetToken( false );
@@ -1120,27 +1068,8 @@ static void ParseRawBrush( bool onlyLights ){
 
 			if ( !scale[0] ) scale[0] = 1.f;
 			if ( !scale[1] ) scale[1] = 1.f;
-			for ( axis = 0; axis < 2; ++axis )
-				side->vecs[axis].vec3() /= scale[axis];
-		}
-
-		/* set default flags and values */
-		if ( onlyLights ) {
-			si = &shaderInfo[ 0 ];
-		}
-		else{
-			si = ShaderInfoForShader( shader );
-		}
-		side->shaderInfo = si;
-		side->surfaceFlags = si->surfaceFlags;
-		side->contentFlags = si->contentFlags;
-		side->compileFlags = si->compileFlags;
-		side->value = si->value;
-
-		/* ydnar: gs mods: bias texture shift */
-		if ( !si->globalTexture ) {
-			shift[ 0 ] -= ( floor( shift[ 0 ] / si->shaderWidth ) * si->shaderWidth );
-			shift[ 1 ] -= ( floor( shift[ 1 ] / si->shaderHeight ) * si->shaderHeight );
+			for ( int axis = 0; axis < 2; ++axis )
+				side.vecs[axis].vec3() /= scale[axis];
 		}
 
 		/*
@@ -1157,9 +1086,9 @@ static void ParseRawBrush( bool onlyLights ){
 		if ( TokenAvailable() ) {
 			/* get detail bit from map content flags */
 			GetToken( false );
-			flags = atoi( token );
+			const int flags = atoi( token );
 			if ( flags & C_DETAIL ) {
-				side->compileFlags |= C_DETAIL;
+				side.compileFlags |= C_DETAIL;
 			}
 
 			/* historical */
@@ -1167,15 +1096,6 @@ static void ParseRawBrush( bool onlyLights ){
 			//% td.flags = atoi( token );
 			GetToken( false );
 			//% td.value = atoi( token );
-		}
-
-		/* find the plane number */
-		planenum = MapPlaneFromPoints( planePoints );
-		side->planenum = planenum;
-
-		/* bp: get the texture mapping for this texturedef / plane combination */
-		if ( g_brushType == EBrushType::Quake ) {
-			QuakeTextureVecs( mapplanes[ planenum ], shift, rotate, scale, side->vecs );
 		}
 	}
 
@@ -1196,43 +1116,36 @@ static void ParseRawBrush( bool onlyLights ){
    also removes planes without any normal
  */
 
-bool RemoveDuplicateBrushPlanes( brush_t *b ){
-	int i, j, k;
-	side_t      *sides;
+static bool RemoveDuplicateBrushPlanes( brush_t& b ){
+	auto& sides = b.sides;
 
-	sides = b->sides;
-
-	for ( i = 1 ; i < b->numsides ; i++ ) {
-
+	for( auto it = sides.cbegin(); it != sides.cend(); ){
 		// check for a degenerate plane
-		if ( sides[i].planenum == -1 ) {
-			xml_Select( "degenerate plane", b->entityNum, b->brushNum, false );
+		if ( it->planenum == -1 ) {
+			xml_Select( "degenerate plane", b.entityNum, b.brushNum, false );
 			// remove it
-			for ( k = i + 1 ; k < b->numsides ; k++ ) {
-				sides[k - 1] = sides[k];
-			}
-			b->numsides--;
-			i--;
-			continue;
+			it = sides.erase( it );
 		}
+		else{
+			++it;
+		}
+	}
 
+	for ( size_t i = 0; i < sides.size(); ++i ) {
 		// check for duplication and mirroring
-		for ( j = 0 ; j < i ; j++ ) {
+		for ( size_t j = i + 1; j < sides.size(); ) {
 			if ( sides[i].planenum == sides[j].planenum ) {
-				xml_Select( "duplicate plane", b->entityNum, b->brushNum, false );
+				xml_Select( "duplicate plane", b.entityNum, b.brushNum, false );
 				// remove the second duplicate
-				for ( k = i + 1 ; k < b->numsides ; k++ ) {
-					sides[k - 1] = sides[k];
-				}
-				b->numsides--;
-				i--;
-				break;
+				sides.erase( sides.cbegin() + j );
 			}
-
-			if ( sides[i].planenum == ( sides[j].planenum ^ 1 ) ) {
+			else if ( sides[i].planenum == ( sides[j].planenum ^ 1 ) ) {
 				// mirror plane, brush is invalid
-				xml_Select( "mirrored plane", b->entityNum, b->brushNum, false );
+				xml_Select( "mirrored plane", b.entityNum, b.brushNum, false );
 				return false;
+			}
+			else{
+				++j;
 			}
 		}
 	}
@@ -1246,7 +1159,7 @@ bool RemoveDuplicateBrushPlanes( brush_t *b ){
    parses a brush out of a map file and sets it up
  */
 
-static void ParseBrush( bool onlyLights, bool noCollapseGroups ){
+static void ParseBrush( bool onlyLights, bool noCollapseGroups, entity_t& mapEnt, int mapPrimitiveNum ){
 	/* parse the brush out of the map */
 	ParseRawBrush( onlyLights );
 
@@ -1256,10 +1169,11 @@ static void ParseBrush( bool onlyLights, bool noCollapseGroups ){
 	}
 
 	/* set some defaults */
-	buildBrush->portalareas[ 0 ] = -1;
-	buildBrush->portalareas[ 1 ] = -1;
-	buildBrush->entityNum = numMapEntities - 1;
-	buildBrush->brushNum = entitySourceBrushes;
+	buildBrush.portalareas[ 0 ] = -1;
+	buildBrush.portalareas[ 1 ] = -1;
+	/* set map entity and brush numbering */
+	buildBrush.entityNum = mapEnt.mapEntityNum;
+	buildBrush.brushNum = mapPrimitiveNum;
 
 	/* if there are mirrored planes, the entire brush is invalid */
 	if ( !RemoveDuplicateBrushPlanes( buildBrush ) ) {
@@ -1270,25 +1184,55 @@ static void ParseBrush( bool onlyLights, bool noCollapseGroups ){
 	SetBrushContents( buildBrush );
 
 	/* allow detail brushes to be removed */
-	if ( nodetail && ( buildBrush->compileFlags & C_DETAIL ) ) {
-		//%	FreeBrush( buildBrush );
+	if ( nodetail && ( buildBrush.compileFlags & C_DETAIL ) ) {
 		return;
 	}
 
 	/* allow liquid brushes to be removed */
-	if ( nowater && ( buildBrush->compileFlags & C_LIQUID ) ) {
-		//%	FreeBrush( buildBrush );
+	if ( nowater && ( buildBrush.compileFlags & C_LIQUID ) ) {
 		return;
 	}
 
 	/* ydnar: allow hint brushes to be removed */
-	if ( noHint && ( buildBrush->compileFlags & C_HINT ) ) {
-		//%	FreeBrush( buildBrush );
+	if ( noHint && ( buildBrush.compileFlags & C_HINT ) ) {
 		return;
 	}
 
 	/* finish the brush */
-	FinishBrush( noCollapseGroups );
+	FinishBrush( noCollapseGroups, mapEnt );
+}
+
+
+
+/*
+   AdjustBrushesForOrigin()
+ */
+
+static void AdjustBrushesForOrigin( entity_t& ent ){
+	/* walk brush list */
+	for ( brush_t& b : ent.brushes )
+	{
+		/* offset brush planes */
+		for ( side_t& side : b.sides )
+		{
+			/* offset side plane */
+			const float newdist = -plane3_distance_to_point( mapplanes[ side.planenum ].plane, ent.originbrush_origin );
+
+			/* find a new plane */
+			side.planenum = FindFloatPlane( mapplanes[ side.planenum ].normal(), newdist, 0, NULL );
+			side.plane.dist() = -plane3_distance_to_point( side.plane, ent.originbrush_origin );
+		}
+
+		/* rebuild brush windings (ydnar: just offsetting the winding above should be fine) */
+		CreateBrushWindings( b );
+	}
+
+	/* walk patch list */
+	for ( parseMesh_t *p = ent.patches; p != NULL; p = p->next )
+	{
+		for ( bspDrawVert_t& vert : Span( p->mesh.verts, p->mesh.width * p->mesh.height ) )
+			vert.xyz -= ent.originbrush_origin;
+	}
 }
 
 
@@ -1300,99 +1244,43 @@ static void ParseBrush( bool onlyLights, bool noCollapseGroups ){
    (used by func_group)
  */
 
-void AdjustBrushesForOrigin( entity_t *ent );
-void MoveBrushesToWorld( entity_t *ent ){
-	brush_t     *b, *next;
-	parseMesh_t *pm;
-
+static void MoveBrushesToWorld( entity_t& ent ){
 	/* we need to undo the common/origin adjustment, and instead shift them by the entity key origin */
-	ent->originbrush_origin = -ent->origin;
+	ent.originbrush_origin = -ent.origin;
 	AdjustBrushesForOrigin( ent );
-	ent->originbrush_origin.set( 0 );
+	ent.originbrush_origin.set( 0 );
 
 	/* move brushes */
-	for ( b = ent->brushes; b != NULL; b = next )
+	for ( brushlist_t::const_iterator next, b = ent.brushes.begin(); b != ent.brushes.end(); b = next )
 	{
 		/* get next brush */
-		next = b->next;
+		next = std::next( b );
 
 		/* link opaque brushes to head of list, translucent brushes to end */
-		if ( b->opaque || entities[ 0 ].lastBrush == NULL ) {
-			b->next = entities[ 0 ].brushes;
-			entities[ 0 ].brushes = b;
-			if ( entities[ 0 ].lastBrush == NULL ) {
-				entities[ 0 ].lastBrush = b;
-			}
+		if ( b->opaque ) {
+			entities[ 0 ].brushes.splice( entities[ 0 ].brushes.begin(), ent.brushes, b );
 		}
 		else
 		{
-			b->next = NULL;
-			entities[ 0 ].lastBrush->next = b;
-			entities[ 0 ].lastBrush = b;
+			entities[ 0 ].brushes.splice( entities[ 0 ].brushes.end(), ent.brushes, b );
 		}
 	}
-	ent->brushes = NULL;
 
 	/* ydnar: move colormod brushes */
-	if ( ent->colorModBrushes != NULL ) {
-		for ( b = ent->colorModBrushes; b->nextColorModBrush != NULL; b = b->nextColorModBrush ) ;
-
-		b->nextColorModBrush = entities[ 0 ].colorModBrushes;
-		entities[ 0 ].colorModBrushes = ent->colorModBrushes;
-
-		ent->colorModBrushes = NULL;
+	if ( !ent.colorModBrushes.empty() ) {
+		entities[ 0 ].colorModBrushes.insert( entities[ 0 ].colorModBrushes.end(), ent.colorModBrushes.begin(), ent.colorModBrushes.end() );
+		ent.colorModBrushes.clear();
 	}
 
 	/* move patches */
-	if ( ent->patches != NULL ) {
-		for ( pm = ent->patches; pm->next != NULL; pm = pm->next ) ;
+	if ( ent.patches != NULL ) {
+		parseMesh_t *pm;
+		for ( pm = ent.patches; pm->next != NULL; pm = pm->next ){};
 
 		pm->next = entities[ 0 ].patches;
-		entities[ 0 ].patches = ent->patches;
+		entities[ 0 ].patches = ent.patches;
 
-		ent->patches = NULL;
-	}
-}
-
-
-
-/*
-   AdjustBrushesForOrigin()
- */
-
-void AdjustBrushesForOrigin( entity_t *ent ){
-
-	int i;
-	side_t      *s;
-	float newdist;
-	brush_t     *b;
-	parseMesh_t *p;
-
-	/* walk brush list */
-	for ( b = ent->brushes; b != NULL; b = b->next )
-	{
-		/* offset brush planes */
-		for ( i = 0; i < b->numsides; i++ )
-		{
-			/* get brush side */
-			s = &b->sides[ i ];
-
-			/* offset side plane */
-			newdist = -plane3_distance_to_point( mapplanes[ s->planenum ].plane, ent->originbrush_origin );
-
-			/* find a new plane */
-			s->planenum = FindFloatPlane( mapplanes[ s->planenum ].normal(), newdist, 0, NULL );
-		}
-
-		/* rebuild brush windings (ydnar: just offsetting the winding above should be fine) */
-		CreateBrushWindings( b );
-	}
-
-	/* walk patch list */
-	for ( p = ent->patches; p != NULL; p = p->next )
-	{
-		for ( i = 0; i < ( p->mesh.width * p->mesh.height ); i++ )
-			p->mesh.verts[ i ].xyz -= ent->originbrush_origin;
+		ent.patches = NULL;
 	}
 }
 
@@ -1403,34 +1291,30 @@ void AdjustBrushesForOrigin( entity_t *ent ){
    finds the bounds of an entity's brushes (necessary for terrain-style generic metashaders)
  */
 
-void SetEntityBounds( entity_t *e ){
-	int i;
-	brush_t *b;
-	parseMesh_t *p;
+static void SetEntityBounds( entity_t& e ){
 	MinMax minmax;
 
-
 	/* walk the entity's brushes/patches and determine bounds */
-	for ( b = e->brushes; b; b = b->next )
+	for ( const brush_t& b : e.brushes )
 	{
-		minmax.extend( b->minmax );
+		minmax.extend( b.minmax );
 	}
-	for ( p = e->patches; p; p = p->next )
+	for ( const parseMesh_t *p = e.patches; p; p = p->next )
 	{
-		for ( i = 0; i < ( p->mesh.width * p->mesh.height ); i++ )
-			minmax.extend( p->mesh.verts[ i ].xyz );
+		for ( const bspDrawVert_t& vert : Span( p->mesh.verts, p->mesh.width * p->mesh.height ) )
+			minmax.extend( vert.xyz );
 	}
 
 	/* try to find explicit min/max key */
-	e->read_keyvalue( minmax.mins, "min" );
-	e->read_keyvalue( minmax.maxs, "max" );
+	e.read_keyvalue( minmax.mins, "min" );
+	e.read_keyvalue( minmax.maxs, "max" );
 
 	/* store the bounds */
-	for ( b = e->brushes; b; b = b->next )
+	for ( brush_t& b : e.brushes )
 	{
-		b->eMinmax = minmax;
+		b.eMinmax = minmax;
 	}
-	for ( p = e->patches; p; p = p->next )
+	for ( parseMesh_t *p = e.patches; p; p = p->next )
 	{
 		p->eMinmax = minmax;
 	}
@@ -1443,27 +1327,23 @@ void SetEntityBounds( entity_t *e ){
    based on LoadAlphaMap() from terrain.c, a little more generic
  */
 
-void LoadEntityIndexMap( entity_t *e ){
-	int i, size, numLayers, w, h;
+static void LoadEntityIndexMap( entity_t& e ){
+	int numLayers, w, h;
 	const char      *indexMapFilename, *shader;
 	byte            *pixels;
-	unsigned int    *pixels32;
-	indexMap_t      *im;
-	brush_t         *b;
-	parseMesh_t     *p;
 
 
 	/* this only works with bmodel ents */
-	if ( e->brushes == NULL && e->patches == NULL ) {
+	if ( e.brushes.empty() && e.patches == NULL ) {
 		return;
 	}
 
 	/* determine if there is an index map (support legacy "alphamap" key as well) */
-	if( !e->read_keyvalue( indexMapFilename, "_indexmap", "alphamap" ) )
+	if( !e.read_keyvalue( indexMapFilename, "_indexmap", "alphamap" ) )
 		return;
 
 	/* get number of layers (support legacy "layers" key as well) */
-	if( !e->read_keyvalue( numLayers, "_layers", "layers" ) ){
+	if( !e.read_keyvalue( numLayers, "_layers", "layers" ) ){
 		Sys_Warning( "Entity with index/alpha map \"%s\" has missing \"_layers\" or \"layers\" key\n", indexMapFilename );
 		Sys_Printf( "Entity will not be textured properly. Check your keys/values.\n" );
 		return;
@@ -1475,24 +1355,25 @@ void LoadEntityIndexMap( entity_t *e ){
 	}
 
 	/* get base shader name (support legacy "shader" key as well) */
-	if( !mapEnt->read_keyvalue( shader, "_shader", "shader" ) ){
+	if( !e.read_keyvalue( shader, "_shader", "shader" ) ){
 		Sys_Warning( "Entity with index/alpha map \"%s\" has missing \"_shader\" or \"shader\" key\n", indexMapFilename );
 		Sys_Printf( "Entity will not be textured properly. Check your keys/values.\n" );
 		return;
 	}
 
 	/* note it */
-	Sys_FPrintf( SYS_VRB, "Entity %d (%s) has shader index map \"%s\"\n",  mapEnt->mapEntityNum, e->classname(), indexMapFilename );
+	Sys_FPrintf( SYS_VRB, "Entity %d (%s) has shader index map \"%s\"\n", e.mapEntityNum, e.classname(), indexMapFilename );
 
 	/* handle tga image */
-	if ( striEqual( path_get_extension( indexMapFilename ), "tga" ) ) {
+	if ( path_extension_is( indexMapFilename, "tga" ) ) {
 		/* load it */
+		unsigned int    *pixels32;
 		Load32BitImage( indexMapFilename, &pixels32, &w, &h );
 
 		/* convert to bytes */
-		size = w * h;
+		const int size = w * h;
 		pixels = safe_malloc( size );
-		for ( i = 0; i < size; i++ )
+		for ( int i = 0; i < size; i++ )
 		{
 			pixels[ i ] = ( ( pixels32[ i ] & 0xFF ) * numLayers ) / 256;
 			if ( pixels[ i ] >= numLayers ) {
@@ -1512,8 +1393,8 @@ void LoadEntityIndexMap( entity_t *e ){
 		//%	Sys_Printf( "-------------------------------" );
 
 		/* fix up out-of-range values */
-		size = w * h;
-		for ( i = 0; i < size; i++ )
+		const int size = w * h;
+		for ( int i = 0; i < size; i++ )
 		{
 			if ( pixels[ i ] >= numLayers ) {
 				pixels[ i ] = numLayers - 1;
@@ -1538,7 +1419,7 @@ void LoadEntityIndexMap( entity_t *e ){
 	}
 
 	/* create a new index map */
-	im = safe_malloc( sizeof( *im ) );
+	indexMap_t *im = safe_malloc( sizeof( *im ) );
 	new ( im ) indexMap_t{}; // placement new
 
 	/* set it up */
@@ -1550,10 +1431,10 @@ void LoadEntityIndexMap( entity_t *e ){
 
 	/* get height offsets */
 	const char *offset;
-	if( mapEnt->read_keyvalue( offset, "_offsets", "offsets" ) ){
+	if( e.read_keyvalue( offset, "_offsets", "offsets" ) ){
 		/* value is a space-separated set of numbers */
 		/* get each value */
-		for ( i = 0; i < 256 && !strEmpty( offset ); i++ )
+		for ( int i = 0; i < 256 && !strEmpty( offset ); ++i )
 		{
 			const char *space = strchr( offset, ' ' );
 			if ( space == NULL ) {
@@ -1568,9 +1449,9 @@ void LoadEntityIndexMap( entity_t *e ){
 	}
 
 	/* store the index map in every brush/patch in the entity */
-	for ( b = e->brushes; b != NULL; b = b->next )
-		b->im = im;
-	for ( p = e->patches; p != NULL; p = p->next )
+	for ( brush_t& b : e.brushes )
+		b.im = im;
+	for ( parseMesh_t *p = e.patches; p != NULL; p = p->next )
 		p->im = im;
 }
 
@@ -1585,10 +1466,7 @@ void LoadEntityIndexMap( entity_t *e ){
    parses a single entity out of a map file
  */
 
-static bool ParseMapEntity( bool onlyLights, bool noCollapseGroups ){
-	brush_t         *brush;
-	parseMesh_t     *patch;
-
+static bool ParseMapEntity( bool onlyLights, bool noCollapseGroups, int mapEntityNum ){
 	/* eof check */
 	if ( !GetToken( true ) ) {
 		return false;
@@ -1603,13 +1481,11 @@ static bool ParseMapEntity( bool onlyLights, bool noCollapseGroups ){
 	}
 
 	/* setup */
-	entitySourceBrushes = 0;
-	entities.emplace_back();
-	mapEnt = &entities.back();
+	entity_t& mapEnt = entities.emplace_back();
+	int mapPrimitiveNum = 0; /* track .map file numbering of primitives inside an entity */
 
 	/* ydnar: true entity numbering */
-	mapEnt->mapEntityNum = numMapEntities;
-	numMapEntities++;
+	mapEnt.mapEntityNum = mapEntityNum;
 
 	/* loop */
 	while ( 1 )
@@ -1633,8 +1509,8 @@ static bool ParseMapEntity( bool onlyLights, bool noCollapseGroups ){
 
 			/* check */
 			if ( strEqual( token, "patchDef2" ) ) {
-				numMapPatches++;
-				ParsePatch( onlyLights );
+				++c_patches;
+				ParsePatch( onlyLights, mapEnt, mapPrimitiveNum );
 			}
 			else if ( strEqual( token, "terrainDef" ) ) {
 				//% ParseTerrain();
@@ -1645,25 +1521,25 @@ static bool ParseMapEntity( bool onlyLights, bool noCollapseGroups ){
 					Sys_FPrintf( SYS_VRB, "detected brushType = BRUSH PRIMITIVES\n" );
 					g_brushType = EBrushType::Bp;
 				}
-				ParseBrush( onlyLights, noCollapseGroups );
+				ParseBrush( onlyLights, noCollapseGroups, mapEnt, mapPrimitiveNum );
 			}
 			else
 			{
 				/* AP or 220 */
 				UnGetToken(); // (
-				ParseBrush( onlyLights, noCollapseGroups );
+				ParseBrush( onlyLights, noCollapseGroups, mapEnt, mapPrimitiveNum );
 			}
-			entitySourceBrushes++;
+			++mapPrimitiveNum;
 		}
 		else
 		{
 			/* parse a key / value pair */
-			ParseEPair( mapEnt->epairs );
+			ParseEPair( mapEnt.epairs );
 		}
 	}
 
 	/* ydnar: get classname */
-	const char *classname = mapEnt->classname();
+	const char *classname = mapEnt.classname();
 
 	/* ydnar: only lights? */
 	if ( onlyLights && !striEqualPrefix( classname, "light" ) ) {
@@ -1676,63 +1552,63 @@ static bool ParseMapEntity( bool onlyLights, bool noCollapseGroups ){
 
 	/* worldspawn (and func_groups) default to cast/recv shadows in worldspawn group */
 	int castShadows, recvShadows;
-	if ( funcGroup || mapEnt->mapEntityNum == 0 ) {
-		//%	Sys_Printf( "World:  %d\n", mapEnt->mapEntityNum );
+	if ( funcGroup || mapEnt.mapEntityNum == 0 ) {
+		//%	Sys_Printf( "World:  %d\n", mapEnt.mapEntityNum );
 		castShadows = WORLDSPAWN_CAST_SHADOWS;
 		recvShadows = WORLDSPAWN_RECV_SHADOWS;
 	}
 	else{    /* other entities don't cast any shadows, but recv worldspawn shadows */
-		//%	Sys_Printf( "Entity: %d\n", mapEnt->mapEntityNum );
+		//%	Sys_Printf( "Entity: %d\n", mapEnt.mapEntityNum );
 		castShadows = ENTITY_CAST_SHADOWS;
 		recvShadows = ENTITY_RECV_SHADOWS;
 	}
 
 	/* get explicit shadow flags */
-	GetEntityShadowFlags( mapEnt, NULL, &castShadows, &recvShadows );
+	GetEntityShadowFlags( &mapEnt, NULL, &castShadows, &recvShadows );
 
 	/* ydnar: get lightmap scaling value for this entity */
-	const float lightmapScale = std::max( 0.f, mapEnt->floatForKey( "lightmapscale", "_lightmapscale", "_ls" ) );
+	const float lightmapScale = std::max( 0.f, mapEnt.floatForKey( "lightmapscale", "_lightmapscale", "_ls" ) );
 	if ( lightmapScale != 0 )
-		Sys_Printf( "Entity %d (%s) has lightmap scale of %.4f\n", mapEnt->mapEntityNum, classname, lightmapScale );
+		Sys_Printf( "Entity %d (%s) has lightmap scale of %.4f\n", mapEnt.mapEntityNum, classname, lightmapScale );
 
 	/* ydnar: get cel shader :) for this entity */
 	shaderInfo_t *celShader;
 	const char *value;
-	if( mapEnt->read_keyvalue( value, "_celshader" ) ||
+	if( mapEnt.read_keyvalue( value, "_celshader" ) ||
 	    entities[ 0 ].read_keyvalue( value, "_celshader" ) ){
 		celShader = ShaderInfoForShader( String64()( "textures/", value ) );
-		Sys_Printf( "Entity %d (%s) has cel shader %s\n", mapEnt->mapEntityNum, classname, celShader->shader.c_str() );
+		Sys_Printf( "Entity %d (%s) has cel shader %s\n", mapEnt.mapEntityNum, classname, celShader->shader.c_str() );
 	}
 	else{
 		celShader = globalCelShader.empty() ? NULL : ShaderInfoForShader( globalCelShader );
 	}
 
 	/* jal : entity based _shadeangle */
-	const float shadeAngle = std::max( 0.f, mapEnt->floatForKey( "_shadeangle",
+	const float shadeAngle = std::max( 0.f, mapEnt.floatForKey( "_shadeangle",
 	                                      "_smoothnormals", "_sn", "_sa", "_smooth" ) ); /* vortex' aliases */
 	if ( shadeAngle != 0 )
-		Sys_Printf( "Entity %d (%s) has shading angle of %.4f\n", mapEnt->mapEntityNum, classname, shadeAngle );
+		Sys_Printf( "Entity %d (%s) has shading angle of %.4f\n", mapEnt.mapEntityNum, classname, shadeAngle );
 
 	/* jal : entity based _samplesize */
-	const int lightmapSampleSize = std::max( 0, mapEnt->intForKey( "_lightmapsamplesize", "_samplesize", "_ss" ) );
+	const int lightmapSampleSize = std::max( 0, mapEnt.intForKey( "_lightmapsamplesize", "_samplesize", "_ss" ) );
 	if ( lightmapSampleSize != 0 )
-		Sys_Printf( "Entity %d (%s) has lightmap sample size of %d\n", mapEnt->mapEntityNum, classname, lightmapSampleSize );
+		Sys_Printf( "Entity %d (%s) has lightmap sample size of %d\n", mapEnt.mapEntityNum, classname, lightmapSampleSize );
 
 	/* attach stuff to everything in the entity */
-	for ( brush = mapEnt->brushes; brush != NULL; brush = brush->next )
+	for ( brush_t& brush : mapEnt.brushes )
 	{
-		brush->entityNum = mapEnt->mapEntityNum;
-		brush->castShadows = castShadows;
-		brush->recvShadows = recvShadows;
-		brush->lightmapSampleSize = lightmapSampleSize;
-		brush->lightmapScale = lightmapScale;
-		brush->celShader = celShader;
-		brush->shadeAngleDegrees = shadeAngle;
+		brush.entityNum = mapEnt.mapEntityNum;
+		brush.castShadows = castShadows;
+		brush.recvShadows = recvShadows;
+		brush.lightmapSampleSize = lightmapSampleSize;
+		brush.lightmapScale = lightmapScale;
+		brush.celShader = celShader;
+		brush.shadeAngleDegrees = shadeAngle;
 	}
 
-	for ( patch = mapEnt->patches; patch != NULL; patch = patch->next )
+	for ( parseMesh_t *patch = mapEnt.patches; patch != NULL; patch = patch->next )
 	{
-		patch->entityNum = mapEnt->mapEntityNum;
+		patch->entityNum = mapEnt.mapEntityNum;
 		patch->castShadows = castShadows;
 		patch->recvShadows = recvShadows;
 		patch->lightmapSampleSize = lightmapSampleSize;
@@ -1747,8 +1623,8 @@ static bool ParseMapEntity( bool onlyLights, bool noCollapseGroups ){
 	LoadEntityIndexMap( mapEnt );
 
 	/* get entity origin and adjust brushes */
-	mapEnt->origin = mapEnt->vectorForKey( "origin" );
-	if ( mapEnt->originbrush_origin != g_vector3_identity ) {
+	mapEnt.origin = mapEnt.vectorForKey( "origin" );
+	if ( mapEnt.originbrush_origin != g_vector3_identity ) {
 		AdjustBrushesForOrigin( mapEnt );
 	}
 
@@ -1776,22 +1652,16 @@ static bool ParseMapEntity( bool onlyLights, bool noCollapseGroups ){
    loads a map file into a list of entities
  */
 
-void LoadMapFile( char *filename, bool onlyLights, bool noCollapseGroups ){
-	FILE        *file;
-	brush_t     *b;
-	int oldNumEntities = 0, numMapBrushes;
+void LoadMapFile( const char *filename, bool onlyLights, bool noCollapseGroups ){
+	int oldNumEntities = 0;
 
 
 	/* note it */
 	Sys_FPrintf( SYS_VRB, "--- LoadMapFile ---\n" );
-	Sys_Printf( "Loading %s\n", filename );
-
-	/* hack */
-	file = SafeOpenRead( filename );
-	fclose( file );
 
 	/* load the map file */
-	LoadScriptFile( filename, -1 );
+	if( !LoadScriptFile( filename, -1 ) )
+		Error( "" );
 
 	/* setup */
 	if ( onlyLights ) {
@@ -1807,10 +1677,11 @@ void LoadMapFile( char *filename, bool onlyLights, bool noCollapseGroups ){
 	g_brushType = EBrushType::Undefined;
 
 	/* allocate a very large temporary brush for building the brushes as they are loaded */
-	buildBrush = AllocBrush( MAX_BUILD_SIDES );
+	buildBrush.sides.reserve( MAX_BUILD_SIDES );
 
 	/* parse the map file */
-	while ( ParseMapEntity( onlyLights, noCollapseGroups ) ) ;
+	int mapEntityNum = 0; /* track .map file entities numbering */
+	while ( ParseMapEntity( onlyLights, noCollapseGroups, mapEntityNum++ ) ){};
 
 	/* light loading */
 	if ( onlyLights ) {
@@ -1821,13 +1692,13 @@ void LoadMapFile( char *filename, bool onlyLights, bool noCollapseGroups ){
 	{
 		/* set map bounds */
 		g_mapMinmax.clear();
-		for ( b = entities[ 0 ].brushes; b; b = b->next )
+		for ( const brush_t& brush : entities[ 0 ].brushes )
 		{
-			g_mapMinmax.extend( b->minmax );
+			g_mapMinmax.extend( brush.minmax );
 		}
 
 		/* get brush counts */
-		numMapBrushes = CountBrushList( entities[ 0 ].brushes );
+		const int numMapBrushes = entities[ 0 ].brushes.size();
 		if ( (float) c_detail / (float) numMapBrushes < 0.10f && numMapBrushes > 500 ) {
 			Sys_Warning( "Over 90 percent structural map detected. Compile time may be adversely affected.\n" );
 		}
@@ -1835,11 +1706,11 @@ void LoadMapFile( char *filename, bool onlyLights, bool noCollapseGroups ){
 		/* emit some statistics */
 		Sys_FPrintf( SYS_VRB, "%9d total world brushes\n", numMapBrushes );
 		Sys_FPrintf( SYS_VRB, "%9d detail brushes\n", c_detail );
-		Sys_FPrintf( SYS_VRB, "%9d patches\n", numMapPatches );
+		Sys_FPrintf( SYS_VRB, "%9d patches\n", c_patches );
 		Sys_FPrintf( SYS_VRB, "%9d boxbevels\n", c_boxbevels );
 		Sys_FPrintf( SYS_VRB, "%9d edgebevels\n", c_edgebevels );
 		Sys_FPrintf( SYS_VRB, "%9zu entities\n", entities.size() );
-		Sys_FPrintf( SYS_VRB, "%9d planes\n", nummapplanes );
+		Sys_FPrintf( SYS_VRB, "%9zu planes\n", mapplanes.size() );
 		Sys_Printf( "%9d areaportals\n", c_areaportals );
 		Sys_Printf( "Size: %5.0f, %5.0f, %5.0f to %5.0f, %5.0f, %5.0f\n",
 		            g_mapMinmax.mins[0], g_mapMinmax.mins[1], g_mapMinmax.mins[2],

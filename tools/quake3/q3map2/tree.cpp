@@ -34,9 +34,7 @@
 
 
 
-void RemovePortalFromNode( portal_t *portal, node_t *l );
-
-node_t *NodeForPoint( node_t *node, const Vector3& origin ){
+static node_t *NodeForPoint( node_t *node, const Vector3& origin ){
 	while ( node->planenum != PLANENUM_LEAF )
 	{
 		if ( plane3_distance_to_point( mapplanes[node->planenum].plane, origin ) >= 0 ) {
@@ -57,7 +55,7 @@ node_t *NodeForPoint( node_t *node, const Vector3& origin ){
    FreeTreePortals_r
    =============
  */
-void FreeTreePortals_r( node_t *node ){
+static void FreeTreePortals_r( node_t *node ){
 	portal_t    *p, *nextp;
 	int s;
 
@@ -68,7 +66,7 @@ void FreeTreePortals_r( node_t *node ){
 	}
 
 	// free portals
-	for ( p = node->portals ; p ; p = nextp )
+	for ( p = node->portals; p; p = nextp )
 	{
 		s = ( p->nodes[1] == node );
 		nextp = p->next[s];
@@ -84,22 +82,15 @@ void FreeTreePortals_r( node_t *node ){
    FreeTree_r
    =============
  */
-void FreeTree_r( node_t *node ){
+static void FreeTree_r( node_t *node ){
 	// free children
 	if ( node->planenum != PLANENUM_LEAF ) {
 		FreeTree_r( node->children[0] );
 		FreeTree_r( node->children[1] );
 	}
 
-	// free bspbrushes
-	FreeBrushList( node->brushlist );
-
 	// free the node
-	if ( node->volume ) {
-		FreeBrush( node->volume );
-	}
-
-	free( node );
+	delete node;
 }
 
 
@@ -108,38 +99,33 @@ void FreeTree_r( node_t *node ){
    FreeTree
    =============
  */
-void FreeTree( tree_t *tree ){
-	FreeTreePortals_r( tree->headnode );
-	FreeTree_r( tree->headnode );
-	free( tree );
+void FreeTree( tree_t& tree ){
+	FreeTreePortals_r( tree.headnode );
+	FreeTree_r( tree.headnode );
 }
 
 //===============================================================
 
-void PrintTree_r( node_t *node, int depth ){
-	int i;
-	plane_t *plane;
-	brush_t *bb;
-
-	for ( i = 0 ; i < depth ; i++ )
+static void PrintTree_r( const node_t *node, int depth ){
+	for ( int i = 0; i < depth; i++ )
 		Sys_Printf( "  " );
 	if ( node->planenum == PLANENUM_LEAF ) {
-		if ( !node->brushlist ) {
+		if ( node->brushlist.empty() ) {
 			Sys_Printf( "NULL\n" );
 		}
 		else
 		{
-			for ( bb = node->brushlist ; bb ; bb = bb->next )
-				Sys_Printf( "%d ", bb->original->brushNum );
+			for ( const brush_t& bb : node->brushlist )
+				Sys_Printf( "%d ", bb.original->brushNum );
 			Sys_Printf( "\n" );
 		}
 		return;
 	}
 
-	plane = &mapplanes[node->planenum];
+	const plane_t& plane = mapplanes[node->planenum];
 	Sys_Printf( "#%d (%5.2f %5.2f %5.2f):%5.2f\n", node->planenum,
-	            plane->normal()[0], plane->normal()[1], plane->normal()[2],
-	            plane->dist() );
+	            plane.normal()[0], plane.normal()[1], plane.normal()[2],
+	            plane.dist() );
 	PrintTree_r( node->children[0], depth + 1 );
 	PrintTree_r( node->children[1], depth + 1 );
 }

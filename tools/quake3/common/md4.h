@@ -25,22 +25,7 @@
         Boston, MA  02111-1307, USA
  */
 
-#ifndef _MDFOUR_H
-#define _MDFOUR_H
-
-#include <cstdint>
-
-struct mdfour {
-	std::uint32_t A, B, C, D;
-	std::uint32_t totalN;
-};
-
-void mdfour_begin( struct mdfour *md ); // old: MD4Init
-void mdfour_update( struct mdfour *md, unsigned char *in, int n ); //old: MD4Update
-void mdfour_result( struct mdfour *md, unsigned char *out ); // old: MD4Final
-void mdfour( unsigned char *out, unsigned char *in, int n );
+#pragma once
 
 unsigned Com_BlockChecksum( void *buffer, int length );
 void Com_BlockFullChecksum( void *buffer, int len, unsigned char *outbuf );
-
-#endif  // _MDFOUR_H

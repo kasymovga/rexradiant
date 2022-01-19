@@ -30,6 +30,8 @@
 
 /* dependencies */
 #include "q3map2.h"
+#include "png.h"
+#include "ddslib.h"
 
 
 
@@ -95,7 +97,7 @@ struct pngBuffer_t
 	png_size_t size, offset;
 };
 
-void PNGReadData( png_struct *png, png_byte *buffer, png_size_t size ){
+static void PNGReadData( png_struct *png, png_byte *buffer, png_size_t size ){
 	pngBuffer_t     *pb = (pngBuffer_t*) png_get_io_ptr( png );
 
 
@@ -223,57 +225,14 @@ static void LoadPNGBuffer( byte *buffer, int size, byte **pixels, int *width, in
 
 
 
-/*
-   ImageInit()
-   implicitly called by every function to set up image list
- */
+static std::forward_list<image_t> images;
 
-static void ImageInit( void ){
-	if ( numImages <= 0 ) {
-		/* clear images (fixme: this could theoretically leak) */
-		memset( images, 0, sizeof( images ) );
-
-		/* generate *bogus image */
-		images[ 0 ].name = copystring( DEFAULT_IMAGE );
-		images[ 0 ].filename = copystring( DEFAULT_IMAGE );
-		images[ 0 ].width = 64;
-		images[ 0 ].height = 64;
-		images[ 0 ].refCount = 1;
-		images[ 0 ].pixels = safe_malloc( 64 * 64 * 4 );
-		memset( images[ 0 ].pixels, 255, 64 * 64 * 4 );
+static struct construct_default_image
+{
+	construct_default_image(){
+		images.emplace_front( DEFAULT_IMAGE, DEFAULT_IMAGE, 64, 64, void_ptr( memset( safe_malloc( 64 * 64 * 4 ), 255, 64 * 64 * 4 ) ) );
 	}
-}
-
-
-
-/*
-   ImageFree()
-   frees an rgba image
- */
-
-void ImageFree( image_t *image ){
-	/* dummy check */
-	if ( image == NULL ) {
-		return;
-	}
-
-	/* decrement refcount */
-	image->refCount--;
-
-	/* free? */
-	if ( image->refCount <= 0 ) {
-		free( image->name );
-		image->name = NULL;
-		free( image->filename );
-		image->filename = NULL;
-		free( image->pixels );
-		image->width = 0;
-		image->height = 0;
-		numImages--;
-	}
-}
-
-
+} s_construct_default_image;
 
 /*
    ImageFind()
@@ -281,20 +240,17 @@ void ImageFree( image_t *image ){
    name is name without extension, as in images[ i ].name
  */
 
-image_t *ImageFind( const char *name ){
-	/* init */
-	ImageInit();
-
+static const image_t *ImageFind( const char *name ){
 	/* dummy check */
 	if ( strEmptyOrNull( name ) ) {
 		return NULL;
 	}
 
 	/* search list */
-	for ( int i = 0; i < MAX_IMAGES; ++i )
+	for ( const auto& img : images )
 	{
-		if ( images[ i ].name != NULL && strEqual( name, images[ i ].name ) ) {
-			return &images[ i ];
+		if ( striEqual( name, img.name.c_str() ) ) {
+			return &img;
 		}
 	}
 
@@ -310,138 +266,90 @@ image_t *ImageFind( const char *name ){
    expects extensionless path as input
  */
 
-image_t *ImageLoad( const char *filename ){
-	image_t     *image;
-	char name[ 1024 ];
-	int size;
-	byte        *buffer = NULL;
-	bool alphaHack = false;
-
-
-	/* init */
-	ImageInit();
-
+const image_t *ImageLoad( const char *name ){
 	/* dummy check */
-	if ( strEmptyOrNull( filename ) ) {
-		return NULL;
+	if ( strEmptyOrNull( name ) ) {
+		return nullptr;
 	}
-
-	strcpy( name, filename );
 
 	/* try to find existing image */
-	image = ImageFind( name );
-	if ( image != NULL ) {
-		image->refCount++;
-		return image;
+	if ( auto img = ImageFind( name ) ) {
+		return img;
 	}
 
-	/* none found, so find first empty image slot */
-	for ( int i = 0; i < MAX_IMAGES; ++i )
+	/* none found, so let's create a new one */
+	byte *pixels = nullptr;
+	int width, height;
+	char filename[ 1024 ];
+	MemBuffer buffer;
+	bool alphaHack = false;
+
+	/* attempt to load various formats */
+	if ( sprintf( filename, "%s.tga", name ); buffer = vfsLoadFile( filename ) ) // StripExtension( name ); already
 	{
-		if ( images[ i ].name == NULL ) {
-			image = &images[ i ];
-			image->name = copystring( name ); /* set it up */
-			break;
-		}
+		LoadTGABuffer( buffer.data(), buffer.size(), &pixels, &width, &height );
 	}
-
-	/* too many images? */
-	if ( image == NULL ) {
-		Error( "MAX_IMAGES (%d) exceeded, there are too many image files referenced by the map.", MAX_IMAGES );
-	}
-
-	/* attempt to load tga */
-	strcat( name, ".tga" ); // StripExtension( name ); already
-	size = vfsLoadFile( name, (void**) &buffer, 0 );
-	if ( size > 0 ) {
-		LoadTGABuffer( buffer, buffer + size, &image->pixels, &image->width, &image->height );
-	}
-	else
+	else if( path_set_extension( filename, ".png" ); buffer = vfsLoadFile( filename ) )
 	{
-		/* attempt to load png */
-		path_set_extension( name, ".png" );
-		size = vfsLoadFile( name, (void**) &buffer, 0 );
-		if ( size > 0 ) {
-			LoadPNGBuffer( buffer, size, &image->pixels, &image->width, &image->height );
+		LoadPNGBuffer( buffer.data(), buffer.size(), &pixels, &width, &height );
+	}
+	else if( path_set_extension( filename, ".jpg" ); buffer = vfsLoadFile( filename ) )
+	{
+		if ( LoadJPGBuff( buffer.data(), buffer.size(), &pixels, &width, &height ) == -1 && pixels != nullptr ) {
+			// On error, LoadJPGBuff might store a pointer to the error message in pixels
+			Sys_Warning( "LoadJPGBuff %s %s\n", filename, (unsigned char*) pixels );
+			pixels = nullptr;
 		}
-		else
+		alphaHack = true;
+	}
+	else if( path_set_extension( filename, ".dds" ); buffer = vfsLoadFile( filename ) )
+	{
+		LoadDDSBuffer( buffer.data(), buffer.size(), &pixels, &width, &height );
+		/* debug code */
+		#if 0
 		{
-			/* attempt to load jpg */
-			path_set_extension( name, ".jpg" );
-			size = vfsLoadFile( name, (void**) &buffer, 0 );
-			if ( size > 0 ) {
-				if ( LoadJPGBuff( buffer, size, &image->pixels, &image->width, &image->height ) == -1 && image->pixels != NULL ) {
-					// On error, LoadJPGBuff might store a pointer to the error message in image->pixels
-					Sys_Warning( "LoadJPGBuff %s %s\n", name, (unsigned char*) image->pixels );
-				}
-				alphaHack = true;
-			}
-			else
-			{
-				/* attempt to load dds */
-				path_set_extension( name, ".dds" );
-				size = vfsLoadFile( name, (void**) &buffer, 0 );
-				if ( size > 0 ) {
-					LoadDDSBuffer( buffer, size, &image->pixels, &image->width, &image->height );
-
-					/* debug code */
-					#if 1
-					{
-						ddsPF_t pf;
-						DDSGetInfo( (ddsBuffer_t*) buffer, NULL, NULL, &pf );
-						Sys_Printf( "pf = %d\n", pf );
-						if ( image->width > 0 ) {
-							path_set_extension( name, "_converted.tga" );
-							WriteTGA( "C:\\games\\quake3\\baseq3\\textures\\rad\\dds_converted.tga", image->pixels, image->width, image->height );
-						}
-					}
-					#endif
-				}
+			ddsPF_t pf;
+			DDSGetInfo( (ddsBuffer_t*) buffer, nullptr, nullptr, &pf );
+			Sys_Printf( "pf = %d\n", pf );
+			if ( width > 0 ) {
+				path_set_extension( filename, "_converted.tga" );
+				WriteTGA( "C:\\games\\quake3\\baseq3\\textures\\rad\\dds_converted.tga", pixels, width, height );
 			}
 		}
+		#endif
 	}
-
-	/* free file buffer */
-	free( buffer );
+	else if( path_set_extension( filename, ".ktx" ); buffer = vfsLoadFile( filename ) )
+	{
+		LoadKTXBufferFirstImage( buffer.data(), buffer.size(), &pixels, &width, &height );
+	}
 
 	/* make sure everything's kosher */
-	if ( size <= 0 || image->width <= 0 || image->height <= 0 || image->pixels == NULL ) {
-		//%	Sys_Printf( "size = %d  width = %d  height = %d  pixels = 0x%08x (%s)\n",
-		//%		size, image->width, image->height, image->pixels, name );
-		free( image->name );
-		image->name = NULL;
-		return NULL;
+	if ( !buffer || width <= 0 || height <= 0 || pixels == nullptr ) {
+		//%	Sys_Printf( "size = %zu  width = %d  height = %d  pixels = 0x%08x (%s)\n",
+		//%		buffer.size(), width, height, pixels, filename );
+		return nullptr;
 	}
 
-	/* set filename */
-	image->filename = copystring( name );
-
-	/* set count */
-	image->refCount = 1;
-	numImages++;
+	/* everybody's in the place, create new image */
+	image_t& image = *images.emplace_after( images.cbegin(), name, filename, width, height, pixels );
 
 	if ( alphaHack ) {
-		path_set_extension( name, "_alpha.jpg" );
-		size = vfsLoadFile( (const char*) name, (void**) &buffer, 0 );
-		if ( size > 0 ) {
-			unsigned char *pixels;
-			int width, height;
-			if ( LoadJPGBuff( buffer, size, &pixels, &width, &height ) == -1 ) {
-				if (pixels) {
+		if ( path_set_extension( filename, "_alpha.jpg" ); buffer = vfsLoadFile( filename ) ) {
+			if ( LoadJPGBuff( buffer.data(), buffer.size(), &pixels, &width, &height ) == -1 ) {
+				if ( pixels ) {
 					// On error, LoadJPGBuff might store a pointer to the error message in pixels
-					Sys_Warning( "LoadJPGBuff %s %s\n", name, (unsigned char*) pixels );
+					Sys_Warning( "LoadJPGBuff %s %s\n", filename, (unsigned char*) pixels );
 				}
 			} else {
-				if ( width == image->width && height == image->height ) {
+				if ( width == image.width && height == image.height ) {
 					for ( int i = 0; i < width * height; ++i )
-						image->pixels[4 * i + 3] = pixels[4 * i + 2];  // copy alpha from blue channel
+						image.pixels[4 * i + 3] = pixels[4 * i + 2];  // copy alpha from blue channel
 				}
 				free( pixels );
 			}
-			free( buffer );
 		}
 	}
 
 	/* return the image */
-	return image;
+	return &image;
 }

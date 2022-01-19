@@ -17,7 +17,7 @@ Ready-to-use packages are available in the [Releases section](/../../releases).
 
 Main focus is on Quake, Quake3 and Quake Live.
 
-Though other normally supported games should work too; See [unverified game configs](/../readme_files/unverified_gamepacks.7z "darkplaces&NewLine;doom3&NewLine;et&NewLine;heretic2&NewLine;hl&NewLine;ja&NewLine;jk2&NewLine;neverball&NewLine;nexuiz&NewLine;oa&NewLine;osirion&NewLine;prey&NewLine;q2&NewLine;q4&NewLine;quetoo&NewLine;sof2&NewLine;stvef&NewLine;trem&NewLine;turtlearena&NewLine;ufoai&NewLine;unvanquished&NewLine;warsow&NewLine;wolf&NewLine;xonotic").
+Though other normally supported games should work too. Releases include configs for the following games: Alien Arena, Darkplaces, Doom 3, Doombringer, Wolfenstein: Enemy Territory, Heretic II, Half-Life, Jedi Knight Jedi Academy, Jedi Knight II: Jedi Outcast, Kingpin, Neverball, Nexuiz, Open Arena, Project::OSiRiON, Prey, Quake II, Q3Rally, Quake 4, Quetoo, Smokin' Guns, Soldier of Fortune II - Double Helix, Star Trek Voyager : Elite Force, Tremulous, Turtle Arena, UFO:Alien Invasion, Unreal Arena, Unvanquished, Urban Terror, Warfork, Warsow, Return To Castle Wolfenstein, World of Padman, Xonotic, ZEQ2 Lite.
 
 ## Features
 
@@ -31,6 +31,8 @@ Development is focused on smoothing and tweaking editing process.
 * Free and robust vertex editing, also providing abilities to remove and insert vertices
 * UV Tool (edits texture alignment of selected face or patch)
 * Autocaulk
+* Model browser
+* Brush faces extrusion
 * Left mouse button click tunnel selector, paint selector
 * Numerous mouse shortcuts (see help->General->Mouse Shortcuts)
 * Focus camera on selected (Tab)
@@ -39,7 +41,7 @@ Development is focused on smoothing and tweaking editing process.
 * Quick vertices drag / brush faces shear shortcut
 * Simple shader editor
 * Texture painting by drag
-* Seamless brush face to face texture paste
+* Seamless brush face<->face, patch<->face texture paste
 * Customizable keyboard shortcuts
 * Customizable GUI themes, fonts
 * MeshTex plugin
@@ -77,24 +79,30 @@ Development is focused on smoothing and tweaking editing process.
 
 #### Q3Map2:
 
-* Allowed simultaneous samples+filter use, makes sense
-* -vertexscale
-* -novertex works, (0..1) sets globally
-* Fixed _clone _ins _instance (_clonename) functionality
-* -nolm - no lightmaps
-* -bouncecolorratio 0..1 (ratio of colorizing light sample by texture)
 * q3map_remapshader remaps anything fine, on all stages
-* Fixed model autoclip, added 20 new modes
 * Automatic map packager (complete Q3 support)
-* -brightness 0..alot, def 1: mimics q3map_lightmapBrightness, but globally + affects vertexlight
-* -contrast -255..255, def 0: lighting contrast
 * Report full / full pk3 path on file syntax errors
+* Allowed simultaneous samples+filter use, makes sense
+* -brightness 0..alot, def 1: mimics q3map_lightmapBrightness globally
+* -contrast -255..255, def 0: lighting contrast
+* -saturation light option
+* -bouncecolorratio 0..1 (ratio of colorizing light sample by texture)
+* -nolm - no lightmaps
+* -novertex works, (0..1) sets globally
+* -vertexscale
 * New area lights backsplash algorithm (utilizing area lights instead of point ones)
 * -backsplash (float)scale (float)distance: adjust area lights globally (real area lights have no backsplash)
 * New slightly less careful, but much faster lightmaps packing algorithm (allocating... process)
+* -extlmhacksize zero effort external lightmaps for Q3
 * Valve220 mapformat autodetection and support
-* Correct .obj and .mtl loading
-* Guessing model shaders paths
+* Consistent brush content deduction with mixed face parameters
+* Model shaders paths deduction
+* Fixed model autoclip, added 20 new clipping modes
+* Support negative misc_model scale
+* Assimp model loading library (40+ formats)
+* -json bsp export/import
+* -mergebsp injects one bsp to another
+* No shaderlist.txt mode: load all shaders
 
 ###### see changelog-custom.txt for more
 

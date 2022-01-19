@@ -21,11 +21,10 @@
 //
 //////////////////////////////////////////////////////////////////////
 
-#if !defined( AFX_DPATCH_H__26C6B083_CE5B_420B_836B_1DDA733C04CE__INCLUDED_ )
-#define AFX_DPATCH_H__26C6B083_CE5B_420B_836B_1DDA733C04CE__INCLUDED_
+#pragma once
 
 #include <list>
-#include <stdlib.h>
+#include <cstdlib>
 
 typedef struct
 {
@@ -62,8 +61,8 @@ public:
 //DPatch* TransposePatch(DPatch* p1);
 //void DebugPrint();
 	void Invert();
-	DPatch* MergePatches( patch_merge_t merge_info, DPatch* p1, DPatch* p2 );
-	patch_merge_t IsMergable( DPatch* other );
+	DPatch* MergePatches( patch_merge_t merge_info, DPatch& p1, DPatch& p2 );
+	patch_merge_t IsMergable( const DPatch& other );
 	bool ResetTextures( const char *oldTextureName, const char *newTextureName );
 	scene::Node* QER_entity;
 	scene::Node* QER_brush;
@@ -77,5 +76,3 @@ public:
 	virtual ~DPatch();
 
 };
-
-#endif // !defined(AFX_DPATCH_H__26C6B083_CE5B_420B_836B_1DDA733C04CE__INCLUDED_)

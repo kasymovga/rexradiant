@@ -133,7 +133,7 @@ void printShaderLog( GLhandleARB object ){
 	Array<char> log( log_length );
 	glGetInfoLogARB( object, log_length, &log_length, log.data() );
 
-	globalErrorStream() << StringRange( log.begin(), log.begin() + log_length ) << "\n";
+	globalErrorStream() << StringRange( log.begin(), log_length ) << "\n";
 }
 
 void createShader( GLhandleARB program, const char* filename, GLenum type ){
@@ -1173,7 +1173,7 @@ public:
 	~OpenGLShaderCache(){
 		for ( Shaders::iterator i = m_shaders.begin(); i != m_shaders.end(); ++i )
 		{
-			globalOutputStream() << "leaked shader: " << makeQuoted( ( *i ).key.c_str() ) << "\n";
+			globalOutputStream() << "leaked shader: " << makeQuoted( ( *i ).key ) << "\n";
 		}
 	}
 	Shader* capture( const char* name ){

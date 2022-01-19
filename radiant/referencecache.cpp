@@ -115,11 +115,10 @@ bool MapResource_saveFile( const MapFormat& format, scene::Node& root, GraphTrav
 
 bool file_saveBackup( const char* path ){
 	if ( file_writeable( path ) ) {
-		StringOutputStream backup( 256 );
-		backup << StringRange( path, path_get_extension( path ) ) << "bak";
+		const auto backup = StringOutputStream( 256 )( PathExtensionless( path ), ".bak" );
 
-		return ( !file_exists( backup.c_str() ) || file_remove( backup.c_str() ) ) // remove backup
-		       && file_move( path, backup.c_str() ); // rename current to backup
+		return ( !file_exists( backup ) || file_remove( backup ) ) // remove backup
+		       && file_move( path, backup ); // rename current to backup
 	}
 
 	globalErrorStream() << "map path is not writeable: " << makeQuoted( path ) << "\n";
@@ -348,7 +347,7 @@ struct ModelResource : public Resource
 		if ( realised() ) {
 			unrealise();
 		}
-		ASSERT_MESSAGE( !realised(), "ModelResource::~ModelResource: resource reference still realised: " << makeQuoted( m_name.c_str() ) );
+		ASSERT_MESSAGE( !realised(), "ModelResource::~ModelResource: resource reference still realised: " << makeQuoted( m_name ) );
 	}
 	// NOT COPYABLE
 	ModelResource( const ModelResource& ) = delete;
@@ -475,8 +474,8 @@ struct ModelResource : public Resource
 	}
 	std::time_t modified() const {
 		StringOutputStream fullpath( 256 );
-		fullpath << m_path.c_str() << m_name.c_str();
-		return file_modified( fullpath.c_str() );
+		fullpath << m_path << m_name;
+		return file_modified( fullpath );
 	}
 	void mapSave(){
 		m_modified = modified();

@@ -36,8 +36,8 @@
 
 #include "shaders.h"
 
-#include <stdio.h>
-#include <stdlib.h>
+#include <cstdio>
+#include <cstdlib>
 #include <map>
 #include <list>
 
@@ -64,7 +64,7 @@
 #include "stringio.h"
 #include "shaderlib.h"
 #include "texturelib.h"
-#include "cmdlib.h"
+#include "commandlib.h"
 #include "moduleobservers.h"
 #include "archivelib.h"
 #include "imagelib.h"
@@ -458,7 +458,7 @@ bool parseShaderParameters( Tokeniser& tokeniser, ShaderParameters& params ){
 bool ShaderTemplate::parseTemplate( Tokeniser& tokeniser ){
 	m_Name = tokeniser.getToken();
 	if ( !parseShaderParameters( tokeniser, m_params ) ) {
-		globalErrorStream() << "shader template: " << makeQuoted( m_Name.c_str() ) << ": parameter parse failed\n";
+		globalErrorStream() << "shader template: " << makeQuoted( m_Name ) << ": parameter parse failed\n";
 		return false;
 	}
 
@@ -502,7 +502,7 @@ bool ShaderTemplate::parseDoom3( Tokeniser& tokeniser ){
 				else if ( currentLayer.m_type == LAYER_SPECULARMAP ) {
 					m_specular = currentLayer.m_texture;
 				}
-				else if ( !string_empty( currentLayer.m_texture.c_str() ) ) {
+				else if ( !currentLayer.m_texture.empty() ) {
 					m_layers.push_back( MapLayerTemplate(
 					                        currentLayer.m_texture.c_str(),
 					                        currentLayer.m_blendFunc,
@@ -664,7 +664,7 @@ bool ShaderTemplate::parseDoom3( Tokeniser& tokeniser ){
 		}
 	}
 
-	if ( string_empty( m_textureName.c_str() ) ) {
+	if ( m_textureName.empty() ) {
 		m_textureName = m_diffuse;
 	}
 
@@ -706,18 +706,18 @@ bool parseTemplateInstance( Tokeniser& tokeniser, const char* filename ){
 	const char* templateName = tokeniser.getToken();
 	ShaderTemplate* shaderTemplate = findTemplate( templateName );
 	if ( shaderTemplate == 0 ) {
-		globalErrorStream() << "shader instance: " << makeQuoted( name.c_str() ) << ": shader template not found: " << makeQuoted( templateName ) << "\n";
+		globalErrorStream() << "shader instance: " << makeQuoted( name ) << ": shader template not found: " << makeQuoted( templateName ) << "\n";
 	}
 
 	ShaderArguments args;
 	if ( !parseShaderParameters( tokeniser, args ) ) {
-		globalErrorStream() << "shader instance: " << makeQuoted( name.c_str() ) << ": argument parse failed\n";
+		globalErrorStream() << "shader instance: " << makeQuoted( name ) << ": argument parse failed\n";
 		return false;
 	}
 
 	if ( shaderTemplate != 0 ) {
 		if ( !g_shaderDefinitions.insert( ShaderDefinitionMap::value_type( name, ShaderDefinition( shaderTemplate, args, filename ) ) ).second ) {
-			globalErrorStream() << "shader instance: " << makeQuoted( name.c_str() ) << ": already exists, second definition ignored\n";
+			globalErrorStream() << "shader instance: " << makeQuoted( name ) << ": already exists, second definition ignored\n";
 		}
 	}
 	return true;
@@ -1092,7 +1092,7 @@ public:
 	}
 
 	qtexture_t* lightFalloffImage() const {
-		if ( !string_empty( m_template.m_lightFalloffImage.c_str() ) ) {
+		if ( !m_template.m_lightFalloffImage.empty() ) {
 			return m_pLightFalloffImage;
 		}
 		return 0;
@@ -1146,7 +1146,7 @@ void FreeShaders(){
 
 bool ShaderTemplate::parseQuake3( Tokeniser& tokeniser ){
 	// name of the qtexture_t we'll use to represent this shader (this one has the "textures\" before)
-	m_textureName = m_Name.c_str();
+	m_textureName = m_Name;
 
 	tokeniser.nextLine();
 
@@ -1511,11 +1511,7 @@ IShader *Shader_ForName( const char *name ){
 
 // the list of scripts/*.shader files we need to work with
 // those are listed in shaderlist file
-GSList *l_shaderfiles = 0;
-
-GSList* Shaders_getShaderFileList(){
-	return l_shaderfiles;
-}
+std::vector<CopiedString> l_shaderfiles;
 
 /*
    ==================
@@ -1526,9 +1522,9 @@ GSList* Shaders_getShaderFileList(){
 void IfFound_dumpUnreferencedShader( bool& bFound, const char* filename ){
 	bool listed = false;
 
-	for ( GSList* sh = l_shaderfiles; sh != 0; sh = g_slist_next( sh ) )
+	for ( const CopiedString& sh : l_shaderfiles )
 	{
-		if ( !strcmp( (char*)sh->data, filename ) ) {
+		if ( !strcmp( sh.c_str(), filename ) ) {
 			listed = true;
 			break;
 		}
@@ -1552,17 +1548,17 @@ void DumpUnreferencedShaders(){
 void ShaderList_addShaderFile( const char* dirstring ){
 	bool found = false;
 
-	for ( GSList* tmp = l_shaderfiles; tmp != 0; tmp = tmp->next )
+	for ( const CopiedString& sh : l_shaderfiles )
 	{
-		if ( string_equal_nocase( dirstring, (char*)tmp->data ) ) {
+		if ( string_equal_nocase( dirstring, sh.c_str() ) ) {
 			found = true;
-			globalOutputStream() << "duplicate entry \"" << (char*)tmp->data << "\" in shaderlist.txt\n";
+			globalOutputStream() << "duplicate entry \"" << sh << "\" in shaderlist.txt\n";
 			break;
 		}
 	}
 
 	if ( !found ) {
-		l_shaderfiles = g_slist_append( l_shaderfiles, strdup( dirstring ) );
+		l_shaderfiles.emplace_back( dirstring );
 	}
 }
 
@@ -1583,7 +1579,9 @@ void BuildShaderList( TextInputStream& shaderlist ){
 	while ( token != 0 )
 	{
 		// each token should be a shader filename
-		shaderFile << token << "." << g_shadersExtension;
+		shaderFile << token;
+		if( !path_extension_is( token, g_shadersExtension ) )
+			shaderFile << "." << g_shadersExtension;
 
 		ShaderList_addShaderFile( shaderFile.c_str() );
 
@@ -1593,14 +1591,6 @@ void BuildShaderList( TextInputStream& shaderlist ){
 		shaderFile.clear();
 	}
 	tokeniser.release();
-}
-
-void FreeShaderList(){
-	while ( l_shaderfiles != 0 )
-	{
-		free( l_shaderfiles->data );
-		l_shaderfiles = g_slist_remove( l_shaderfiles, l_shaderfiles->data );
-	}
 }
 
 void ShaderList_addFromArchive( const char *archivename ){
@@ -1671,7 +1661,7 @@ void Shaders_Load(){
 			}
 
 			GlobalFileSystem().forEachArchive( AddShaderListFromArchiveCaller(), false, true );
-			if( l_shaderfiles != nullptr ){
+			if( !l_shaderfiles.empty() ){
 				DumpUnreferencedShaders();
 			}
 			else{
@@ -1684,14 +1674,12 @@ void Shaders_Load(){
 			GlobalFileSystem().forEachFile( path.c_str(), g_shadersExtension, AddShaderFileCaller(), 0 );
 		}
 
-		GSList *lst = l_shaderfiles;
 		StringOutputStream shadername( 256 );
-		while ( lst )
+		for( const CopiedString& sh : l_shaderfiles )
 		{
-			shadername << path.c_str() << reinterpret_cast<const char*>( lst->data );
+			shadername << path.c_str() << sh;
 			LoadShaderFile( shadername.c_str() );
 			shadername.clear();
-			lst = lst->next;
 		}
 	}
 
@@ -1700,7 +1688,7 @@ void Shaders_Load(){
 
 void Shaders_Free(){
 	FreeShaders();
-	FreeShaderList();
+	l_shaderfiles.clear();
 	g_shaderFilenames.clear();
 }
 

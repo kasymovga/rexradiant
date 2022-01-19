@@ -19,10 +19,9 @@
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#if !defined( INCLUDED_NAMEKEYS_H )
-#define INCLUDED_NAMEKEYS_H
+#pragma once
 
-#include <stdio.h>
+#include <cstdio>
 #include <map>
 #include "generic/static.h"
 #include "entitylib.h"
@@ -72,15 +71,15 @@ class NameKeys : public Entity::Observer, public Namespaced
 		}
 	}
 	void insertAll(){
-		for ( KeyValues::iterator i = m_keyValues.begin(); i != m_keyValues.end(); ++i )
+		for ( auto& [key, value] : m_keyValues )
 		{
-			insertName( ( *i ).first.c_str(), *( *i ).second );
+			insertName( key.c_str(), *value );
 		}
 	}
 	void eraseAll(){
-		for ( KeyValues::iterator i = m_keyValues.begin(); i != m_keyValues.end(); ++i )
+		for ( auto& [key, value] : m_keyValues )
 		{
-			eraseName( ( *i ).first.c_str(), *( *i ).second );
+			eraseName( key.c_str(), *value );
 		}
 	}
 public:
@@ -130,5 +129,3 @@ inline bool keyIsNameQuake3( const char* key ){
 	    || string_equal( key, "killtarget" )
 	    || ( string_equal_n( key, "target", 6 ) && string_is_integer( key + 6 ) ); // Nexuiz
 }
-
-#endif

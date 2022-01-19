@@ -38,7 +38,7 @@
 #include <algorithm>
 #include <gtk/gtk.h>
 
-#include "cmdlib.h"
+#include "commandlib.h"
 #include "convert.h"
 #include "string/string.h"
 #include "stream/stringstream.h"
@@ -61,7 +61,7 @@ void message_print( message_info_t* self, const char* characters, std::size_t le
 	const char* end = characters + length;
 	while ( characters != end )
 	{
-		std::size_t space = message_info_t::bufsize - 1 - self->m_length;
+		std::size_t space = std::size( self->m_buffer ) - 1 - self->m_length;
 		if ( space == 0 ) {
 			message_flush( self );
 		}
@@ -395,7 +395,7 @@ inline MessageOutputStream& operator<<( MessageOutputStream& ostream, const T& t
 
 static void saxCharacters( message_info_t *data, const xmlChar *ch, int len ){
 	MessageOutputStream ostream( data );
-	ostream << StringRange( reinterpret_cast<const char*>( ch ), reinterpret_cast<const char*>( ch + len ) );
+	ostream << StringRange( reinterpret_cast<const char*>( ch ), len );
 }
 
 static void saxComment( void *ctx, const xmlChar *msg ){

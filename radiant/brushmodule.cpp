@@ -58,8 +58,10 @@ const char* BrushType_getName( EBrushType type ){
 	case eBrushTypeQuake2:
 	case eBrushTypeQuake3:
 		return "Axial Projection";
+	case eBrushTypeQuake2BP:
 	case eBrushTypeQuake3BP:
 		return "Brush Primitives";
+	case eBrushTypeQuake2Valve220:
 	case eBrushTypeQuake3Valve220:
 	case eBrushTypeValve220:
 		return "Valve 220";
@@ -97,7 +99,7 @@ void Brush_constructPreferences( PreferencesPage& page ){
 		page.appendCombo(
 		    "New map Brush Type",
 		    g_brushType,
-		    STRING_ARRAY_RANGE( names )
+		    StringArrayRange( names )
 		);
 	}
 	// d1223m
@@ -348,8 +350,8 @@ public:
 	BrushQuake2API(){
 		g_multipleBrushTypes = true;
 		g_brushTypes[0] = eBrushTypeQuake2;
-		g_brushTypes[1] = eBrushTypeQuake3BP;
-		g_brushTypes[2] = eBrushTypeQuake3Valve220;
+		g_brushTypes[1] = eBrushTypeQuake2BP;
+		g_brushTypes[2] = eBrushTypeQuake2Valve220;
 
 		Brush_Construct( eBrushTypeQuake2 );
 

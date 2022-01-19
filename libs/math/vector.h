@@ -19,8 +19,7 @@
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#if !defined( INCLUDED_MATH_VECTOR_H )
-#define INCLUDED_MATH_VECTOR_H
+#pragma once
 
 /// \file
 /// \brief Vector data types and related operations.
@@ -69,7 +68,7 @@ inline long long llrint( double f ){
 #endif
 
 #include <cmath>
-#include <float.h>
+#include <cfloat>
 #include <algorithm>
 
 
@@ -122,6 +121,25 @@ inline Element float_mod( const Element& self, const ModulusElement& modulus ){
 	return float_mod_range( Element( fmod( static_cast<double>( self ), static_cast<double>( modulus ) ) ), modulus );
 }
 
+
+template<typename Element, typename OtherElement>
+inline bool vector2_equal( const BasicVector2<Element>& self, const BasicVector2<OtherElement>& other ){
+	return self.x() == other.x() && self.y() == other.y();
+}
+template<typename Element, typename OtherElement>
+inline bool operator==( const BasicVector2<Element>& self, const BasicVector2<OtherElement>& other ){
+	return vector2_equal( self, other );
+}
+template<typename Element, typename OtherElement>
+inline bool operator!=( const BasicVector2<Element>& self, const BasicVector2<OtherElement>& other ){
+	return !vector2_equal( self, other );
+}
+
+template<typename Element, typename OtherElement, typename Epsilon>
+inline bool vector2_equal_epsilon( const BasicVector2<Element>& self, const BasicVector2<OtherElement>& other, Epsilon epsilon ){
+	return float_equal_epsilon( self.x(), other.x(), epsilon )
+	    && float_equal_epsilon( self.y(), other.y(), epsilon );
+}
 
 template<typename Element, typename OtherElement>
 inline BasicVector2<Element> vector2_added( const BasicVector2<Element>& self, const BasicVector2<OtherElement>& other ){
@@ -727,5 +745,3 @@ template<typename Element>
 inline BasicVector3<Element> vector4_projected( const BasicVector4<Element>& self ){
 	return vector3_scaled( vector4_to_vector3( self ), 1.0 / self[3] );
 }
-
-#endif

@@ -19,8 +19,7 @@
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#if !defined( INCLUDED_BRUSHXML_H )
-#define INCLUDED_BRUSHXML_H
+#pragma once
 
 #include "stream/stringstream.h"
 #include "xml/xmlelement.h"
@@ -218,9 +217,9 @@ inline void FacePlane_exportXML( const FacePlane& facePlane, XMLImporter& import
 
 	{
 		// write planepts
-		for ( int i = 0 ; i < 3 ; i++ )
+		for ( int i = 0; i < 3; i++ )
 		{
-			for ( int j = 0 ; j < 3 ; j++ )
+			for ( int j = 0; j < 3; j++ )
 			{
 				importer << Face::m_quantise( facePlane.planePoints()[i][j] ) << ' ';
 			}
@@ -279,7 +278,7 @@ public:
 	FaceXMLExporter( const Face& face ) : m_face( face ){
 	}
 	void exportXML( XMLImporter& importer ){
-		bool bAlternateTexdef = ( Face::m_type == eBrushTypeQuake3BP || Face::m_type == eBrushTypeDoom3 || Face::m_type == eBrushTypeQuake4 );
+		bool bAlternateTexdef = ( Face::m_type == eBrushTypeQuake3BP || Face::m_type == eBrushTypeQuake2BP || Face::m_type == eBrushTypeDoom3 || Face::m_type == eBrushTypeQuake4 );
 
 		// write shader
 		{
@@ -418,6 +417,3 @@ public:
 		importer.popElement( brushElement.name() );
 	}
 };
-
-
-#endif

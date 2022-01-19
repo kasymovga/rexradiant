@@ -19,8 +19,7 @@
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#if !defined( INCLUDED_MATH_PLANE_H )
-#define INCLUDED_MATH_PLANE_H
+#pragma once
 
 /// \file
 /// \brief Plane data types and related operations.
@@ -41,6 +40,10 @@ public:
 	template<typename Element>
 	Plane3___( const BasicVector3<Element>& normal, double dist )
 		: a( normal.x() ), b( normal.y() ), c( normal.z() ), d( dist ){
+	}
+	template<typename Element>
+	explicit Plane3___( const Plane3___<Element>& other )
+		: a( other.a ), b( other.b ), c( other.c ), d( other.d ){
 	}
 
 	BasicVector3<T>& normal(){
@@ -170,5 +173,3 @@ template<typename P, typename V>
 inline BasicVector3<V> plane3_project_point( const Plane3___<P>& plane, const BasicVector3<V>& point ){
 	return point - plane.normal() * plane3_distance_to_point( plane, point );
 }
-
-#endif

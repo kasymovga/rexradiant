@@ -19,8 +19,7 @@
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#if !defined( INCLUDED_XML_XMLWRITER_H )
-#define INCLUDED_XML_XMLWRITER_H
+#pragma once
 
 #include "convert.h"
 #include <vector>
@@ -107,7 +106,7 @@ class XMLStreamWriter : public XMLImporter, public XMLAttrVisitor
 	std::vector<state_t> m_elements;
 
 	void write_cdata( const char* buffer, std::size_t length ){
-		m_ostream << StringRange( buffer, buffer + length );
+		m_ostream << StringRange( buffer, length );
 	}
 	void write_string( const char* string ){
 		m_ostream << string;
@@ -173,6 +172,3 @@ public:
 		write_quoted_string( value );
 	}
 };
-
-
-#endif

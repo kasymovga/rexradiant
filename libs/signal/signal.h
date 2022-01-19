@@ -1,6 +1,5 @@
 
-#if !defined( INCLUDED_SIGNAL_H )
-#define INCLUDED_SIGNAL_H
+#pragma once
 
 #include "isignal.h"
 #include "memory/allocator.h"
@@ -298,7 +297,7 @@ public:
 // It is safe to disconnect the signal handler currently being invoked.
 template<typename InputIterator, typename SignalHandlerInvoke>
 inline void invokeSignalHandlers( InputIterator first, InputIterator last, SignalHandlerInvoke invoke ){
-	while ( first != last && invoke( *first++ ) != SIGNAL_STOP_EMISSION ) ;
+	while ( first != last && invoke( *first++ ) != SIGNAL_STOP_EMISSION ){};
 }
 
 class Signal0 : public SignalBase<SignalHandler>
@@ -338,5 +337,3 @@ public:
 		invokeSignalHandlers( Base::begin(), Base::end(), Functor3Invoke<typename Base::handler_type>( a1, a2, a3 ) );
 	}
 };
-
-#endif

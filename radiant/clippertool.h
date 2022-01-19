@@ -19,29 +19,28 @@
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#if !defined( INCLUDED_CLIPPERTOOL_H )
-#define INCLUDED_CLIPPERTOOL_H
+#pragma once
 
 #include "generic/vector.h"
 
 class ClipperPoints
 {
 public:
-	Vector3 _points[3];
+	DoubleVector3 _points[3];
 	std::size_t _count;
-	ClipperPoints( const Vector3& p0, const Vector3& p1, const Vector3& p2, std::size_t count ){
+	ClipperPoints( const DoubleVector3& p0, const DoubleVector3& p1, const DoubleVector3& p2, std::size_t count ){
 		_points[0] = p0;
 		_points[1] = p1;
 		_points[2] = p2;
 		_count = count;
 	}
 	ClipperPoints() : _count( 0 ){
-		_points[0] = _points[1] = _points[2] = Vector3( 0, 0, 0 );
+		_points[0] = _points[1] = _points[2] = DoubleVector3( 0, 0, 0 );
 	}
-	const Vector3& operator[]( std::size_t i ) const {
+	const DoubleVector3& operator[]( std::size_t i ) const {
 		return _points[i];
 	}
-	Vector3& operator[]( std::size_t i ){
+	DoubleVector3& operator[]( std::size_t i ){
 		return _points[i];
 	}
 };
@@ -56,5 +55,3 @@ bool Clipper_get2pointsIn2d();
 void ClipperModeQuick();
 void Clipper_tryDoubleclick();
 void Clipper_tryDoubleclickedCut();
-
-#endif

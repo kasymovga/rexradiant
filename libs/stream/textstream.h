@@ -19,8 +19,7 @@
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#if !defined( INCLUDED_STREAM_TEXTSTREAM_H )
-#define INCLUDED_STREAM_TEXTSTREAM_H
+#pragma once
 
 /// \file
 /// \brief Text-output-formatting.
@@ -30,8 +29,8 @@
 #include <cctype>
 #include <cstddef>
 #include <cmath>
-#include <stdio.h>
-#include <string.h>
+#include <cstdio>
+#include <cstring>
 #include <algorithm>
 
 #include "generic/arrayrange.h"
@@ -260,14 +259,14 @@ public:
 /// \brief Writes a floating point value to \p ostream in decimal form with trailing zeros removed.
 template<typename TextOutputStreamType>
 inline TextOutputStreamType& ostream_write( TextOutputStreamType& ostream, const Decimal& decimal ){
-	const int bufferSize = 22;
+	const std::size_t bufferSize = 22;
 	char buf[bufferSize];
-	std::size_t length = snprintf( buf, bufferSize, "%10.10lf", decimal.m_f );
+	const std::size_t length = snprintf( buf, bufferSize, "%10.10lf", decimal.m_f );
 	const char* first = buf;
 	for (; *first == ' '; ++first )
 	{
 	}
-	const char* last = buf + length - 1;
+	const char* last = buf + std::min( length, bufferSize - 1 ) - 1;
 	for (; *last == '0'; --last )
 	{
 	}
@@ -282,7 +281,7 @@ inline TextOutputStreamType& ostream_write( TextOutputStreamType& ostream, const
 /// \brief Writes a \p range of characters to \p ostream.
 template<typename TextOutputStreamType>
 inline TextOutputStreamType& ostream_write( TextOutputStreamType& ostream, const StringRange& range ){
-	ostream.write( range.first, range.last - range.first );
+	ostream.write( range.data(), range.size() );
 	return ostream;
 }
 
@@ -389,7 +388,7 @@ public:
 		c = *m_cur++;
 		return true;
 	}
-	bool bufferContains( const char* str ) const{
+	bool bufferContains( const char* str ) const {
 		return ( std::search( m_cur, m_end, str, str + strlen( str ) ) != m_end ) ||
 		       ( std::search( m_buffer2, m_end2, str, str + strlen( str ) ) != m_end2 );
 	}
@@ -399,9 +398,8 @@ public:
 /// \brief A wrapper for a TextOutputStream, optimised for writing a single character at a time.
 class SingleCharacterOutputStream : public TextOutputStream
 {
-	enum unnamed0 { m_bufsize = 1024 };
 	TextOutputStream& m_ostream;
-	char m_buffer[m_bufsize];
+	char m_buffer[1024];
 	char* m_pos;
 	const char* m_end;
 
@@ -416,7 +414,7 @@ class SingleCharacterOutputStream : public TextOutputStream
 		reset();
 	}
 public:
-	SingleCharacterOutputStream( TextOutputStream& ostream ) : m_ostream( ostream ), m_pos( m_buffer ), m_end( m_buffer + m_bufsize ){
+	SingleCharacterOutputStream( TextOutputStream& ostream ) : m_ostream( ostream ), m_pos( m_buffer ), m_end( m_buffer + std::size( m_buffer ) ){
 	}
 	~SingleCharacterOutputStream(){
 		flush();
@@ -466,5 +464,3 @@ public:
 		}
 	}
 };
-
-#endif

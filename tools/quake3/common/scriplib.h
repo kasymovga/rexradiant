@@ -19,32 +19,39 @@
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-// scriplib.h
+#pragma once
 
-#ifndef __CMDLIB__
-#include "../common/cmdlib.h"
-#endif
+#include "cmdlib.h"
 
 #define MAXTOKEN    1024
 
 extern char token[MAXTOKEN];
-extern char    *scriptbuffer,*script_p,*scriptend_p;
-extern int grabbed;
 extern int scriptline;
-extern bool endofscript;
 
+/// \param[in] index -1: \p filename is absolute path
+/// \param[in] index >= 0: \p filename is relative path in VSF, Nth occurrence of file
+/// \return true on success
+bool LoadScriptFile( const char *filename, int index = 0, bool verbose = true );
+void ParseFromMemory( char *buffer, size_t size );
 
-void LoadScriptFile( const char *filename, int index );
-void SilentLoadScriptFile( const char *filename, int index );
-void ParseFromMemory( char *buffer, int size );
-
+/// \param[in] crossline true: write next token to \c token or return false on EOF
+/// \param[in] crossline false: find next token on the current line or emit \c Error
 bool GetToken( bool crossline );
-void UnGetToken( void );
-bool TokenAvailable( void );
 
+/// \brief Signals that the current token was not used, and should be reported for the next \c GetToken().
+/// Only may be used once between the \c GetToken() calls.
+void UnGetToken();
+
+/// \brief
+/// \return true, if there is another token on the line.
+bool TokenAvailable();
+
+/// \brief Parses next token and emits \c Error, if it's not equal to \p match.
+/// Allowed to cross a line.
 void MatchToken( const char *match );
 
-void Parse1DMatrix( int x, float *m );
+template<typename T>
+void Parse1DMatrix( int x, T *m );
 void Parse2DMatrix( int y, int x, float *m );
 void Parse3DMatrix( int z, int y, int x, float *m );
 

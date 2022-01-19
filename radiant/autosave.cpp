@@ -23,7 +23,7 @@
 
 #include "os/file.h"
 #include "os/path.h"
-#include "cmdlib.h"
+#include "commandlib.h"
 #include "stream/stringstream.h"
 #include "gtkutil/messagebox.h"
 #include "scenelib.h"
@@ -114,7 +114,7 @@ scene::Node& Map_Node(){
 	return GlobalSceneGraph().root();
 }
 
-void QE_CheckAutoSave( void ){
+void QE_CheckAutoSave(){
 	if ( !Map_Valid( g_map ) || !ScreenUpdates_Enabled() ) {
 		return;
 	}
@@ -143,7 +143,7 @@ void QE_CheckAutoSave( void ){
 			{
 				if ( Map_Unnamed( g_map ) ) {
 					StringOutputStream autosave( 256 );
-					autosave << g_qeglobals.m_userGamePath.c_str() << "maps/";
+					autosave << g_qeglobals.m_userGamePath << "maps/";
 					Q_mkdir( autosave.c_str() );
 					autosave << "autosave.map";
 					Map_SaveFile( autosave.c_str() );

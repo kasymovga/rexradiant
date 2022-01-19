@@ -19,11 +19,11 @@
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#if !defined( INCLUDED_ZLIBSTREAM_H )
-#define INCLUDED_ZLIBSTREAM_H
+#pragma once
 
 #include "zlib.h"
 #include "idatastream.h"
+#include <vector> // std::size
 
 /// \brief A wrapper around an InputStream of data compressed with the zlib deflate algorithm.
 ///
@@ -33,8 +33,7 @@ class DeflatedInputStream : public InputStream
 {
 	InputStream& m_istream;
 	z_stream m_zipstream;
-	enum unnamed0 { m_bufsize = 1024 };
-	unsigned char m_buffer[m_bufsize];
+	unsigned char m_buffer[1024];
 
 public:
 	DeflatedInputStream( InputStream& istream )
@@ -55,7 +54,7 @@ public:
 		{
 			if ( m_zipstream.avail_in == 0 ) {
 				m_zipstream.next_in = m_buffer;
-				m_zipstream.avail_in = static_cast<uInt>( m_istream.read( m_buffer, m_bufsize ) );
+				m_zipstream.avail_in = static_cast<uInt>( m_istream.read( m_buffer, std::size( m_buffer ) ) );
 			}
 			if ( inflate( &m_zipstream, Z_SYNC_FLUSH ) != Z_OK ) {
 				break;
@@ -64,5 +63,3 @@ public:
 		return length - m_zipstream.avail_out;
 	}
 };
-
-#endif

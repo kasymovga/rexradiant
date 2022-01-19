@@ -19,11 +19,10 @@
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#if !defined( INCLUDED_STREAM_TEXTFILESTREAM_H )
-#define INCLUDED_STREAM_TEXTFILESTREAM_H
+#pragma once
 
 #include "itextstream.h"
-#include <stdio.h>
+#include <cstdio>
 
 /// \brief A wrapper around a file input stream opened for reading in text mode. Similar to std::ifstream.
 class TextFileInputStream : public TextInputStream
@@ -75,6 +74,3 @@ template<typename T>
 inline TextFileOutputStream& operator<<( TextFileOutputStream& ostream, const T& t ){
 	return ostream_write( ostream, t );
 }
-
-
-#endif

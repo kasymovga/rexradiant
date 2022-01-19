@@ -30,6 +30,7 @@
 
 /* dependencies */
 #include "q3map2.h"
+#include "libxml/tree.h"
 
 
 
@@ -54,14 +55,14 @@
    TTimo: builds a polyline xml node
    =============
  */
-xmlNodePtr LeakFile( tree_t *tree ){
+static xmlNodePtr LeakFile( const tree_t& tree ){
 	Vector3 mid;
 	FILE    *linefile;
-	node_t  *node;
+	const node_t  *node;
 	int count;
 	xmlNodePtr xml_node, point;
 
-	if ( !tree->outside_node.occupied ) {
+	if ( !tree.outside_node.occupied ) {
 		return NULL;
 	}
 
@@ -76,17 +77,17 @@ xmlNodePtr LeakFile( tree_t *tree ){
 	xml_node = xmlNewNode( NULL, (const xmlChar*)"polyline" );
 
 	count = 0;
-	node = &tree->outside_node;
+	node = &tree.outside_node;
 	while ( node->occupied > 1 )
 	{
 		int next;
-		portal_t    *p, *nextportal = NULL;
-		node_t      *nextnode = NULL;
+		const portal_t    *p, *nextportal = NULL;
+		const node_t      *nextnode = NULL;
 		int s;
 
 		// find the best portal exit
 		next = node->occupied;
-		for ( p = node->portals ; p ; p = p->next[!s] )
+		for ( p = node->portals; p; p = p->next[!s] )
 		{
 			s = ( p->nodes[0] == node );
 			if ( p->nodes[s]->occupied
@@ -116,4 +117,19 @@ xmlNodePtr LeakFile( tree_t *tree ){
 	xml_Select( "Entity leaked", node->occupant->mapEntityNum, 0, false );
 
 	return xml_node;
+}
+
+void Leak_feedback( const tree_t& tree ){
+	Sys_FPrintf( SYS_NOXMLflag | SYS_ERR, "**********************\n" );
+	Sys_FPrintf( SYS_NOXMLflag | SYS_ERR, "******* leaked *******\n" );
+	Sys_FPrintf( SYS_NOXMLflag | SYS_ERR, "**********************\n" );
+	xmlNodePtr polyline = LeakFile( tree );
+	xmlNodePtr leaknode = xmlNewNode( NULL, (const xmlChar*)"message" );
+	xmlNodeAddContent( leaknode, (const xmlChar*)"MAP LEAKED\n" );
+	xmlAddChild( leaknode, polyline );
+	char level[ 2 ];
+	level[0] = (int) '0' + SYS_ERR;
+	level[1] = 0;
+	xmlSetProp( leaknode, (const xmlChar*)"level", (const xmlChar*)level );
+	xml_SendNode( leaknode );
 }

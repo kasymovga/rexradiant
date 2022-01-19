@@ -194,10 +194,8 @@ static void ExpandMaxIterations( int *maxIterations, int maxError, const Vector3
    creates a mapDrawSurface_t from the patch text
  */
 
-void ParsePatch( bool onlyLights ){
+void ParsePatch( bool onlyLights, entity_t& mapEnt, int mapPrimitiveNum ){
 	float info[ 5 ];
-	int i, j, k;
-	parseMesh_t     *pm;
 	mesh_t m;
 	bspDrawVert_t   *verts;
 	bool degenerate;
@@ -213,24 +211,25 @@ void ParsePatch( bool onlyLights ){
 	Parse1DMatrix( 5, info );
 	m.width = info[0];
 	m.height = info[1];
-	m.verts = verts = safe_malloc( m.width * m.height * sizeof( m.verts[0] ) );
+	const int size = ( m.width * m.height );
+	m.verts = verts = safe_malloc( size * sizeof( m.verts[0] ) );
 
 	if ( m.width < 0 || m.width > MAX_PATCH_SIZE || m.height < 0 || m.height > MAX_PATCH_SIZE ) {
 		Error( "ParsePatch: bad size" );
 	}
 
 	MatchToken( "(" );
-	for ( j = 0; j < m.width ; j++ )
+	for ( int j = 0; j < m.width; ++j )
 	{
 		MatchToken( "(" );
-		for ( i = 0; i < m.height ; i++ )
+		for ( int i = 0; i < m.height; ++i )
 		{
 			Parse1DMatrix( 5, verts[ i * m.width + j ].xyz.data() );
 
 			/* ydnar: fix colors */
-			for ( k = 0; k < MAX_LIGHTMAPS; k++ )
+			for ( auto& color : verts[ i * m.width + j ].color )
 			{
-				verts[ i * m.width + j ].color[ k ].set( 255 );
+				color.set( 255 );
 			}
 		}
 		MatchToken( ")" );
@@ -257,12 +256,11 @@ void ParsePatch( bool onlyLights ){
 
 
 	/* ydnar: delete and warn about degenerate patches */
-	j = ( m.width * m.height );
 	Vector4 delta( 0, 0, 0, 0 );
 	degenerate = true;
 
 	/* find first valid vector */
-	for ( i = 1; i < j && delta[ 3 ] == 0; i++ )
+	for ( int i = 1; i < size && delta[ 3 ] == 0; ++i )
 	{
 		delta.vec3() = m.verts[ 0 ].xyz - m.verts[ i ].xyz;
 		delta[ 3 ] = VectorNormalize( delta.vec3() );
@@ -275,7 +273,7 @@ void ParsePatch( bool onlyLights ){
 	else
 	{
 		/* if all vectors match this or are zero, then this is a degenerate patch */
-		for ( i = 1; i < j && degenerate; i++ )
+		for ( int i = 1; i < size && degenerate; ++i )
 		{
 			Vector4 delta2( m.verts[ 0 ].xyz - m.verts[ i ].xyz, 0 );
 			delta2[ 3 ] = VectorNormalize( delta2.vec3() );
@@ -294,7 +292,7 @@ void ParsePatch( bool onlyLights ){
 
 	/* warn and select degenerate patch */
 	if ( degenerate ) {
-		xml_Select( "degenerate patch", mapEnt->mapEntityNum, entitySourceBrushes, false );
+		xml_Select( "degenerate patch", mapEnt.mapEntityNum, mapPrimitiveNum, false );
 		free( m.verts );
 		return;
 	}
@@ -302,9 +300,9 @@ void ParsePatch( bool onlyLights ){
 	/* find longest curve on the mesh */
 	longestCurve = 0.0f;
 	maxIterations = 0;
-	for ( j = 0; j + 2 < m.width; j += 2 )
+	for ( int j = 0; j + 2 < m.width; j += 2 )
 	{
-		for ( i = 0; i + 2 < m.height; i += 2 )
+		for ( int i = 0; i + 2 < m.height; i += 2 )
 		{
 			ExpandLongestCurve( &longestCurve, verts[ i * m.width + j ].xyz, verts[ i * m.width + ( j + 1 ) ].xyz, verts[ i * m.width + ( j + 2 ) ].xyz );      /* row */
 			ExpandLongestCurve( &longestCurve, verts[ i * m.width + j ].xyz, verts[ ( i + 1 ) * m.width + j ].xyz, verts[ ( i + 2 ) * m.width + j ].xyz );      /* col */
@@ -314,11 +312,11 @@ void ParsePatch( bool onlyLights ){
 	}
 
 	/* allocate patch mesh */
-	pm = safe_calloc( sizeof( *pm ) );
+	parseMesh_t *pm = safe_calloc( sizeof( *pm ) );
 
 	/* ydnar: add entity/brush numbering */
-	pm->entityNum = mapEnt->mapEntityNum;
-	pm->brushNum = entitySourceBrushes;
+	pm->entityNum = mapEnt.mapEntityNum;
+	pm->brushNum = mapPrimitiveNum;
 
 	/* set shader */
 	pm->shaderInfo = ShaderInfoForShader( shader );
@@ -331,8 +329,8 @@ void ParsePatch( bool onlyLights ){
 	pm->maxIterations = maxIterations;
 
 	/* link to the entity */
-	pm->next = mapEnt->patches;
-	mapEnt->patches = pm;
+	pm->next = mapEnt.patches;
+	mapEnt.patches = pm;
 }
 
 
@@ -343,10 +341,6 @@ void ParsePatch( bool onlyLights ){
  */
 
 static void GrowGroup_r( parseMesh_t *pm, int patchNum, int patchCount, parseMesh_t **meshes, byte *bordering, byte *group ){
-	int i;
-	const byte  *row;
-
-
 	/* early out check */
 	if ( group[ patchNum ] ) {
 		return;
@@ -355,14 +349,14 @@ static void GrowGroup_r( parseMesh_t *pm, int patchNum, int patchCount, parseMes
 
 	/* set it */
 	group[ patchNum ] = 1;
-	row = bordering + patchNum * patchCount;
+	const byte *row = bordering + patchNum * patchCount;
 
 	/* check maximums */
 	value_maximize( pm->longestCurve, meshes[ patchNum ]->longestCurve );
 	value_maximize( pm->maxIterations, meshes[ patchNum ]->maxIterations );
 
 	/* walk other patches */
-	for ( i = 0; i < patchCount; i++ )
+	for ( int i = 0; i < patchCount; ++i )
 	{
 		if ( row[ i ] ) {
 			GrowGroup_r( pm, i, patchCount, meshes, bordering, group );
@@ -378,7 +372,7 @@ static void GrowGroup_r( parseMesh_t *pm, int patchNum, int patchCount, parseMes
    pull apart.
  */
 
-void PatchMapDrawSurfs( entity_t *e ){
+void PatchMapDrawSurfs( entity_t& e ){
 	int i, j, k, l, c1, c2;
 	parseMesh_t             *pm;
 	parseMesh_t             *check, *scan;
@@ -396,7 +390,7 @@ void PatchMapDrawSurfs( entity_t *e ){
 	Sys_FPrintf( SYS_VRB, "--- PatchMapDrawSurfs ---\n" );
 
 	patchCount = 0;
-	for ( pm = e->patches ; pm ; pm = pm->next  ) {
+	for ( pm = e.patches; pm; pm = pm->next ) {
 		meshes[patchCount] = pm;
 		patchCount++;
 	}
@@ -407,19 +401,19 @@ void PatchMapDrawSurfs( entity_t *e ){
 	bordering = safe_calloc( patchCount * patchCount );
 
 	// build the bordering matrix
-	for ( k = 0 ; k < patchCount ; k++ ) {
+	for ( k = 0; k < patchCount; ++k ) {
 		bordering[k * patchCount + k] = 1;
 
-		for ( l = k + 1 ; l < patchCount ; l++ ) {
+		for ( l = k + 1; l < patchCount; ++l ) {
 			check = meshes[k];
 			scan = meshes[l];
 			c1 = scan->mesh.width * scan->mesh.height;
 			v1 = scan->mesh.verts;
 
-			for ( i = 0 ; i < c1 ; i++, v1++ ) {
+			for ( i = 0; i < c1; ++i, ++v1 ) {
 				c2 = check->mesh.width * check->mesh.height;
 				v2 = check->mesh.verts;
-				for ( j = 0 ; j < c2 ; j++, v2++ ) {
+				for ( j = 0; j < c2; ++j, ++v2 ) {
 					if ( vector3_equal_epsilon( v1->xyz, v2->xyz, 1.f ) ) {
 						break;
 					}

@@ -42,7 +42,6 @@ static void CreateSunLight( sun_t *sun ){
 	int i;
 	float photons, d, angle, elevation, da, de;
 	Vector3 direction;
-	light_t     *light;
 
 
 	/* dummy check */
@@ -98,28 +97,26 @@ static void CreateSunLight( sun_t *sun ){
 
 		/* create a light */
 		numSunLights++;
-		light = safe_calloc( sizeof( *light ) );
-		light->next = lights;
-		lights = light;
+		light_t& light = lights.emplace_front();
 
 		/* initialize the light */
-		light->flags = LightFlags::DefaultSun;
-		light->type = ELightType::Sun;
-		light->fade = 1.0f;
-		light->falloffTolerance = falloffTolerance;
-		light->filterRadius = sun->filterRadius / sun->numSamples;
-		light->style = noStyles ? LS_NORMAL : sun->style;
+		light.flags = LightFlags::DefaultSun;
+		light.type = ELightType::Sun;
+		light.fade = 1.0f;
+		light.falloffTolerance = falloffTolerance;
+		light.filterRadius = sun->filterRadius / sun->numSamples;
+		light.style = noStyles ? LS_NORMAL : sun->style;
 
 		/* set the light's position out to infinity */
-		light->origin = direction * ( MAX_WORLD_COORD * 8.0f );    /* MAX_WORLD_COORD * 2.0f */
+		light.origin = direction * ( MAX_WORLD_COORD * 8.0f );    /* MAX_WORLD_COORD * 2.0f */
 
 		/* set the facing to be the inverse of the sun direction */
-		light->normal = -direction;
-		light->dist = vector3_dot( light->origin, light->normal );
+		light.normal = -direction;
+		light.dist = vector3_dot( light.origin, light.normal );
 
 		/* set color and photons */
-		light->color = sun->color;
-		light->photons = photons * skyScale;
+		light.color = sun->color;
+		light.photons = photons * skyScale;
 	}
 
 	/* another sun? */
@@ -202,23 +199,18 @@ static void CreateSkyLights( const Vector3& color, float value, int iterations, 
    creates lights from light entities
  */
 
-void CreateEntityLights( void ){
-	int j;
-	light_t         *light, *light2;
-	const entity_t  *e, *e2;
-
-
+static void CreateEntityLights(){
 	/* go through entity list and find lights */
 	for ( std::size_t i = 0; i < entities.size(); ++i )
 	{
 		/* get entity */
-		e = &entities[ i ];
+		const entity_t& e = entities[ i ];
 		/* ydnar: check for lightJunior */
 		bool junior;
-		if ( e->classname_is( "lightJunior" ) ) {
+		if ( e.classname_is( "lightJunior" ) ) {
 			junior = true;
 		}
-		else if ( e->classname_prefixed( "light" ) ) {
+		else if ( e.classname_prefixed( "light" ) ) {
 			junior = false;
 		}
 		else{
@@ -226,18 +218,16 @@ void CreateEntityLights( void ){
 		}
 
 		/* lights with target names (and therefore styles) are only parsed from BSP */
-		if ( !strEmpty( e->valueForKey( "targetname" ) ) && i >= numBSPEntities ) {
+		if ( !strEmpty( e.valueForKey( "targetname" ) ) && i >= numBSPEntities ) {
 			continue;
 		}
 
 		/* create a light */
 		numPointLights++;
-		light = safe_calloc( sizeof( *light ) );
-		light->next = lights;
-		lights = light;
+		light_t& light = lights.emplace_front();
 
 		/* handle spawnflags */
-		const int spawnflags = e->intForKey( "spawnflags" );
+		const int spawnflags = e.intForKey( "spawnflags" );
 
 		LightFlags flags;
 		/* ydnar: quake 3+ light behavior */
@@ -304,88 +294,88 @@ void CreateEntityLights( void ){
 		}
 
 		/* store the flags */
-		light->flags = flags;
+		light.flags = flags;
 
 		/* ydnar: set fade key (from wolf) */
-		light->fade = 1.0f;
-		if ( light->flags & LightFlags::AttenLinear ) {
-			light->fade = e->floatForKey( "fade" );
-			if ( light->fade == 0.0f ) {
-				light->fade = 1.0f;
+		light.fade = 1.0f;
+		if ( light.flags & LightFlags::AttenLinear ) {
+			light.fade = e.floatForKey( "fade" );
+			if ( light.fade == 0.0f ) {
+				light.fade = 1.0f;
 			}
 		}
 
 		/* ydnar: set angle scaling (from vlight) */
-		light->angleScale = e->floatForKey( "_anglescale" );
-		if ( light->angleScale != 0.0f ) {
-			light->flags |= LightFlags::AttenAngle;
+		light.angleScale = e.floatForKey( "_anglescale" );
+		if ( light.angleScale != 0.0f ) {
+			light.flags |= LightFlags::AttenAngle;
 		}
 
 		/* set origin */
-		light->origin = e->vectorForKey( "origin" );
-		e->read_keyvalue( light->style, "_style", "style" );
-		if ( light->style < LS_NORMAL || light->style >= LS_NONE ) {
-			Error( "Invalid lightstyle (%d) on entity %zu", light->style, i );
+		light.origin = e.vectorForKey( "origin" );
+		e.read_keyvalue( light.style, "_style", "style" );
+		if ( light.style < LS_NORMAL || light.style >= LS_NONE ) {
+			Error( "Invalid lightstyle (%d) on entity %zu", light.style, i );
 		}
 
 		/* set light intensity */
 		float intensity = 300.f;
-		e->read_keyvalue( intensity, "_light", "light" );
+		e.read_keyvalue( intensity, "_light", "light" );
 		if ( intensity == 0.0f ) {
 			intensity = 300.0f;
 		}
 
 		{	/* ydnar: set light scale (sof2) */
 			float scale;
-			if( e->read_keyvalue( scale, "scale" ) && scale != 0.f )
+			if( e.read_keyvalue( scale, "scale" ) && scale != 0.f )
 				intensity *= scale;
 		}
 
 		/* ydnar: get deviance and samples */
-		const float deviance = std::max( 0.f, e->floatForKey( "_deviance", "_deviation", "_jitter" ) );
-		const int numSamples = std::max( 1, e->intForKey( "_samples" ) );
+		const float deviance = std::max( 0.f, e.floatForKey( "_deviance", "_deviation", "_jitter" ) );
+		const int numSamples = std::max( 1, e.intForKey( "_samples" ) );
 
 		intensity /= numSamples;
 
 		{	/* ydnar: get filter radius */
-			light->filterRadius = std::max( 0.f, e->floatForKey( "_filterradius", "_filteradius", "_filter" ) );
+			light.filterRadius = std::max( 0.f, e.floatForKey( "_filterradius", "_filteradius", "_filter" ) );
 		}
 
 		/* set light color */
-		if ( e->read_keyvalue( light->color, "_color" ) ) {
+		if ( e.read_keyvalue( light.color, "_color" ) ) {
 			if ( colorsRGB ) {
-				light->color[0] = Image_LinearFloatFromsRGBFloat( light->color[0] );
-				light->color[1] = Image_LinearFloatFromsRGBFloat( light->color[1] );
-				light->color[2] = Image_LinearFloatFromsRGBFloat( light->color[2] );
+				light.color[0] = Image_LinearFloatFromsRGBFloat( light.color[0] );
+				light.color[1] = Image_LinearFloatFromsRGBFloat( light.color[1] );
+				light.color[2] = Image_LinearFloatFromsRGBFloat( light.color[2] );
 			}
-			if ( !( light->flags & LightFlags::Unnormalized ) ) {
-				ColorNormalize( light->color );
+			if ( !( light.flags & LightFlags::Unnormalized ) ) {
+				ColorNormalize( light.color );
 			}
 		}
 		else{
-			light->color.set( 1 );
+			light.color.set( 1 );
 		}
 
 
-		if( !e->read_keyvalue( light->extraDist, "_extradist" ) )
-			light->extraDist = extraDist;
+		if( !e.read_keyvalue( light.extraDist, "_extradist" ) )
+			light.extraDist = extraDist;
 
-		light->photons = intensity;
+		light.photons = intensity;
 
-		light->type = ELightType::Point;
+		light.type = ELightType::Point;
 
 		/* set falloff threshold */
-		light->falloffTolerance = falloffTolerance / numSamples;
+		light.falloffTolerance = falloffTolerance / numSamples;
 
 		/* lights with a target will be spotlights */
 		const char *target;
-		if ( e->read_keyvalue( target, "target" ) ) {
+		if ( e.read_keyvalue( target, "target" ) ) {
 			/* get target */
-			e2 = FindTargetEntity( target );
+			const entity_t *e2 = FindTargetEntity( target );
 			if ( e2 == NULL ) {
 				Sys_Warning( "light at (%i %i %i) has missing target\n",
-				             (int) light->origin[ 0 ], (int) light->origin[ 1 ], (int) light->origin[ 2 ] );
-				light->photons *= pointScale;
+				             (int) light.origin[ 0 ], (int) light.origin[ 1 ], (int) light.origin[ 2 ] );
+				light.photons *= pointScale;
 			}
 			else
 			{
@@ -394,72 +384,65 @@ void CreateEntityLights( void ){
 				numSpotLights++;
 
 				/* make a spotlight */
-				light->normal = e2->vectorForKey( "origin" ) - light->origin;
-				float dist = VectorNormalize( light->normal );
-				float radius = e->floatForKey( "radius" );
+				light.normal = e2->vectorForKey( "origin" ) - light.origin;
+				float dist = VectorNormalize( light.normal );
+				float radius = e.floatForKey( "radius" );
 				if ( !radius ) {
 					radius = 64;
 				}
 				if ( !dist ) {
 					dist = 64;
 				}
-				light->radiusByDist = ( radius + 16 ) / dist;
-				light->type = ELightType::Spot;
+				light.radiusByDist = ( radius + 16 ) / dist;
+				light.type = ELightType::Spot;
 
 				/* ydnar: wolf mods: spotlights always use nonlinear + angle attenuation */
-				light->flags &= ~LightFlags::AttenLinear;
-				light->flags |= LightFlags::AttenAngle;
-				light->fade = 1.0f;
+				light.flags &= ~LightFlags::AttenLinear;
+				light.flags |= LightFlags::AttenAngle;
+				light.fade = 1.0f;
 
 				/* ydnar: is this a sun? */
-				if ( e->boolForKey( "_sun" ) ) {
+				if ( e.boolForKey( "_sun" ) ) {
 					/* not a spot light */
 					numSpotLights--;
 
-					/* unlink this light */
-					lights = light->next;
-
 					/* make a sun */
 					sun_t sun;
-					sun.direction = -light->normal;
-					sun.color = light->color;
+					sun.direction = -light.normal;
+					sun.color = light.color;
 					sun.photons = intensity;
 					sun.deviance = degrees_to_radians( deviance );
 					sun.numSamples = numSamples;
-					sun.style = noStyles ? LS_NORMAL : light->style;
+					sun.style = noStyles ? LS_NORMAL : light.style;
 					sun.next = NULL;
+
+					/* free original light before sun insertion */
+					lights.pop_front();
 
 					/* make a sun light */
 					CreateSunLight( &sun );
-
-					/* free original light */
-					free( light );
-					light = NULL;
 
 					/* skip the rest of this love story */
 					continue;
 				}
 				else
 				{
-					light->photons *= spotScale;
+					light.photons *= spotScale;
 				}
 			}
 		}
 		else{
-			light->photons *= pointScale;
+			light.photons *= pointScale;
 		}
 
 		/* jitter the light */
-		for ( j = 1; j < numSamples; j++ )
+		for ( int j = 1; j < numSamples; j++ )
 		{
 			/* create a light */
-			light2 = safe_malloc( sizeof( *light ) );
-			memcpy( light2, light, sizeof( *light ) );
-			light2->next = lights;
-			lights = light2;
+			light_t& light2 = lights.emplace_front( light );
 
 			/* add to counts */
-			if ( light->type == ELightType::Spot ) {
+			if ( light.type == ELightType::Spot ) {
 				numSpotLights++;
 			}
 			else{
@@ -467,9 +450,9 @@ void CreateEntityLights( void ){
 			}
 
 			/* jitter it */
-			light2->origin[ 0 ] = light->origin[ 0 ] + ( Random() * 2.0f - 1.0f ) * deviance;
-			light2->origin[ 1 ] = light->origin[ 1 ] + ( Random() * 2.0f - 1.0f ) * deviance;
-			light2->origin[ 2 ] = light->origin[ 2 ] + ( Random() * 2.0f - 1.0f ) * deviance;
+			light2.origin[ 0 ] = light.origin[ 0 ] + ( Random() * 2.0f - 1.0f ) * deviance;
+			light2.origin[ 1 ] = light.origin[ 1 ] + ( Random() * 2.0f - 1.0f ) * deviance;
+			light2.origin[ 2 ] = light.origin[ 2 ] + ( Random() * 2.0f - 1.0f ) * deviance;
 		}
 	}
 }
@@ -483,13 +466,7 @@ void CreateEntityLights( void ){
 
 #define APPROX_BOUNCE   1.0f
 
-void CreateSurfaceLights( void ){
-	int i;
-	bspDrawSurface_t    *ds;
-	surfaceInfo_t       *info;
-	shaderInfo_t        *si;
-	light_t             *light;
-	float subdivide;
+static void CreateSurfaceLights(){
 	clipWork_t cw;
 
 
@@ -497,25 +474,25 @@ void CreateSurfaceLights( void ){
 	const bool nss = entities[ 0 ].boolForKey( "_noshadersun" );
 
 	/* walk the list of surfaces */
-	for ( i = 0; i < numBSPDrawSurfaces; i++ )
+	for ( size_t i = 0; i < bspDrawSurfaces.size(); i++ )
 	{
 		/* get surface and other bits */
-		ds = &bspDrawSurfaces[ i ];
-		info = &surfaceInfos[ i ];
-		si = info->si;
+		bspDrawSurface_t *ds = &bspDrawSurfaces[ i ];
+		surfaceInfo_t *info = &surfaceInfos[ i ];
+		const shaderInfo_t *si = info->si;
 
 		/* sunlight? */
 		if ( si->sun != NULL && !nss ) {
 			Sys_FPrintf( SYS_VRB, "Sun: %s\n", si->shader.c_str() );
 			CreateSunLight( si->sun );
-			si->sun = NULL; /* FIXME: leak! */
+			const_cast<shaderInfo_t*>( si )->sun = NULL; /* FIXME: leak! */
 		}
 
 		/* sky light? */
 		if ( si->skyLightValue > 0.0f ) {
 			Sys_FPrintf( SYS_VRB, "Sky: %s\n", si->shader.c_str() );
 			CreateSkyLights( si->color, si->skyLightValue, si->skyLightIterations, si->lightFilterRadius, si->lightStyle );
-			si->skyLightValue = 0.0f;   /* FIXME: hack! */
+			const_cast<shaderInfo_t*>( si )->skyLightValue = 0.0f;   /* FIXME: hack! */
 		}
 
 		/* try to early out */
@@ -526,20 +503,18 @@ void CreateSurfaceLights( void ){
 		/* autosprite shaders become point lights */
 		if ( si->autosprite ) {
 			/* create a light */
-			light = safe_calloc( sizeof( *light ) );
-			light->next = lights;
-			lights = light;
+			light_t& light = lights.emplace_front();
 
 			/* set it up */
-			light->flags = LightFlags::DefaultQ3A;
-			light->type = ELightType::Point;
-			light->photons = si->value * pointScale;
-			light->fade = 1.0f;
-			light->si = si;
-			light->origin = info->minmax.origin();
-			light->color = si->color;
-			light->falloffTolerance = falloffTolerance;
-			light->style = si->lightStyle;
+			light.flags = LightFlags::DefaultQ3A;
+			light.type = ELightType::Point;
+			light.photons = si->value * pointScale;
+			light.fade = 1.0f;
+			light.si = si;
+			light.origin = info->minmax.origin();
+			light.color = si->color;
+			light.falloffTolerance = falloffTolerance;
+			light.style = si->lightStyle;
 
 			/* add to point light count and continue */
 			numPointLights++;
@@ -547,12 +522,7 @@ void CreateSurfaceLights( void ){
 		}
 
 		/* get subdivision amount */
-		if ( si->lightSubdivide > 0 ) {
-			subdivide = si->lightSubdivide;
-		}
-		else{
-			subdivide = defaultLightSubdivide;
-		}
+		const float subdivide = si->lightSubdivide > 0? si->lightSubdivide : defaultLightSubdivide;
 
 		/* switch on type */
 		switch ( ds->surfaceType )
@@ -579,28 +549,20 @@ void CreateSurfaceLights( void ){
    find the offset values for inline models
  */
 
-void SetEntityOrigins( void ){
-	int j, k, f;
-	const char          *key;
-	int modelnum;
-	bspModel_t          *dm;
-	bspDrawSurface_t    *ds;
-
-
+static void SetEntityOrigins(){
 	/* ydnar: copy drawverts into private storage for nefarious purposes */
-	yDrawVerts = safe_malloc( numBSPDrawVerts * sizeof( bspDrawVert_t ) );
-	memcpy( yDrawVerts, bspDrawVerts, numBSPDrawVerts * sizeof( bspDrawVert_t ) );
+	yDrawVerts = bspDrawVerts;
 
 	/* set the entity origins */
 	for ( const auto& e : entities )
 	{
 		/* get entity and model */
-		key = e.valueForKey( "model" );
+		const char *key = e.valueForKey( "model" );
 		if ( key[ 0 ] != '*' ) {
 			continue;
 		}
-		modelnum = atoi( key + 1 );
-		dm = &bspModels[ modelnum ];
+		const int modelnum = atoi( key + 1 );
+		const bspModel_t& dm = bspModels[ modelnum ];
 
 		/* get entity origin */
 		Vector3 origin( 0 );
@@ -609,16 +571,15 @@ void SetEntityOrigins( void ){
 		}
 
 		/* set origin for all surfaces for this model */
-		for ( j = 0; j < dm->numBSPSurfaces; j++ )
+		for ( int j = 0; j < dm.numBSPSurfaces; j++ )
 		{
 			/* get drawsurf */
-			ds = &bspDrawSurfaces[ dm->firstBSPSurface + j ];
+			const bspDrawSurface_t& ds = bspDrawSurfaces[ dm.firstBSPSurface + j ];
 
 			/* set its verts */
-			for ( k = 0; k < ds->numVerts; k++ )
+			for ( int k = 0; k < ds.numVerts; k++ )
 			{
-				f = ds->firstVert + k;
-				yDrawVerts[ f ].xyz = origin + bspDrawVerts[ f ].xyz;
+				yDrawVerts[ ds.firstVert + k ].xyz += origin;
 			}
 		}
 	}
@@ -635,54 +596,46 @@ void SetEntityOrigins( void ){
    between this and the approximation
  */
 
-#define ONE_OVER_2PI    0.159154942f    //% (1.0f / (2.0f * 3.141592657f))
-
-float PointToPolygonFormFactor( const Vector3& point, const Vector3& normal, const winding_t *w ){
-	int i, j;
+float PointToPolygonFormFactor( const Vector3& point, const Vector3& normal, const winding_t& w ){
 	Vector3 dirs[ MAX_POINTS_ON_WINDING ];
-	float total;
-	float angle, facing;
+	double total = 0;
 
 
 	/* this is expensive */
-	for ( i = 0; i < w->numpoints; i++ )
+	for ( size_t i = 0; i < w.size(); ++i )
 	{
-		dirs[ i ] = w->p[ i ] - point;
+		dirs[ i ] = w[ i ] - point;
 		VectorFastNormalize( dirs[ i ] );
 	}
 
 	/* duplicate first vertex to avoid mod operation */
-	dirs[ i ] = dirs[ 0 ];
+	dirs[ w.size() ] = dirs[ 0 ];
 
 	/* calculcate relative area */
-	total = 0.0f;
-	for ( i = 0; i < w->numpoints; i++ )
+	for ( size_t i = 0; i < w.size(); ++i )
 	{
 		/* get a triangle */
-		j = i + 1;
-
-		/* get the angle */
-		/* roundoff can cause slight creep, which gives an IND from acos, thus clamp */
-		angle = acos( std::clamp( vector3_dot( dirs[ i ], dirs[ j ] ), -1.0, 1.0 ) );
-
-		Vector3 triNormal = vector3_cross( dirs[ i ], dirs[ j ] );
+		Vector3 triNormal = vector3_cross( dirs[ i ], dirs[ i + 1 ] );
 		if ( VectorFastNormalize( triNormal ) < 0.0001f ) {
 			continue;
 		}
 
-		facing = vector3_dot( normal, triNormal );
+		/* get the angle */
+		/* roundoff can cause slight creep, which gives an IND from acos, thus clamp */
+		const double angle = acos( std::clamp( vector3_dot( dirs[ i ], dirs[ i + 1 ] ), -1.0, 1.0 ) );
+
+		const double facing = vector3_dot( normal, triNormal );
 		total += facing * angle;
 
 		/* ydnar: this was throwing too many errors with radiosity + crappy maps. ignoring it. */
-		if ( total > 6.3f || total < -6.3f ) {
+		if ( total > 6.3 || total < -6.3 ) {
 			return 0.0f;
 		}
 	}
 
 	/* now in the range of 0 to 1 over the entire incoming hemisphere */
 	//%	total /= (2.0f * 3.141592657f);
-	total *= ONE_OVER_2PI;
-	return total;
+	return total * c_inv_2pi;
 }
 
 
@@ -693,7 +646,6 @@ float PointToPolygonFormFactor( const Vector3& point, const Vector3& normal, con
  */
 
 int LightContributionToSample( trace_t *trace ){
-	light_t         *light;
 	float angle;
 	float add;
 	float dist;
@@ -703,7 +655,7 @@ int LightContributionToSample( trace_t *trace ){
 	bool doAddDeluxe = true;
 
 	/* get light */
-	light = trace->light;
+	const light_t *light = trace->light;
 
 	/* clear color */
 	trace->forceSubsampling = 0.0f; /* to make sure */
@@ -1175,13 +1127,11 @@ void LightingAtSample( trace_t *trace, byte styles[ MAX_LIGHTMAPS ], Vector3 (&c
    note: this is similar to LightContributionToSample() but optimized for omnidirectional sampling
  */
 
-bool LightContributionToPoint( trace_t *trace ){
-	light_t     *light;
+static bool LightContributionToPoint( trace_t *trace ){
 	float add, dist;
 
-
 	/* get light */
-	light = trace->light;
+	const light_t *light = trace->light;
 
 	/* clear color */
 	trace->color.set( 0 );
@@ -1381,7 +1331,7 @@ struct contribution_t
 	int style;
 };
 
-void TraceGrid( int num ){
+static void TraceGrid( int num ){
 	int i, j, x, y, z, mod, numCon, numStyles;
 	float d, step;
 	Vector3 cheapColor, thisdir;
@@ -1447,8 +1397,9 @@ void TraceGrid( int num ){
 
 	/* trace to all the lights, find the major light direction, and divide the
 	   total light between that along the direction and the remaining in the ambient */
-	for ( trace.light = lights; trace.light != NULL; trace.light = trace.light->next )
+	for ( const light_t& light : lights )
 	{
+		trace.light = &light;
 		float addSize;
 
 
@@ -1643,11 +1594,7 @@ void TraceGrid( int num ){
    calculates the size of the lightgrid and allocates memory
  */
 
-void SetupGrid( void ){
-	int i, j;
-	char temp[ 64 ];
-
-
+static void SetupGrid(){
 	/* don't do this if not grid lighting */
 	if ( noGridLighting ) {
 		return;
@@ -1658,28 +1605,31 @@ void SetupGrid( void ){
 
 	/* quantize it */
 	const Vector3 oldGridSize = gridSize;
-	for ( i = 0; i < 3; i++ )
+	for ( int i = 0; i < 3; i++ )
 		gridSize[ i ] = std::max( 8.0, floor( gridSize[ i ] ) );
 
 	/* ydnar: increase gridSize until grid count is smaller than max allowed */
-	numRawGridPoints = MAX_MAP_LIGHTGRID + 1;
-	j = 0;
-	while ( numRawGridPoints > MAX_MAP_LIGHTGRID )
+	size_t numGridPoints;
+	for( int j = 0; ; )
 	{
 		/* get world bounds */
-		for ( i = 0; i < 3; i++ )
+		for ( int i = 0; i < 3; i++ )
 		{
 			gridMins[ i ] = gridSize[ i ] * ceil( bspModels[ 0 ].minmax.mins[ i ] / gridSize[ i ] );
 			const float max = gridSize[ i ] * floor( bspModels[ 0 ].minmax.maxs[ i ] / gridSize[ i ] );
 			gridBounds[ i ] = ( max - gridMins[ i ] ) / gridSize[ i ] + 1;
 		}
 
-		/* set grid size */
-		numRawGridPoints = gridBounds[ 0 ] * gridBounds[ 1 ] * gridBounds[ 2 ];
+		const int64_t num = int64_t( gridBounds[ 0 ] ) * gridBounds[ 1 ] * gridBounds[ 2 ]; // int64_t prevents reachable int32_t overflow : cube( 131072 / 8 ) = 4398046511104
 
 		/* increase grid size a bit */
-		if ( numRawGridPoints > MAX_MAP_LIGHTGRID ) {
+		if ( num > MAX_MAP_LIGHTGRID ) {
 			gridSize[ j++ % 3 ] += 16.0f;
+		}
+		else{
+			/* set grid size */
+			numGridPoints = num;
+			break;
 		}
 	}
 
@@ -1688,37 +1638,29 @@ void SetupGrid( void ){
 
 	/* different? */
 	if ( !VectorCompare( gridSize, oldGridSize ) ) {
+		char temp[ 64 ];
 		sprintf( temp, "%.0f %.0f %.0f", gridSize[ 0 ], gridSize[ 1 ], gridSize[ 2 ] );
 		entities[ 0 ].setKeyValue( "gridsize", (const char*) temp );
 		Sys_FPrintf( SYS_VRB, "Storing adjusted grid size\n" );
 	}
 
-	/* 2nd variable. fixme: is this silly? */
-	numBSPGridPoints = numRawGridPoints;
-
-	/* allocate lightgrid */
-	rawGridPoints = safe_calloc( numRawGridPoints * sizeof( *rawGridPoints ) );
-
-	free( bspGridPoints );
-	bspGridPoints = safe_calloc( numBSPGridPoints * sizeof( *bspGridPoints ) );
-
-	/* clear lightgrid */
-	for ( i = 0; i < numRawGridPoints; i++ )
+	/* allocate and clear lightgrid */
 	{
-		for ( j = 0; j < MAX_LIGHTMAPS; j++ )
-			rawGridPoints[ i ].ambient[ j ] = ambientColor;
-
-		rawGridPoints[ i ].styles[ 0 ] = LS_NORMAL;
-		bspGridPoints[ i ].styles[ 0 ] = LS_NORMAL;
-		for ( j = 1; j < MAX_LIGHTMAPS; j++ )
-		{
-			rawGridPoints[ i ].styles[ j ] = LS_NONE;
-			bspGridPoints[ i ].styles[ j ] = LS_NONE;
-		}
+		static_assert( MAX_LIGHTMAPS == 4 );
+		rawGridPoints = decltype( rawGridPoints )( numGridPoints, rawGridPoint_t{
+			{ ambientColor, ambientColor, ambientColor, ambientColor },
+			{ g_vector3_identity, g_vector3_identity, g_vector3_identity, g_vector3_identity },
+			g_vector3_identity,
+			{ LS_NORMAL, LS_NONE, LS_NONE, LS_NONE } } );
+		bspGridPoints = decltype( bspGridPoints )( numGridPoints, bspGridPoint_t{
+			{ Vector3b( 0 ), Vector3b( 0 ), Vector3b( 0 ), Vector3b( 0 ) },
+			{ Vector3b( 0 ), Vector3b( 0 ), Vector3b( 0 ), Vector3b( 0 ) },
+			{ LS_NORMAL, LS_NONE, LS_NONE, LS_NONE },
+			{ 0, 0 } } );
 	}
 
 	/* note it */
-	Sys_Printf( "%9d grid points\n", numRawGridPoints );
+	Sys_Printf( "%9zu grid points\n", rawGridPoints.size() );
 }
 
 
@@ -1728,7 +1670,7 @@ void SetupGrid( void ){
    does what it says...
  */
 
-void LightWorld( bool fastAllocate ){
+static void LightWorld( bool fastAllocate ){
 	Vector3 color;
 	float f;
 	int b, bt;
@@ -1800,10 +1742,10 @@ void LightWorld( bool fastAllocate ){
 
 		Sys_Printf( "--- TraceGrid ---\n" );
 		inGrid = true;
-		RunThreadsOnIndividual( numRawGridPoints, true, TraceGrid );
+		RunThreadsOnIndividual( rawGridPoints.size(), true, TraceGrid );
 		inGrid = false;
-		Sys_Printf( "%d x %d x %d = %d grid\n",
-		            gridBounds[ 0 ], gridBounds[ 1 ], gridBounds[ 2 ], numBSPGridPoints );
+		Sys_Printf( "%d x %d x %d = %zu grid\n",
+		            gridBounds[ 0 ], gridBounds[ 1 ], gridBounds[ 2 ], bspGridPoints.size() );
 
 		/* ydnar: emit statistics on light culling */
 		Sys_FPrintf( SYS_VRB, "%9d grid points envelope culled\n", gridEnvelopeCulled );
@@ -1845,7 +1787,7 @@ void LightWorld( bool fastAllocate ){
 	StitchSurfaceLightmaps();
 
 	Sys_Printf( "--- IlluminateVertexes ---\n" );
-	RunThreadsOnIndividual( numBSPDrawSurfaces, true, IlluminateVertexes );
+	RunThreadsOnIndividual( bspDrawSurfaces.size(), true, IlluminateVertexes );
 	Sys_Printf( "%9d vertexes illuminated\n", numVertsIlluminated );
 
 	/* ydnar: emit statistics on light culling */
@@ -1873,13 +1815,14 @@ void LightWorld( bool fastAllocate ){
 		ambientColor.set( 0 );
 		floodlighty = false;
 
+		/* delete any existing lights, freeing up memory for the next bounce */
+		lights.clear();
 		/* generate diffuse lights */
-		RadFreeLights();
 		RadCreateDiffuseLights();
 
 		/* setup light envelopes */
 		SetupEnvelopes( false, fastbounce );
-		if ( numLights == 0 ) {
+		if ( lights.empty() ) {
 			Sys_Printf( "No diffuse light to calculate, ending radiosity.\n" );
 			break;
 		}
@@ -1891,7 +1834,7 @@ void LightWorld( bool fastAllocate ){
 
 			Sys_Printf( "--- BounceGrid ---\n" );
 			inGrid = true;
-			RunThreadsOnIndividual( numRawGridPoints, true, TraceGrid );
+			RunThreadsOnIndividual( rawGridPoints.size(), true, TraceGrid );
 			inGrid = false;
 			Sys_FPrintf( SYS_VRB, "%9d grid points envelope culled\n", gridEnvelopeCulled );
 			Sys_FPrintf( SYS_VRB, "%9d grid points bounds culled\n", gridBoundsCulled );
@@ -1911,7 +1854,7 @@ void LightWorld( bool fastAllocate ){
 		StitchSurfaceLightmaps();
 
 		Sys_Printf( "--- IlluminateVertexes ---\n" );
-		RunThreadsOnIndividual( numBSPDrawSurfaces, true, IlluminateVertexes );
+		RunThreadsOnIndividual( bspDrawSurfaces.size(), true, IlluminateVertexes );
 		Sys_Printf( "%9d vertexes illuminated\n", numVertsIlluminated );
 
 		/* ydnar: emit statistics on light culling */
@@ -1933,8 +1876,7 @@ void LightWorld( bool fastAllocate ){
    main routine for light processing
  */
 
-int LightMain( int argc, char **argv ){
-	int i;
+int LightMain( Args& args ){
 	float f;
 	int lightmapMergeSize = 0;
 	bool lightSamplesInsist = false;
@@ -1946,7 +1888,7 @@ int LightMain( int argc, char **argv ){
 	Sys_Printf( "--- ProcessGameSpecific ---\n" );
 
 	/* set standard game flags */
-	wolfLight = game->wolfLight;
+	wolfLight = g_game->wolfLight;
 	if ( wolfLight ) {
 		Sys_Printf( " lightning model: wolf\n" );
 	}
@@ -1954,13 +1896,13 @@ int LightMain( int argc, char **argv ){
 		Sys_Printf( " lightning model: quake3\n" );
 	}
 
-	lmCustomSizeW = lmCustomSizeH = game->lightmapSize;
+	lmCustomSizeW = lmCustomSizeH = g_game->lightmapSize;
 	Sys_Printf( " lightmap size: %d x %d pixels\n", lmCustomSizeW, lmCustomSizeH );
 
-	lightmapGamma = game->lightmapGamma;
+	lightmapGamma = g_game->lightmapGamma;
 	Sys_Printf( " lightning gamma: %f\n", lightmapGamma );
 
-	lightmapsRGB = game->lightmapsRGB;
+	lightmapsRGB = g_game->lightmapsRGB;
 	if ( lightmapsRGB ) {
 		Sys_Printf( " lightmap colorspace: sRGB\n" );
 	}
@@ -1968,7 +1910,7 @@ int LightMain( int argc, char **argv ){
 		Sys_Printf( " lightmap colorspace: linear\n" );
 	}
 
-	texturesRGB = game->texturesRGB;
+	texturesRGB = g_game->texturesRGB;
 	if ( texturesRGB ) {
 		Sys_Printf( " texture colorspace: sRGB\n" );
 	}
@@ -1976,7 +1918,7 @@ int LightMain( int argc, char **argv ){
 		Sys_Printf( " texture colorspace: linear\n" );
 	}
 
-	colorsRGB = game->colorsRGB;
+	colorsRGB = g_game->colorsRGB;
 	if ( colorsRGB ) {
 		Sys_Printf( " _color colorspace: sRGB\n" );
 	}
@@ -1984,24 +1926,24 @@ int LightMain( int argc, char **argv ){
 		Sys_Printf( " _color colorspace: linear\n" );
 	}
 
-	lightmapCompensate = game->lightmapCompensate;
+	lightmapCompensate = g_game->lightmapCompensate;
 	Sys_Printf( " lightning compensation: %f\n", lightmapCompensate );
 
-	lightmapExposure = game->lightmapExposure;
+	lightmapExposure = g_game->lightmapExposure;
 	Sys_Printf( " lightning exposure: %f\n", lightmapExposure );
 
-	gridScale = game->gridScale;
+	gridScale = g_game->gridScale;
 	Sys_Printf( " lightgrid scale: %f\n", gridScale );
 
-	gridAmbientScale = game->gridAmbientScale;
+	gridAmbientScale = g_game->gridAmbientScale;
 	Sys_Printf( " lightgrid ambient scale: %f\n", gridAmbientScale );
 
-	lightAngleHL = game->lightAngleHL;
+	lightAngleHL = g_game->lightAngleHL;
 	if ( lightAngleHL ) {
 		Sys_Printf( " half lambert light angle attenuation enabled \n" );
 	}
 
-	noStyles = game->noStyles;
+	noStyles = g_game->noStyles;
 	if ( noStyles ) {
 		Sys_Printf( " shader lightstyles hack: disabled\n" );
 	}
@@ -2009,7 +1951,7 @@ int LightMain( int argc, char **argv ){
 		Sys_Printf( " shader lightstyles hack: enabled\n" );
 	}
 
-	patchShadows = game->patchShadows;
+	patchShadows = g_game->patchShadows;
 	if ( patchShadows ) {
 		Sys_Printf( " patch shadows: enabled\n" );
 	}
@@ -2017,8 +1959,8 @@ int LightMain( int argc, char **argv ){
 		Sys_Printf( " patch shadows: disabled\n" );
 	}
 
-	deluxemap = game->deluxeMap;
-	deluxemode = game->deluxeMode;
+	deluxemap = g_game->deluxeMap;
+	deluxemode = g_game->deluxeMode;
 	if ( deluxemap ) {
 		if ( deluxemode ) {
 			Sys_Printf( " deluxemapping: enabled with tangentspace deluxemaps\n" );
@@ -2034,159 +1976,145 @@ int LightMain( int argc, char **argv ){
 	Sys_Printf( "--- ProcessCommandLine ---\n" );
 
 	/* process commandline arguments */
-	for ( i = 1; i < ( argc - 1 ); i++ )
+	const char *fileName = args.takeBack();
+	const auto argsToInject = args.getVector();
 	{
 		/* lightsource scaling */
-		if ( striEqual( argv[ i ], "-point" ) || striEqual( argv[ i ], "-pointscale" ) ) {
-			f = atof( argv[ i + 1 ] );
+		while ( args.takeArg( "-point", "-pointscale" ) ) {
+			f = atof( args.takeNext() );
 			pointScale *= f;
 			spotScale *= f;
 			Sys_Printf( "Spherical point (entity) light scaled by %f to %f\n", f, pointScale );
 			Sys_Printf( "Spot point (entity) light scaled by %f to %f\n", f, spotScale );
-			i++;
 		}
 
-		else if ( striEqual( argv[ i ], "-spherical" ) || striEqual( argv[ i ], "-sphericalscale" ) ) {
-			f = atof( argv[ i + 1 ] );
+		while ( args.takeArg( "-spherical", "-sphericalscale" ) ) {
+			f = atof( args.takeNext() );
 			pointScale *= f;
 			Sys_Printf( "Spherical point (entity) light scaled by %f to %f\n", f, pointScale );
-			i++;
 		}
 
-		else if ( striEqual( argv[ i ], "-spot" ) || striEqual( argv[ i ], "-spotscale" ) ) {
-			f = atof( argv[ i + 1 ] );
+		while ( args.takeArg( "-spot", "-spotscale" ) ) {
+			f = atof( args.takeNext() );
 			spotScale *= f;
 			Sys_Printf( "Spot point (entity) light scaled by %f to %f\n", f, spotScale );
-			i++;
 		}
 
-		else if ( striEqual( argv[ i ], "-area" ) || striEqual( argv[ i ], "-areascale" ) ) {
-			f = atof( argv[ i + 1 ] );
+		while ( args.takeArg( "-area", "-areascale" ) ) {
+			f = atof( args.takeNext() );
 			areaScale *= f;
 			Sys_Printf( "Area (shader) light scaled by %f to %f\n", f, areaScale );
-			i++;
 		}
 
-		else if ( striEqual( argv[ i ], "-sky" ) || striEqual( argv[ i ], "-skyscale" ) ) {
-			f = atof( argv[ i + 1 ] );
+		while ( args.takeArg( "-sky", "-skyscale" ) ) {
+			f = atof( args.takeNext() );
 			skyScale *= f;
 			Sys_Printf( "Sky/sun light scaled by %f to %f\n", f, skyScale );
-			i++;
 		}
 
-		else if ( striEqual( argv[ i ], "-vertexscale" ) ) {
-			f = atof( argv[ i + 1 ] );
+		while ( args.takeArg( "-vertexscale" ) ) {
+			f = atof( args.takeNext() );
 			vertexglobalscale *= f;
 			Sys_Printf( "Vertexlight scaled by %f to %f\n", f, vertexglobalscale );
-			i++;
 		}
 
-		else if ( striEqual( argv[ i ], "-backsplash" ) && i < ( argc - 3 ) ) {
-			g_backsplashFractionScale = atof( argv[ i + 1 ] );
+		while ( args.takeArg( "-backsplash" ) ) {
+			g_backsplashFractionScale = atof( args.takeNext() );
 			Sys_Printf( "Area lights backsplash fraction scaled by %f\n", g_backsplashFractionScale );
-			f = atof( argv[ i + 2 ] );
+			f = atof( args.takeNext() );
 			if ( f >= -900.0f ){
 				g_backsplashDistance = f;
 				Sys_Printf( "Area lights backsplash distance set globally to %f\n", g_backsplashDistance );
 			}
-			i+=2;
 		}
 
-		else if ( striEqual( argv[ i ], "-nolm" ) ) {
-			nolm = true;
+		while ( args.takeArg( "-nolm" ) ) {
+			noLightmaps = true;
 			Sys_Printf( "No lightmaps yo\n" );
 		}
 
-		else if ( striEqual( argv[ i ], "-bouncecolorratio" ) ) {
-			bounceColorRatio = std::clamp( atof( argv[ i + 1 ] ), 0.0, 1.0 );
+		while ( args.takeArg( "-bouncecolorratio" ) ) {
+			bounceColorRatio = std::clamp( atof( args.takeNext() ), 0.0, 1.0 );
 			Sys_Printf( "Bounce color ratio set to %f\n", bounceColorRatio );
-			i++;
 		}
 
-		else if ( striEqual( argv[ i ], "-bouncescale" ) ) {
-			f = atof( argv[ i + 1 ] );
+		while ( args.takeArg( "-bouncescale" ) ) {
+			f = atof( args.takeNext() );
 			bounceScale *= f;
 			Sys_Printf( "Bounce (radiosity) light scaled by %f to %f\n", f, bounceScale );
-			i++;
 		}
 
-		else if ( striEqual( argv[ i ], "-scale" ) ) {
-			f = atof( argv[ i + 1 ] );
+		while ( args.takeArg( "-scale" ) ) {
+			f = atof( args.takeNext() );
 			pointScale *= f;
 			spotScale *= f;
 			areaScale *= f;
 			skyScale *= f;
 			bounceScale *= f;
 			Sys_Printf( "All light scaled by %f\n", f );
-			i++;
 		}
 
-		else if ( striEqual( argv[ i ], "-gridscale" ) ) {
-			f = atof( argv[ i + 1 ] );
+		while ( args.takeArg( "-gridscale" ) ) {
+			f = atof( args.takeNext() );
 			Sys_Printf( "Grid lightning scaled by %f\n", f );
 			gridScale *= f;
-			i++;
 		}
 
-		else if ( striEqual( argv[ i ], "-gridambientscale" ) ) {
-			f = atof( argv[ i + 1 ] );
+		while ( args.takeArg( "-gridambientscale" ) ) {
+			f = atof( args.takeNext() );
 			Sys_Printf( "Grid ambient lightning scaled by %f\n", f );
 			gridAmbientScale *= f;
-			i++;
 		}
 
-		else if ( striEqual( argv[ i ], "-griddirectionality" ) ) {
-			gridDirectionality = std::min( 1.0, atof( argv[ i + 1 ] ) );
+		while ( args.takeArg( "-griddirectionality" ) ) {
+			gridDirectionality = std::min( 1.0, atof( args.takeNext() ) );
 			value_minimize( gridAmbientDirectionality, gridDirectionality );
 			Sys_Printf( "Grid directionality is %f\n", gridDirectionality );
-			i++;
 		}
 
-		else if ( striEqual( argv[ i ], "-gridambientdirectionality" ) ) {
-			gridAmbientDirectionality = std::max( -1.0, atof( argv[ i + 1 ] ) );
+		while ( args.takeArg( "-gridambientdirectionality" ) ) {
+			gridAmbientDirectionality = std::max( -1.0, atof( args.takeNext() ) );
 			value_maximize( gridDirectionality, gridAmbientDirectionality );
 			Sys_Printf( "Grid ambient directionality is %f\n", gridAmbientDirectionality );
-			i++;
 		}
 
-		else if ( striEqual( argv[ i ], "-gamma" ) ) {
-			f = atof( argv[ i + 1 ] );
+		while ( args.takeArg( "-gamma" ) ) {
+			f = atof( args.takeNext() );
 			lightmapGamma = f;
 			Sys_Printf( "Lighting gamma set to %f\n", lightmapGamma );
-			i++;
 		}
 
-		else if ( striEqual( argv[ i ], "-sRGBlight" ) ) {
+		while ( args.takeArg( "-sRGBlight" ) ) {
 			lightmapsRGB = true;
 			Sys_Printf( "Lighting is in sRGB\n" );
 		}
 
-		else if ( striEqual( argv[ i ], "-nosRGBlight" ) ) {
+		while ( args.takeArg( "-nosRGBlight" ) ) {
 			lightmapsRGB = false;
 			Sys_Printf( "Lighting is linear\n" );
 		}
 
-		else if ( striEqual( argv[ i ], "-sRGBtex" ) ) {
+		while ( args.takeArg( "-sRGBtex" ) ) {
 			texturesRGB = true;
 			Sys_Printf( "Textures are in sRGB\n" );
 		}
 
-		else if ( striEqual( argv[ i ], "-nosRGBtex" ) ) {
+		while ( args.takeArg( "-nosRGBtex" ) ) {
 			texturesRGB = false;
 			Sys_Printf( "Textures are linear\n" );
 		}
 
-		else if ( striEqual( argv[ i ], "-sRGBcolor" ) ) {
+		while ( args.takeArg( "-sRGBcolor" ) ) {
 			colorsRGB = true;
 			Sys_Printf( "Colors are in sRGB\n" );
 		}
 
-		else if ( striEqual( argv[ i ], "-nosRGBcolor" ) ) {
+		while ( args.takeArg( "-nosRGBcolor" ) ) {
 			colorsRGB = false;
 			Sys_Printf( "Colors are linear\n" );
 		}
 
-		else if ( striEqual( argv[ i ], "-sRGB" ) ) {
+		while ( args.takeArg( "-sRGB" ) ) {
 			lightmapsRGB = true;
 			Sys_Printf( "Lighting is in sRGB\n" );
 			texturesRGB = true;
@@ -2195,7 +2123,7 @@ int LightMain( int argc, char **argv ){
 			Sys_Printf( "Colors are in sRGB\n" );
 		}
 
-		else if ( striEqual( argv[ i ], "-nosRGB" ) ) {
+		while ( args.takeArg( "-nosRGB" ) ) {
 			lightmapsRGB = false;
 			Sys_Printf( "Lighting is linear\n" );
 			texturesRGB = false;
@@ -2204,127 +2132,116 @@ int LightMain( int argc, char **argv ){
 			Sys_Printf( "Colors are linear\n" );
 		}
 
-		else if ( striEqual( argv[ i ], "-exposure" ) ) {
-			f = atof( argv[ i + 1 ] );
+		while ( args.takeArg( "-exposure" ) ) {
+			f = atof( args.takeNext() );
 			lightmapExposure = f;
 			Sys_Printf( "Lighting exposure set to %f\n", lightmapExposure );
-			i++;
 		}
 
-		else if ( striEqual( argv[ i ], "-compensate" ) ) {
-			f = atof( argv[ i + 1 ] );
+		while ( args.takeArg( "-compensate" ) ) {
+			f = atof( args.takeNext() );
 			if ( f <= 0.0f ) {
 				f = 1.0f;
 			}
 			lightmapCompensate = f;
 			Sys_Printf( "Lighting compensation set to 1/%f\n", lightmapCompensate );
-			i++;
 		}
 
 		/* Lightmaps brightness */
-		else if( striEqual( argv[ i ], "-brightness" ) ){
-			lightmapBrightness = atof( argv[ i + 1 ] );
+		while ( args.takeArg( "-brightness" ) ){
+			lightmapBrightness = atof( args.takeNext() );
 			Sys_Printf( "Scaling lightmaps brightness by %f\n", lightmapBrightness );
-			i++;
 		}
 
 		/* Lighting contrast */
-		else if( striEqual( argv[ i ], "-contrast" ) ){
-			lightmapContrast = std::clamp( atof( argv[ i + 1 ] ), -255.0, 255.0 );
+		while ( args.takeArg( "-contrast" ) ){
+			lightmapContrast = std::clamp( atof( args.takeNext() ), -255.0, 255.0 );
 			Sys_Printf( "Lighting contrast set to %f\n", lightmapContrast );
-			i++;
 			/* change to factor in range of 0 to 129.5 */
 			lightmapContrast = ( 259 * ( lightmapContrast + 255 ) ) / ( 255 * ( 259 - lightmapContrast ) );
 		}
 
 		/* Lighting saturation */
-		else if( striEqual( argv[ i ], "-saturation" ) ){
-			g_lightmapSaturation = atof( argv[ i + 1 ] );
+		while ( args.takeArg( "-saturation" ) ){
+			g_lightmapSaturation = atof( args.takeNext() );
 			Sys_Printf( "Lighting saturation set to %f\n", g_lightmapSaturation );
-			i++;
 		}
 
 		/* ydnar switches */
-		else if ( striEqual( argv[ i ], "-bounce" ) ) {
-			bounce = std::max( 0, atoi( argv[ i + 1 ] ) );
+		while ( args.takeArg( "-bounce" ) ) {
+			bounce = std::max( 0, atoi( args.takeNext() ) );
 			if ( bounce > 0 ) {
 				Sys_Printf( "Radiosity enabled with %d bounce(s)\n", bounce );
 			}
-			i++;
 		}
 
-		else if ( striEqual( argv[ i ], "-supersample" ) || striEqual( argv[ i ], "-super" ) ) {
-			superSample = std::max( 1, atoi( argv[ i + 1 ] ) );
+		while ( args.takeArg( "-supersample", "-super" ) ) {
+			superSample = std::max( 1, atoi( args.takeNext() ) );
 			if ( superSample > 1 ) {
 				Sys_Printf( "Ordered-grid supersampling enabled with %d sample(s) per lightmap texel\n", ( superSample * superSample ) );
 			}
-			i++;
 		}
 
-		else if ( striEqual( argv[ i ], "-randomsamples" ) ) {
+		while ( args.takeArg( "-randomsamples" ) ) {
 			lightRandomSamples = true;
 			Sys_Printf( "Random sampling enabled\n", lightRandomSamples );
 		}
 
-		else if ( striEqual( argv[ i ], "-samples" ) ) {
-			lightSamplesInsist = ( *argv[i + 1] == '+' );
-			lightSamples = std::max( 1, atoi( argv[ i + 1 ] ) );
+		while ( args.takeArg( "-samples" ) ) {
+			const char *arg = args.takeNext();
+			lightSamplesInsist = ( *arg == '+' );
+			lightSamples = std::max( 1, atoi( arg ) );
 			if ( lightSamples > 1 ) {
 				Sys_Printf( "Adaptive supersampling enabled with %d sample(s) per lightmap texel\n", lightSamples );
 			}
-			i++;
 		}
 
-		else if ( striEqual( argv[ i ], "-samplessearchboxsize" ) ) {
-			lightSamplesSearchBoxSize = std::clamp( atoi( argv[ i + 1 ] ), 1, 4 ); /* more makes no sense */
+		while ( args.takeArg( "-samplessearchboxsize" ) ) {
+			lightSamplesSearchBoxSize = std::clamp( atoi( args.takeNext() ), 1, 4 ); /* more makes no sense */
 			if ( lightSamplesSearchBoxSize != 1 )
 				Sys_Printf( "Adaptive supersampling uses %f times the normal search box size\n", lightSamplesSearchBoxSize );
-			i++;
 		}
 
-		else if ( striEqual( argv[ i ], "-filter" ) ) {
+		while ( args.takeArg( "-filter" ) ) {
 			filter = true;
 			Sys_Printf( "Lightmap filtering enabled\n" );
 		}
 
-		else if ( striEqual( argv[ i ], "-dark" ) ) {
+		while ( args.takeArg( "-dark" ) ) {
 			dark = true;
 			Sys_Printf( "Dark lightmap seams enabled\n" );
 		}
 
-		else if ( striEqual( argv[ i ], "-shadeangle" ) ) {
-			shadeAngleDegrees = std::max( 0.0, atof( argv[ i + 1 ] ) );
+		while ( args.takeArg( "-shadeangle" ) ) {
+			shadeAngleDegrees = std::max( 0.0, atof( args.takeNext() ) );
 			if ( shadeAngleDegrees > 0.0f ) {
 				shade = true;
 				Sys_Printf( "Phong shading enabled with a breaking angle of %f degrees\n", shadeAngleDegrees );
 			}
-			i++;
 		}
 
-		else if ( striEqual( argv[ i ], "-thresh" ) ) {
-			subdivideThreshold = atof( argv[ i + 1 ] );
+		while ( args.takeArg( "-thresh" ) ) {
+			subdivideThreshold = atof( args.takeNext() );
 			if ( subdivideThreshold < 0 ) {
 				subdivideThreshold = DEFAULT_SUBDIVIDE_THRESHOLD;
 			}
 			else{
 				Sys_Printf( "Subdivision threshold set at %.3f\n", subdivideThreshold );
 			}
-			i++;
 		}
 
-		else if ( striEqual( argv[ i ], "-approx" ) ) {
-			approximateTolerance = std::max( 0, atoi( argv[ i + 1 ] ) );
+		while ( args.takeArg( "-approx" ) ) {
+			approximateTolerance = std::max( 0, atoi( args.takeNext() ) );
 			if ( approximateTolerance > 0 ) {
 				Sys_Printf( "Approximating lightmaps within a byte tolerance of %d\n", approximateTolerance );
 			}
-			i++;
 		}
-		else if ( striEqual( argv[ i ], "-deluxe" ) || striEqual( argv[ i ], "-deluxemap" ) ) {
+		while ( args.takeArg( "-deluxe", "-deluxemap" ) ) {
 			deluxemap = true;
 			Sys_Printf( "Generating deluxemaps for average light direction\n" );
 		}
-		else if ( striEqual( argv[ i ], "-deluxemode" ) ) {
-			deluxemode = atoi( argv[ i + 1 ] );
+		while ( args.takeArg( "-deluxemode" ) ) {
+			deluxemode = atoi( args.takeNext() );
 			if ( deluxemode != 1 ) {
 				Sys_Printf( "Generating modelspace deluxemaps\n" );
 				deluxemode = 0;
@@ -2332,37 +2249,34 @@ int LightMain( int argc, char **argv ){
 			else{
 				Sys_Printf( "Generating tangentspace deluxemaps\n" );
 			}
-			i++;
 		}
-		else if ( striEqual( argv[ i ], "-nodeluxe" ) || striEqual( argv[ i ], "-nodeluxemap" ) ) {
+		while ( args.takeArg( "-nodeluxe", "-nodeluxemap" ) ) {
 			deluxemap = false;
 			Sys_Printf( "Disabling generating of deluxemaps for average light direction\n" );
 		}
-		else if ( striEqual( argv[ i ], "-external" ) ) {
+		while ( args.takeArg( "-external" ) ) {
 			externalLightmaps = true;
 			Sys_Printf( "Storing all lightmaps externally\n" );
 		}
 
-		else if ( striEqual( argv[ i ], "-lightmapsize" )
-		       || striEqual( argv[ i ], "-extlmhacksize" ) ) {
-			const bool extlmhack = striEqual( argv[ i ], "-extlmhacksize" );
+		bool extlmhack = false;
+		while ( args.takeArg( "-lightmapsize" )
+		       || ( extlmhack = args.takeArg( "-extlmhacksize" ) ) ) {
 
-			lmCustomSizeW = lmCustomSizeH = atoi( argv[ i + 1 ] );
-			if( i + 2 < argc - 1 && argv[ i + 2 ][0] != '-' && 0 != atoi( argv[ i + 2 ] ) ){
-				lmCustomSizeH = atoi( argv[ i + 2 ] );
-				i++;
+			lmCustomSizeW = lmCustomSizeH = atoi( args.takeNext() );
+			if( args.nextAvailable() && 0 != atoi( args.next() ) ){ // optional second dimension
+				lmCustomSizeH = atoi( args.takeNext() );
 			}
-			i++;
 			/* must be a power of 2 and greater than 2 */
 			if ( ( ( lmCustomSizeW - 1 ) & lmCustomSizeW ) || lmCustomSizeW < 2 ||
 			     ( ( lmCustomSizeH - 1 ) & lmCustomSizeH ) || lmCustomSizeH < 2 ) {
 				Sys_Warning( "Lightmap size must be a power of 2, greater or equal to 2 pixels.\n" );
-				lmCustomSizeW = lmCustomSizeH = game->lightmapSize;
+				lmCustomSizeW = lmCustomSizeH = g_game->lightmapSize;
 			}
 			Sys_Printf( "Default lightmap size set to %d x %d pixels\n", lmCustomSizeW, lmCustomSizeH );
 
 			/* enable external lightmaps */
-			if ( lmCustomSizeW != game->lightmapSize || lmCustomSizeH != game->lightmapSize ) {
+			if ( lmCustomSizeW != g_game->lightmapSize || lmCustomSizeH != g_game->lightmapSize ) {
 				/* -lightmapsize might just require -external for native external lms, but it has already been used in existing batches alone,
 				so brand new switch here for external lms, referenced by shaders hack/behavior */
 				externalLightmaps = !extlmhack;
@@ -2370,107 +2284,97 @@ int LightMain( int argc, char **argv ){
 			}
 		}
 
-		else if ( striEqual( argv[ i ], "-rawlightmapsizelimit" ) ) {
-			lmLimitSize = atoi( argv[ i + 1 ] );
-
-			i++;
+		while ( args.takeArg( "-rawlightmapsizelimit" ) ) {
+			lmLimitSize = atoi( args.takeNext() );
 			Sys_Printf( "Raw lightmap size limit set to %d x %d pixels\n", lmLimitSize, lmLimitSize );
 		}
 
-		else if ( striEqual( argv[ i ], "-lightmapdir" ) ) {
-			lmCustomDir = argv[i + 1];
-			i++;
+		while ( args.takeArg( "-lightmapdir" ) ) {
+			lmCustomDir = args.takeNext();
 			Sys_Printf( "Lightmap directory set to %s\n", lmCustomDir );
 			externalLightmaps = true;
 			Sys_Printf( "Storing all lightmaps externally\n" );
 		}
 
 		/* ydnar: add this to suppress warnings */
-		else if ( striEqual( argv[ i ],  "-custinfoparms" ) ) {
+		while ( args.takeArg( "-custinfoparms" ) ) {
 			Sys_Printf( "Custom info parms enabled\n" );
 			useCustomInfoParms = true;
 		}
 
-		else if ( striEqual( argv[ i ], "-wolf" ) ) {
+		while ( args.takeArg( "-wolf" ) ) {
 			/* -game should already be set */
 			wolfLight = true;
 			Sys_Printf( "Enabling Wolf lighting model (linear default)\n" );
 		}
 
-		else if ( striEqual( argv[ i ], "-q3" ) ) {
+		while ( args.takeArg( "-q3" ) ) {
 			/* -game should already be set */
 			wolfLight = false;
 			Sys_Printf( "Enabling Quake 3 lighting model (nonlinear default)\n" );
 		}
 
-		else if ( striEqual( argv[ i ], "-extradist" ) ) {
-			extraDist = std::max( 0.0, atof( argv[ i + 1 ] ) );
-			i++;
+		while ( args.takeArg( "-extradist" ) ) {
+			extraDist = std::max( 0.0, atof( args.takeNext() ) );
 			Sys_Printf( "Default extra radius set to %f units\n", extraDist );
 		}
 
-		else if ( striEqual( argv[ i ], "-sunonly" ) ) {
+		while ( args.takeArg( "-sunonly" ) ) {
 			sunOnly = true;
 			Sys_Printf( "Only computing sunlight\n" );
 		}
 
-		else if ( striEqual( argv[ i ], "-bounceonly" ) ) {
+		while ( args.takeArg( "-bounceonly" ) ) {
 			bounceOnly = true;
 			Sys_Printf( "Storing bounced light (radiosity) only\n" );
 		}
 
-		else if ( striEqual( argv[ i ], "-nocollapse" ) ) {
+		while ( args.takeArg( "-nocollapse" ) ) {
 			noCollapse = true;
 			Sys_Printf( "Identical lightmap collapsing disabled\n" );
 		}
 
-		else if ( striEqual( argv[ i ], "-nolightmapsearch" ) ) {
+		while ( args.takeArg( "-nolightmapsearch" ) ) {
 			lightmapSearchBlockSize = 1;
 			Sys_Printf( "No lightmap searching - all lightmaps will be sequential\n" );
 		}
 
-		else if ( striEqual( argv[ i ], "-lightmapsearchpower" ) ) {
-			lightmapMergeSize = ( game->lightmapSize << atoi( argv[i + 1] ) );
-			++i;
-			Sys_Printf( "Restricted lightmap searching enabled - optimize for lightmap merge power %d (size %d)\n", atoi( argv[i] ), lightmapMergeSize );
+		while ( args.takeArg( "-lightmapsearchpower" ) ) {
+			const int power = atoi( args.takeNext() );
+			lightmapMergeSize = ( g_game->lightmapSize << power );
+			Sys_Printf( "Restricted lightmap searching enabled - optimize for lightmap merge power %d (size %d)\n", power, lightmapMergeSize );
 		}
 
-		else if ( striEqual( argv[ i ], "-lightmapsearchblocksize" ) ) {
-			lightmapSearchBlockSize = atoi( argv[i + 1] );
-			++i;
+		while ( args.takeArg( "-lightmapsearchblocksize" ) ) {
+			lightmapSearchBlockSize = atoi( args.takeNext() );
 			Sys_Printf( "Restricted lightmap searching enabled - block size set to %d\n", lightmapSearchBlockSize );
 		}
 
-		else if ( striEqual( argv[ i ], "-shade" ) ) {
+		while ( args.takeArg( "-shade" ) ) {
 			shade = true;
 			Sys_Printf( "Phong shading enabled\n" );
 		}
 
-		else if ( striEqual( argv[ i ], "-bouncegrid" ) ) {
+		while ( args.takeArg( "-bouncegrid" ) ) {
 			bouncegrid = true;
 			if ( bounce > 0 ) {
 				Sys_Printf( "Grid lighting with radiosity enabled\n" );
 			}
 		}
 
-		else if ( striEqual( argv[ i ], "-smooth" ) ) {
-			lightSamples = EXTRA_SCALE;
-			Sys_Printf( "The -smooth argument is deprecated, use \"-samples 2\" instead\n" );
-		}
-
-		else if ( striEqual( argv[ i ], "-nofastpoint" ) ) {
+		while ( args.takeArg( "-nofastpoint" ) ) {
 			fastpoint = false;
 			Sys_Printf( "Automatic fast mode for point lights disabled\n" );
 		}
 
-		else if ( striEqual( argv[ i ], "-fast" ) ) {
+		while ( args.takeArg( "-fast" ) ) {
 			fast = true;
 			fastgrid = true;
 			fastbounce = true;
 			Sys_Printf( "Fast mode enabled for all area lights\n" );
 		}
 
-		else if ( striEqual( argv[ i ], "-faster" ) ) {
+		while ( args.takeArg( "-faster" ) ) {
 			faster = true;
 			fast = true;
 			fastgrid = true;
@@ -2478,198 +2382,180 @@ int LightMain( int argc, char **argv ){
 			Sys_Printf( "Faster mode enabled\n" );
 		}
 
-//		else if ( striEqual( argv[ i ], "-fastallocate" ) ) {
-//			fastAllocate = true;
-//			Sys_Printf( "Fast allocation mode enabled\n" );
-//		}
-		else if ( striEqual( argv[ i ], "-slowallocate" ) ) {
+		while ( args.takeArg( "-slowallocate" ) ) {
 			fastAllocate = false;
 			Sys_Printf( "Slow allocation mode enabled\n" );
 		}
 
-		else if ( striEqual( argv[ i ], "-fastgrid" ) ) {
+		while ( args.takeArg( "-fastgrid" ) ) {
 			fastgrid = true;
 			Sys_Printf( "Fast grid lighting enabled\n" );
 		}
 
-		else if ( striEqual( argv[ i ], "-fastbounce" ) ) {
+		while ( args.takeArg( "-fastbounce" ) ) {
 			fastbounce = true;
 			Sys_Printf( "Fast bounce mode enabled\n" );
 		}
 
-		else if ( striEqual( argv[ i ], "-cheap" ) ) {
+		while ( args.takeArg( "-cheap" ) ) {
 			cheap = true;
 			cheapgrid = true;
 			Sys_Printf( "Cheap mode enabled\n" );
 		}
 
-		else if ( striEqual( argv[ i ], "-cheapgrid" ) ) {
+		while ( args.takeArg( "-cheapgrid" ) ) {
 			cheapgrid = true;
 			Sys_Printf( "Cheap grid mode enabled\n" );
 		}
 
-		else if ( striEqual( argv[ i ], "-normalmap" ) ) {
+		while ( args.takeArg( "-normalmap" ) ) {
 			normalmap = true;
 			Sys_Printf( "Storing normal map instead of lightmap\n" );
 		}
 
-		else if ( striEqual( argv[ i ], "-trisoup" ) ) {
+		while ( args.takeArg( "-trisoup" ) ) {
 			trisoup = true;
 			Sys_Printf( "Converting brush faces to triangle soup\n" );
 		}
 
-		else if ( striEqual( argv[ i ], "-debug" ) ) {
+		while ( args.takeArg( "-debug" ) ) {
 			debug = true;
 			Sys_Printf( "Lightmap debugging enabled\n" );
 		}
 
-		else if ( striEqual( argv[ i ], "-debugsurfaces" ) || striEqual( argv[ i ], "-debugsurface" ) ) {
+		while ( args.takeArg( "-debugsurfaces", "-debugsurface" ) ) {
 			debugSurfaces = true;
 			Sys_Printf( "Lightmap surface debugging enabled\n" );
 		}
 
-		else if ( striEqual( argv[ i ], "-debugaxis" ) ) {
+		while ( args.takeArg( "-debugaxis" ) ) {
 			debugAxis = true;
 			Sys_Printf( "Lightmap axis debugging enabled\n" );
 		}
 
-		else if ( striEqual( argv[ i ], "-debugcluster" ) ) {
+		while ( args.takeArg( "-debugcluster" ) ) {
 			debugCluster = true;
 			Sys_Printf( "Luxel cluster debugging enabled\n" );
 		}
 
-		else if ( striEqual( argv[ i ], "-debugorigin" ) ) {
+		while ( args.takeArg( "-debugorigin" ) ) {
 			debugOrigin = true;
 			Sys_Printf( "Luxel origin debugging enabled\n" );
 		}
 
-		else if ( striEqual( argv[ i ], "-debugdeluxe" ) ) {
+		while ( args.takeArg( "-debugdeluxe" ) ) {
 			deluxemap = true;
 			debugDeluxemap = true;
 			Sys_Printf( "Deluxemap debugging enabled\n" );
 		}
 
-		else if ( striEqual( argv[ i ], "-export" ) ) {
+		while ( args.takeArg( "-export" ) ) {
 			exportLightmaps = true;
 			Sys_Printf( "Exporting lightmaps\n" );
 		}
 
-		else if ( striEqual( argv[ i ], "-notrace" ) ) {
+		while ( args.takeArg( "-notrace" ) ) {
 			noTrace = true;
 			Sys_Printf( "Shadow occlusion disabled\n" );
 		}
-		else if ( striEqual( argv[ i ], "-patchshadows" ) ) {
+		while ( args.takeArg( "-patchshadows" ) ) {
 			patchShadows = true;
 			Sys_Printf( "Patch shadow casting enabled\n" );
 		}
-		else if ( striEqual( argv[ i ], "-extra" ) ) {
-			superSample = EXTRA_SCALE;      /* ydnar */
-			Sys_Printf( "The -extra argument is deprecated, use \"-super 2\" instead\n" );
-		}
-		else if ( striEqual( argv[ i ], "-extrawide" ) ) {
-			superSample = EXTRAWIDE_SCALE;  /* ydnar */
-			filter = true;                  /* ydnar */
-			Sys_Printf( "The -extrawide argument is deprecated, use \"-filter [-super 2]\" instead\n" );
-		}
-		else if ( striEqual( argv[ i ], "-samplesize" ) ) {
-			sampleSize = std::max( 1, atoi( argv[ i + 1 ] ) );
-			i++;
+		while ( args.takeArg( "-samplesize" ) ) {
+			sampleSize = std::max( 1, atoi( args.takeNext() ) );
 			Sys_Printf( "Default lightmap sample size set to %dx%d units\n", sampleSize, sampleSize );
 		}
-		else if ( striEqual( argv[ i ], "-minsamplesize" ) ) {
-			minSampleSize = std::max( 1, atoi( argv[ i + 1 ] ) );
-			i++;
+		while ( args.takeArg( "-minsamplesize" ) ) {
+			minSampleSize = std::max( 1, atoi( args.takeNext() ) );
 			Sys_Printf( "Minimum lightmap sample size set to %dx%d units\n", minSampleSize, minSampleSize );
 		}
-		else if ( striEqual( argv[ i ],  "-samplescale" ) ) {
-			sampleScale = atoi( argv[ i + 1 ] );
-			i++;
+		while ( args.takeArg(  "-samplescale" ) ) {
+			sampleScale = atoi( args.takeNext() );
 			Sys_Printf( "Lightmaps sample scale set to %d\n", sampleScale );
 		}
-		else if ( striEqual( argv[ i ],  "-debugsamplesize" ) ) {
+		while ( args.takeArg(  "-debugsamplesize" ) ) {
 			debugSampleSize = 1;
 			Sys_Printf( "debugging Lightmaps SampleSize\n" );
 		}
-		else if ( striEqual( argv[ i ], "-novertex" ) ) {
-			noVertexLighting = 1;
-			f = atof( argv[ i + 1 ] );
-			if ( f != 0 && f < 1 ) {
-				noVertexLighting = f;
-				i++;
+		while ( args.takeArg( "-novertex" ) ) {
+			if ( args.nextAvailable() && atof( args.next() ) != 0 ) { /* optional value to set */
+				noVertexLighting = std::clamp( atof( args.takeNext() ), 0.0, 1.0 );
 				Sys_Printf( "Setting vertex lighting globally to %f\n", noVertexLighting );
 			}
 			else{
+				noVertexLighting = 1;
 				Sys_Printf( "Disabling vertex lighting\n" );
 			}
 		}
-		else if ( striEqual( argv[ i ], "-nogrid" ) ) {
+		while ( args.takeArg( "-nogrid" ) ) {
 			noGridLighting = true;
 			Sys_Printf( "Disabling grid lighting\n" );
 		}
-		else if ( striEqual( argv[ i ], "-border" ) ) {
+		while ( args.takeArg( "-border" ) ) {
 			lightmapBorder = true;
 			Sys_Printf( "Adding debug border to lightmaps\n" );
 		}
-		else if ( striEqual( argv[ i ], "-nosurf" ) ) {
+		while ( args.takeArg( "-nosurf" ) ) {
 			noSurfaces = true;
 			Sys_Printf( "Not tracing against surfaces\n" );
 		}
-		else if ( striEqual( argv[ i ], "-dump" ) ) {
+		while ( args.takeArg( "-dump" ) ) {
 			dump = true;
 			Sys_Printf( "Dumping radiosity lights into numbered prefabs\n" );
 		}
-		else if ( striEqual( argv[ i ], "-lomem" ) ) {
+		while ( args.takeArg( "-lomem" ) ) {
 			loMem = true;
 			Sys_Printf( "Enabling low-memory (potentially slower) lighting mode\n" );
 		}
-		else if ( striEqual( argv[ i ], "-lightanglehl" ) ) {
-			if ( ( atoi( argv[ i + 1 ] ) != 0 ) != lightAngleHL ) {
-				lightAngleHL = ( atoi( argv[ i + 1 ] ) != 0 );
+		while ( args.takeArg( "-lightanglehl" ) ) {
+			const bool enable = ( atoi( args.takeNext() ) != 0 );
+			if ( enable != lightAngleHL ) {
+				lightAngleHL = enable;
 				if ( lightAngleHL ) {
 					Sys_Printf( "Enabling half lambert light angle attenuation\n" );
 				}
 				else{
 					Sys_Printf( "Disabling half lambert light angle attenuation\n" );
 				}
-				i++;
 			}
 		}
-		else if ( striEqual( argv[ i ], "-nostyle" ) || striEqual( argv[ i ], "-nostyles" ) ) {
+		while ( args.takeArg( "-nostyle", "-nostyles" ) ) {
 			noStyles = true;
 			Sys_Printf( "Disabling lightstyles\n" );
 		}
-		else if ( striEqual( argv[ i ], "-style" ) || striEqual( argv[ i ], "-styles" ) ) {
+		while ( args.takeArg( "-style", "-styles" ) ) {
 			noStyles = false;
 			Sys_Printf( "Enabling lightstyles\n" );
 		}
-		else if ( striEqual( argv[ i ], "-cpma" ) ) {
+		while ( args.takeArg( "-cpma" ) ) {
 			cpmaHack = true;
 			Sys_Printf( "Enabling Challenge Pro Mode Asstacular Vertex Lighting Mode (tm)\n" );
 		}
-		else if ( striEqual( argv[ i ], "-floodlight" ) ) {
+		while ( args.takeArg( "-floodlight" ) ) {
 			floodlighty = true;
 			Sys_Printf( "FloodLighting enabled\n" );
 		}
-		else if ( striEqual( argv[ i ], "-debugnormals" ) ) {
+		while ( args.takeArg( "-debugnormals" ) ) {
 			debugnormals = true;
 			Sys_Printf( "DebugNormals enabled\n" );
 		}
-		else if ( striEqual( argv[ i ], "-lowquality" ) ) {
+		while ( args.takeArg( "-lowquality" ) ) {
 			floodlight_lowquality = true;
 			Sys_Printf( "Low Quality FloodLighting enabled\n" );
 		}
 
 		/* r7: dirtmapping */
-		else if ( striEqual( argv[ i ], "-dirty" ) ) {
+		while ( args.takeArg( "-dirty" ) ) {
 			dirty = true;
 			Sys_Printf( "Dirtmapping enabled\n" );
 		}
-		else if ( striEqual( argv[ i ], "-dirtdebug" ) || striEqual( argv[ i ], "-debugdirt" ) ) {
+		while ( args.takeArg( "-dirtdebug", "-debugdirt" ) ) {
 			dirtDebug = true;
 			Sys_Printf( "Dirtmap debugging enabled\n" );
 		}
-		else if ( striEqual( argv[ i ], "-dirtmode" ) ) {
-			dirtMode = atoi( argv[ i + 1 ] );
+		while ( args.takeArg( "-dirtmode" ) ) {
+			dirtMode = atoi( args.takeNext() );
 			if ( dirtMode != 0 && dirtMode != 1 ) {
 				dirtMode = 0;
 			}
@@ -2679,49 +2565,45 @@ int LightMain( int argc, char **argv ){
 			else{
 				Sys_Printf( "Enabling ordered dirtmapping\n" );
 			}
-			i++;
 		}
-		else if ( striEqual( argv[ i ], "-dirtdepth" ) ) {
-			dirtDepth = atof( argv[ i + 1 ] );
+		while ( args.takeArg( "-dirtdepth" ) ) {
+			dirtDepth = atof( args.takeNext() );
 			if ( dirtDepth <= 0.0f ) {
 				dirtDepth = 128.0f;
 			}
 			Sys_Printf( "Dirtmapping depth set to %.1f\n", dirtDepth );
-			i++;
 		}
-		else if ( striEqual( argv[ i ], "-dirtscale" ) ) {
-			dirtScale = atof( argv[ i + 1 ] );
+		while ( args.takeArg( "-dirtscale" ) ) {
+			dirtScale = atof( args.takeNext() );
 			if ( dirtScale <= 0.0f ) {
 				dirtScale = 1.0f;
 			}
 			Sys_Printf( "Dirtmapping scale set to %.1f\n", dirtScale );
-			i++;
 		}
-		else if ( striEqual( argv[ i ], "-dirtgain" ) ) {
-			dirtGain = atof( argv[ i + 1 ] );
+		while ( args.takeArg( "-dirtgain" ) ) {
+			dirtGain = atof( args.takeNext() );
 			if ( dirtGain <= 0.0f ) {
 				dirtGain = 1.0f;
 			}
 			Sys_Printf( "Dirtmapping gain set to %.1f\n", dirtGain );
-			i++;
 		}
-		else if ( striEqual( argv[ i ], "-trianglecheck" ) ) {
+		while ( args.takeArg( "-trianglecheck" ) ) {
 			lightmapTriangleCheck = true;
 		}
-		else if ( striEqual( argv[ i ], "-extravisnudge" ) ) {
+		while ( args.takeArg( "-extravisnudge" ) ) {
 			lightmapExtraVisClusterNudge = true;
 		}
-		else if ( striEqual( argv[ i ], "-fill" ) ) {
+		while ( args.takeArg( "-fill" ) ) {
 			lightmapFill = true;
 			Sys_Printf( "Filling lightmap colors from surrounding pixels to improve JPEG compression\n" );
 		}
-		else if ( striEqual( argv[ i ], "-fillpink" ) ) {
+		while ( args.takeArg( "-fillpink" ) ) {
 			lightmapPink = true;
 		}
 		/* unhandled args */
-		else
+		while( !args.empty() )
 		{
-			Sys_Warning( "Unknown argument \"%s\"\n", argv[ i ] );
+			Sys_Warning( "Unknown argument \"%s\"\n", args.takeFront() );
 		}
 
 	}
@@ -2769,13 +2651,8 @@ int LightMain( int argc, char **argv ){
 	}
 
 	/* clean up map name */
-	strcpy( source, ExpandArg( argv[ i ] ) );
+	strcpy( source, ExpandArg( fileName ) );
 	path_set_extension( source, ".bsp" );
-
-	strcpy( name, ExpandArg( argv[ i ] ) );
-	if ( !striEqual( path_get_filename_base_end( name ), ".reg" ) ) { /* not .reg */
-		path_set_extension( name, ".map" );
-	}
 
 	/* ydnar: set default sample size */
 	SetDefaultSampleSize( sampleSize );
@@ -2797,11 +2674,15 @@ int LightMain( int argc, char **argv ){
 	ParseEntities();
 
 	/* inject command line parameters */
-	InjectCommandLine( argv, 0, argc - 1 );
+	InjectCommandLine( "-light", argsToInject );
 
 	/* load map file */
 	if ( !entities[ 0 ].boolForKey( "_keepLights" ) ) {
-		LoadMapFile( name, true, false );
+		char *mapFileName = ExpandArg( fileName );
+		if ( !path_extension_is( fileName, "reg" ) ) /* not .reg */
+			path_set_extension( mapFileName, ".map" );
+
+		LoadMapFile( CopiedString( mapFileName ).c_str(), true, false );
 	}
 
 	/* set the entity/model origins and init yDrawVerts */

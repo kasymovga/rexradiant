@@ -45,12 +45,12 @@
    exports the entities to a text file (.ent)
  */
 
-void ExportEntities( void ){
+static void ExportEntities(){
 	/* note it */
 	Sys_FPrintf( SYS_VRB, "--- ExportEntities ---\n" );
 
 	/* sanity check */
-	if ( bspEntData == NULL || bspEntDataSize == 0 ) {
+	if ( bspEntData.empty() ) {
 		Sys_Warning( "No BSP entity data. aborting...\n" );
 		return;
 	}
@@ -58,10 +58,10 @@ void ExportEntities( void ){
 	/* write it */
 	auto filename = StringOutputStream( 256 )( PathExtensionless( source ), ".ent" );
 	Sys_Printf( "Writing %s\n", filename.c_str() );
-	Sys_FPrintf( SYS_VRB, "(%d bytes)\n", bspEntDataSize );
+	Sys_FPrintf( SYS_VRB, "(%zu bytes)\n", bspEntData.size() );
 	FILE *file = SafeOpenWrite( filename, "wt" );
 
-	fprintf( file, "%s\n", bspEntData );
+	fprintf( file, "%s\n", bspEntData.data() );
 	fclose( file );
 }
 
@@ -72,15 +72,15 @@ void ExportEntities( void ){
    exports the entities to a text file (.ent)
  */
 
-int ExportEntitiesMain( int argc, char **argv ){
+int ExportEntitiesMain( Args& args ){
 	/* arg checking */
-	if ( argc < 2 ) {
+	if ( args.empty() ) {
 		Sys_Printf( "Usage: q3map2 -exportents [-v] <mapname>\n" );
 		return 0;
 	}
 
 	/* do some path mangling */
-	strcpy( source, ExpandArg( argv[ argc - 1 ] ) );
+	strcpy( source, ExpandArg( args.takeBack() ) );
 	path_set_extension( source, ".bsp" );
 
 	/* load the bsp */

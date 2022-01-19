@@ -19,12 +19,11 @@
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#if !defined( INCLUDED_STRINGFIXESIZE_H )
-#define INCLUDED_STRINGFIXESIZE_H
+#pragma once
 
 #include "stream/textstream.h"
 #include "string/string.h"
-#include "cmdlib.h"
+#include "inout.h"
 
 
 /// \brief A TextOutputStream which writes to a null terminated fixed length char array.
@@ -38,10 +37,13 @@ public:
 	StringFixedSize() {
 		clear();
 	}
+	explicit StringFixedSize( const char* string ){
+		operator()( string );
+	}
 	std::size_t write( const char* buffer, std::size_t length ) override {
 		if( m_length + length < SIZE ){
-			for( auto i = length; i != 0; --i )
-				m_string[m_length++] = *buffer++;
+			std::copy_n( buffer, length, m_string + m_length );
+			m_length += length;
 			strClear( &m_string[m_length] );
 		}
 		else{
@@ -84,6 +86,3 @@ inline StringFixedSize<SIZE>& operator<<( StringFixedSize<SIZE>& ostream, const 
 }
 
 using String64 = StringFixedSize<64>;
-
-
-#endif

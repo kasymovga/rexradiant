@@ -41,7 +41,7 @@
 #include "os/dir.h"
 #include "gtkutil/filechooser.h"
 #include "gtkutil/messagebox.h"
-#include "cmdlib.h"
+#include "commandlib.h"
 
 #include "error.h"
 #include "console.h"
@@ -92,12 +92,10 @@ CGameDescription::CGameDescription( xmlDocPtr pDoc, const CopiedString& gameFile
 	}
 
 	{
-		StringOutputStream path( 256 );
-		path << AppPath_get() << gameFile.c_str() << "/";
-		mGameToolsPath = path.c_str();
+		mGameToolsPath = StringOutputStream( 256 )( AppPath_get(), "gamepacks/", gameFile, '/' );
 	}
 
-	ASSERT_MESSAGE( file_exists( mGameToolsPath.c_str() ), "game directory not found: " << makeQuoted( mGameToolsPath.c_str() ) );
+	ASSERT_MESSAGE( file_exists( mGameToolsPath.c_str() ), "game directory not found: " << makeQuoted( mGameToolsPath ) );
 
 	mGameFile = gameFile;
 
@@ -116,10 +114,10 @@ CGameDescription::CGameDescription( xmlDocPtr pDoc, const CopiedString& gameFile
 }
 
 void CGameDescription::Dump(){
-	globalOutputStream() << "game description file: " << makeQuoted( mGameFile.c_str() ) << "\n";
+	globalOutputStream() << "game description file: " << makeQuoted( mGameFile ) << "\n";
 	for ( GameDescription::iterator i = m_gameDescription.begin(); i != m_gameDescription.end(); ++i )
 	{
-		globalOutputStream() << ( *i ).first.c_str() << " = " << makeQuoted( ( *i ).second.c_str() ) << "\n";
+		globalOutputStream() << ( *i ).first << " = " << makeQuoted( ( *i ).second ) << "\n";
 	}
 }
 
@@ -279,7 +277,7 @@ void CGameDialog::CreateGlobalFrame( PreferencesPage& page, bool global ){
 	}
 	page.appendCombo(
 	    "Select the game",
-	    StringArrayRange( &( *games.begin() ), &( *games.end() ) ),
+	    StringArrayRange( games ),
 	    global?
 	    IntImportCallback( MemberCaller1<CGameDialog, int, &CGameDialog::GameFileAssign>( *this ) ):
 	    IntImportCallback( MemberCaller1<CGameDialog, int, &CGameDialog::GameFileImport>( *this ) ),
@@ -311,7 +309,7 @@ public:
 	LoadGameFile( std::list<CGameDescription*>& games, const char* path ) : mGames( games ), mPath( path ){
 	}
 	void operator()( const char* name ) const {
-		if ( !extension_equal( path_get_extension( name ), "game" ) ) {
+		if ( !path_extension_is( name, "game" ) ) {
 			return;
 		}
 		StringOutputStream strPath( 256 );
@@ -331,9 +329,7 @@ public:
 };
 
 void CGameDialog::ScanForGames(){
-	StringOutputStream strGamesPath( 256 );
-	strGamesPath << AppPath_get() << "games/";
-	const char *path = strGamesPath.c_str();
+	const auto path = StringOutputStream( 256 )( AppPath_get(), "gamepacks/games/" );
 
 	globalOutputStream() << "Scanning for game description files: " << path << '\n';
 

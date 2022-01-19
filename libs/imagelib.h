@@ -19,13 +19,12 @@
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#if !defined( INCLUDED_IMAGELIB_H )
-#define INCLUDED_IMAGELIB_H
+#pragma once
 
 #include "iimage.h"
 #include "iarchive.h"
 #include "idatastream.h"
-#include <stdlib.h>
+#include <cstdlib>
 
 struct RGBAPixel
 {
@@ -131,5 +130,3 @@ public:
 		return m_read;
 	}
 };
-
-#endif

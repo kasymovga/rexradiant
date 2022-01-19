@@ -18,19 +18,19 @@
  */
 
 #include "portals.h"
-#include <string.h>
-#include <stdlib.h>
+#include <cstring>
+#include <cstdlib>
 #ifndef __APPLE__
 #include <search.h>
 #endif
-#include <stdio.h>
+#include <cstdio>
 
 #include "iglrender.h"
 #include "cullable.h"
 
 #include "prtview.h"
 
-#define LINE_BUF 1000
+#define LINE_BUF 4096
 
 CPortals portals;
 CPortalsRender render;
@@ -81,7 +81,7 @@ bool CBspPortal::Build( char *def ){
 
 	for ( n = 0; n < point_count; n++ )
 	{
-		for (; *c != 0 && *c != '('; c++ ) ;
+		for (; *c != 0 && *c != '('; c++ ){};
 
 		if ( *c == 0 ) {
 			return false;

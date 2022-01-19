@@ -42,16 +42,18 @@ static void autocaulk_write(){
 
 	FILE* file = SafeOpenWrite( filename, "wt" );
 
-	int fslime = 16;
+	int fslime = 0;
 	ApplySurfaceParm( "slime", &fslime, NULL, NULL );
-	int flava = 8;
+	int flava = 0;
 	ApplySurfaceParm( "lava", &flava, NULL, NULL );
 
-	for ( brush_t* b = entities[0].brushes; b; b = b->next ) {
-		fprintf( file, "%i ", b->brushNum );
-		shaderInfo_t* contentShader = b->contentShader;
-		for( int i = 0; i < b->numsides; ++i ){
-			if( b->sides[i].visibleHull || ( b->sides[i].compileFlags & C_NODRAW ) ){
+	for ( const brush_t& b : entities[0].brushes ) {
+		fprintf( file, "%i ", b.brushNum );
+		const shaderInfo_t* contentShader = b.contentShader;
+		const bool globalFog = ( contentShader->compileFlags & C_FOG )
+			&& std::all_of( b.sides.cbegin(), b.sides.cend(), []( const side_t& side ){ return side.visibleHull.empty(); } );
+		for( const side_t& side : b.sides ){
+			if( !side.visibleHull.empty() || ( side.compileFlags & C_NODRAW ) || globalFog ){
 				fprintf( file, "-" );
 			}
 			else if( contentShader->compileFlags & C_LIQUID ){
@@ -62,7 +64,7 @@ static void autocaulk_write(){
 				else
 					fprintf( file, "w" );
 			}
-			else if( b->compileFlags & C_TRANSLUCENT ){
+			else if( b.compileFlags & C_TRANSLUCENT ){
 				if( contentShader->compileFlags & C_SOLID )
 					fprintf( file, "N" );
 				else
@@ -89,69 +91,50 @@ static void autocaulk_write(){
    copies advertisement info into the BSP structures
  */
 
-static void ProcessAdvertisements( void ) {
-	const char*         modelKey;
-	int modelNum;
-	bspModel_t*         adModel;
-	bspDrawSurface_t*   adSurface;
-
+static void ProcessAdvertisements() {
 	Sys_FPrintf( SYS_VRB, "--- ProcessAdvertisements ---\n" );
 
 	for ( const auto& e : entities ) {
 
 		/* is an advertisement? */
 		if ( e.classname_is( "advertisement" ) ) {
+			bspAdvertisement_t& ad = bspAds.emplace_back();
+			ad.cellId = e.intForKey( "cellId" );
+			// copy and clear the rest of memory // check for overflow by String64
+			const auto modelKey = String64()( e.valueForKey( "model" ) );
+			strncpy( ad.model, modelKey, sizeof( ad.model ) );
 
-			modelKey = e.valueForKey( "model" );
+			const bspModel_t& adModel = bspModels[atoi( modelKey.c_str() + 1 )];
 
-			if ( strlen( modelKey ) > MAX_QPATH - 1 ) {
-				Error( "Model Key for entity exceeds ad struct string length." );
+			if ( adModel.numBSPSurfaces != 1 ) {
+				Error( "Ad cell id %d has more than one surface.", ad.cellId );
+			}
+
+			const bspDrawSurface_t& adSurface = bspDrawSurfaces[adModel.firstBSPSurface];
+
+			// store the normal for use at run time.. all ad verts are assumed to
+			// have identical normals (because they should be a simple rectangle)
+			// so just use the first vert's normal
+			ad.normal = bspDrawVerts[adSurface.firstVert].normal;
+
+			// store the ad quad for quick use at run time
+			if ( adSurface.surfaceType == MST_PATCH ) {
+				const int v0 = adSurface.firstVert + adSurface.patchHeight - 1;
+				const int v1 = adSurface.firstVert + adSurface.numVerts - 1;
+				const int v2 = adSurface.firstVert + adSurface.numVerts - adSurface.patchWidth;
+				const int v3 = adSurface.firstVert;
+				ad.rect[0] = bspDrawVerts[v0].xyz;
+				ad.rect[1] = bspDrawVerts[v1].xyz;
+				ad.rect[2] = bspDrawVerts[v2].xyz;
+				ad.rect[3] = bspDrawVerts[v3].xyz;
 			}
 			else {
-				if ( numBSPAds < MAX_MAP_ADVERTISEMENTS ) {
-					bspAds[numBSPAds].cellId = e.intForKey( "cellId" );
-					strncpy( bspAds[numBSPAds].model, modelKey, sizeof( bspAds[numBSPAds].model ) );
-
-					modelKey++;
-					modelNum = atoi( modelKey );
-					adModel = &bspModels[modelNum];
-
-					if ( adModel->numBSPSurfaces != 1 ) {
-						Error( "Ad cell id %d has more than one surface.", bspAds[numBSPAds].cellId );
-					}
-
-					adSurface = &bspDrawSurfaces[adModel->firstBSPSurface];
-
-					// store the normal for use at run time.. all ad verts are assumed to
-					// have identical normals (because they should be a simple rectangle)
-					// so just use the first vert's normal
-					bspAds[numBSPAds].normal = bspDrawVerts[adSurface->firstVert].normal;
-
-					// store the ad quad for quick use at run time
-					if ( adSurface->surfaceType == MST_PATCH ) {
-						int v0 = adSurface->firstVert + adSurface->patchHeight - 1;
-						int v1 = adSurface->firstVert + adSurface->numVerts - 1;
-						int v2 = adSurface->firstVert + adSurface->numVerts - adSurface->patchWidth;
-						int v3 = adSurface->firstVert;
-						bspAds[numBSPAds].rect[0] = bspDrawVerts[v0].xyz;
-						bspAds[numBSPAds].rect[1] = bspDrawVerts[v1].xyz;
-						bspAds[numBSPAds].rect[2] = bspDrawVerts[v2].xyz;
-						bspAds[numBSPAds].rect[3] = bspDrawVerts[v3].xyz;
-					}
-					else {
-						Error( "Ad cell %d has an unsupported Ad Surface type.", bspAds[numBSPAds].cellId );
-					}
-
-					numBSPAds++;
-				}
-				else {
-					Error( "Maximum number of map advertisements exceeded." );
-				}
+				Error( "Ad cell %d has an unsupported Ad Surface type.", ad.cellId );
 			}
 		}
 	}
 
-	Sys_FPrintf( SYS_VRB, "%9d in-game advertisements\n", numBSPAds );
+	Sys_FPrintf( SYS_VRB, "%9zu in-game advertisements\n", bspAds.size() );
 }
 
 /*
@@ -159,7 +142,7 @@ static void ProcessAdvertisements( void ) {
    sets the model numbers for brush entities
  */
 
-static void SetCloneModelNumbers( void ){
+static void SetCloneModelNumbers(){
 	int models;
 	char modelValue[ 16 ];
 	const char  *value, *value2, *value3;
@@ -170,7 +153,7 @@ static void SetCloneModelNumbers( void ){
 	for ( std::size_t i = 1; i < entities.size(); ++i )
 	{
 		/* only entities with brushes or patches get a model number */
-		if ( entities[ i ].brushes == NULL && entities[ i ].patches == NULL ) {
+		if ( entities[ i ].brushes.empty() && entities[ i ].patches == NULL ) {
 			continue;
 		}
 
@@ -190,7 +173,7 @@ static void SetCloneModelNumbers( void ){
 	for ( std::size_t i = 1; i < entities.size(); ++i )
 	{
 		/* only entities with brushes or patches get a model number */
-		if ( entities[ i ].brushes == NULL && entities[ i ].patches == NULL ) {
+		if ( entities[ i ].brushes.empty() && entities[ i ].patches == NULL ) {
 			continue;
 		}
 
@@ -220,7 +203,7 @@ static void SetCloneModelNumbers( void ){
 				entities[ i ].setKeyValue( "model", modelValue );
 
 				/* nuke the brushes/patches for this entity (fixme: leak!) */
-				entities[ i ].brushes = NULL;
+				brushlist_t *leak = new brushlist_t( std::move( entities[ i ].brushes ) ); // are brushes referenced elsewhere, so we do not nuke them really?
 				entities[ i ].patches = NULL;
 			}
 		}
@@ -234,42 +217,36 @@ static void SetCloneModelNumbers( void ){
    matches brushsides back to their appropriate drawsurface and shader
  */
 
-static void FixBrushSides( entity_t *e ){
-	int i;
-	mapDrawSurface_t    *ds;
-	sideRef_t           *sideRef;
-	bspBrushSide_t      *side;
-
-
+static void FixBrushSides( const entity_t& e ){
 	/* note it */
 	Sys_FPrintf( SYS_VRB, "--- FixBrushSides ---\n" );
 
 	/* walk list of drawsurfaces */
-	for ( i = e->firstDrawSurf; i < numMapDrawSurfs; i++ )
+	for ( int i = e.firstDrawSurf; i < numMapDrawSurfs; ++i )
 	{
 		/* get surface and try to early out */
-		ds = &mapDrawSurfs[ i ];
-		if ( ds->outputNum < 0 ) {
+		const mapDrawSurface_t& ds = mapDrawSurfs[ i ];
+		if ( ds.outputNum < 0 ) {
 			continue;
 		}
 
 		/* walk sideref list */
-		for ( sideRef = ds->sideRef; sideRef != NULL; sideRef = sideRef->next )
+		for ( const sideRef_t *sideRef = ds.sideRef; sideRef != NULL; sideRef = sideRef->next )
 		{
 			/* get bsp brush side */
 			if ( sideRef->side == NULL || sideRef->side->outputNum < 0 ) {
 				continue;
 			}
-			side = &bspBrushSides[ sideRef->side->outputNum ];
+			bspBrushSide_t& side = bspBrushSides[ sideRef->side->outputNum ];
 
 			/* set drawsurface */
-			side->surfaceNum = ds->outputNum;
-			//%	Sys_FPrintf( SYS_VRB, "DS: %7d Side: %7d     ", ds->outputNum, sideRef->side->outputNum );
+			side.surfaceNum = ds.outputNum;
+			//%	Sys_FPrintf( SYS_VRB, "DS: %7d Side: %7d     ", ds.outputNum, sideRef->side->outputNum );
 
 			/* set shader */
-			if ( !strEqual( bspShaders[ side->shaderNum ].shader, ds->shaderInfo->shader ) ) {
-				//%	Sys_FPrintf( SYS_VRB, "Remapping %s to %s\n", bspShaders[ side->shaderNum ].shader, ds->shaderInfo->shader );
-				side->shaderNum = EmitShader( ds->shaderInfo->shader, &ds->shaderInfo->contentFlags, &ds->shaderInfo->surfaceFlags );
+			if ( !strEqual( bspShaders[ side.shaderNum ].shader, ds.shaderInfo->shader ) ) {
+				//%	Sys_FPrintf( SYS_VRB, "Remapping %s to %s\n", bspShaders[ side.shaderNum ].shader, ds.shaderInfo->shader );
+				side.shaderNum = EmitShader( ds.shaderInfo->shader, &ds.shaderInfo->contentFlags, &ds.shaderInfo->surfaceFlags );
 			}
 		}
 	}
@@ -282,16 +259,11 @@ static void FixBrushSides( entity_t *e ){
    creates a full bsp + surfaces for the worldspawn entity
  */
 
-void ProcessWorldModel( void ){
-	entity_t    *e;
-	tree_t      *tree;
-	face_t      *faces;
-	xmlNodePtr polyline, leaknode;
-	char level[ 2 ];
+static void ProcessWorldModel( entity_t& e ){
 	const char  *value;
 
 	/* sets integer blockSize from worldspawn "_blocksize" key if it exists */
-	if( entities[ 0 ].read_keyvalue( value, "_blocksize", "blocksize", "chopsize" ) ) {  /* "chopsize" : sof2 */
+	if( e.read_keyvalue( value, "_blocksize", "blocksize", "chopsize" ) ) {  /* "chopsize" : sof2 */
 		/* scan 3 numbers */
 		const int s = sscanf( value, "%d %d %d", &blockSize[ 0 ], &blockSize[ 1 ], &blockSize[ 2 ] );
 
@@ -303,12 +275,11 @@ void ProcessWorldModel( void ){
 	Sys_Printf( "block size = { %d %d %d }\n", blockSize[ 0 ], blockSize[ 1 ], blockSize[ 2 ] );
 
 	/* sof2: ignore leaks? */
-	const bool ignoreLeaks = entities[ 0 ].boolForKey( "_ignoreleaks", "ignoreleaks" );
+	const bool ignoreLeaks = e.boolForKey( "_ignoreleaks", "ignoreleaks" );
 
 	/* begin worldspawn model */
-	BeginModel();
-	e = &entities[ 0 ];
-	e->firstDrawSurf = 0;
+	BeginModel( e );
+	e.firstDrawSurf = 0;
 
 	/* ydnar: gs mods */
 	ClearMetaTriangles();
@@ -321,8 +292,8 @@ void ProcessWorldModel( void ){
 	}
 
 	/* build an initial bsp tree using all of the sides of all of the structural brushes */
-	faces = MakeStructuralBSPFaceList( entities[ 0 ].brushes );
-	tree = FaceBSP( faces );
+	facelist_t faces = MakeStructuralBSPFaceList( e.brushes );
+	tree_t tree = FaceBSP( faces );
 	MakeTreePortals( tree );
 	FilterStructuralBrushesIntoTree( e, tree );
 
@@ -334,17 +305,7 @@ void ProcessWorldModel( void ){
 
 	const bool leaked = ( leakStatus != EFloodEntities::Good );
 	if( leaked ){
-		Sys_FPrintf( SYS_NOXMLflag | SYS_ERR, "**********************\n" );
-		Sys_FPrintf( SYS_NOXMLflag | SYS_ERR, "******* leaked *******\n" );
-		Sys_FPrintf( SYS_NOXMLflag | SYS_ERR, "**********************\n" );
-		polyline = LeakFile( tree );
-		leaknode = xmlNewNode( NULL, (const xmlChar*)"message" );
-		xmlNodeAddContent( leaknode, (const xmlChar*)"MAP LEAKED\n" );
-		xmlAddChild( leaknode, polyline );
-		level[0] = (int) '0' + SYS_ERR;
-		level[1] = 0;
-		xmlSetProp( leaknode, (const xmlChar*)"level", (const xmlChar*)level );
-		xml_SendNode( leaknode );
+		Leak_feedback( tree );
 		if ( leaktest ) {
 			Sys_FPrintf( SYS_WRN, "--- MAP LEAKED, ABORTING LEAKTEST ---\n" );
 			exit( 0 );
@@ -353,13 +314,13 @@ void ProcessWorldModel( void ){
 
 	if ( leakStatus != EFloodEntities::Empty ) { /* if no entities exist, this would accidentally the whole map, and that IS bad */
 		/* rebuild a better bsp tree using only the sides that are visible from the inside */
-		FillOutside( tree->headnode );
+		FillOutside( tree.headnode );
 
 		/* chop the sides to the convex hull of their visible fragments, giving us the smallest polygons */
 		ClipSidesIntoTree( e, tree );
 
 		/* build a visible face tree (same thing as the initial bsp tree but after reducing the faces) */
-		faces = MakeVisibleBSPFaceList( entities[ 0 ].brushes );
+		faces = MakeVisibleBSPFaceList( e.brushes );
 		FreeTree( tree );
 		tree = FaceBSP( faces );
 		MakeTreePortals( tree );
@@ -372,7 +333,7 @@ void ProcessWorldModel( void ){
 
 		/* flood again to discard portals in the void (also required for _skybox) */
 		FloodEntities( tree );
-		FillOutside( tree->headnode );
+		FillOutside( tree.headnode );
 	}
 
 	/* save out information for visibility processing */
@@ -393,7 +354,7 @@ void ProcessWorldModel( void ){
 	AddEntitySurfaceModels( e );
 
 	/* generate bsp brushes from map brushes */
-	EmitBrushes( e->brushes, &e->firstBrush, &e->numBrushes );
+	EmitBrushes( e.brushes, &e.firstBrush, &e.numBrushes );
 
 	/* add references to the detail brushes */
 	FilterDetailBrushesIntoTree( e, tree );
@@ -405,7 +366,7 @@ void ProcessWorldModel( void ){
 
 	/* subdivide each drawsurf as required by shader tesselation */
 	if ( !nosubdivide ) {
-		SubdivideFaceSurfaces( e, tree );
+		SubdivideFaceSurfaces( e );
 	}
 
 	/* add in any vertexes required to fix t-junctions */
@@ -431,9 +392,9 @@ void ProcessWorldModel( void ){
 	}
 
 	/* ydnar: fog hull */
-	if ( entities[ 0 ].read_keyvalue( value, "_foghull" ) ) {
+	if ( e.read_keyvalue( value, "_foghull" ) ) {
 		const auto shader = String64()( "textures/", value );
-		MakeFogHullSurfs( e, tree, shader );
+		MakeFogHullSurfs( shader );
 	}
 
 	/* ydnar: bug 645: do flares for lights */
@@ -471,7 +432,7 @@ void ProcessWorldModel( void ){
 					}
 
 					/* create the flare surface (note shader defaults automatically) */
-					DrawSurfaceForFlare( mapEntityNum, origin, normal, color, flareShader, lightStyle );
+					DrawSurfaceForFlare( e.mapEntityNum, origin, normal, color, flareShader, lightStyle );
 				}
 			}
 		}
@@ -484,7 +445,7 @@ void ProcessWorldModel( void ){
 	FixBrushSides( e );
 
 	/* finish */
-	EndModel( e, tree->headnode );
+	EndModel( e, tree.headnode );
 	FreeTree( tree );
 }
 
@@ -495,17 +456,10 @@ void ProcessWorldModel( void ){
    creates bsp + surfaces for other brush models
  */
 
-void ProcessSubModel( void ){
-	entity_t    *e;
-	tree_t      *tree;
-	brush_t     *b, *bc;
-	node_t      *node;
-
-
+static void ProcessSubModel( entity_t& e ){
 	/* start a brush model */
-	BeginModel();
-	e = &entities[ mapEntityNum ];
-	e->firstDrawSurf = numMapDrawSurfs;
+	BeginModel( e );
+	e.firstDrawSurf = numMapDrawSurfs;
 
 	/* ydnar: gs mods */
 	ClearMetaTriangles();
@@ -514,10 +468,9 @@ void ProcessSubModel( void ){
 	PatchMapDrawSurfs( e );
 
 	/* allocate a tree */
-	node = AllocNode();
-	node->planenum = PLANENUM_LEAF;
-	tree = AllocTree();
-	tree->headnode = node;
+	tree_t tree{};
+	tree.headnode = AllocNode();
+	tree.headnode->planenum = PLANENUM_LEAF;
 
 	/* add the sides to the tree */
 	ClipSidesIntoTree( e, tree );
@@ -529,19 +482,14 @@ void ProcessSubModel( void ){
 	AddEntitySurfaceModels( e );
 
 	/* generate bsp brushes from map brushes */
-	EmitBrushes( e->brushes, &e->firstBrush, &e->numBrushes );
+	EmitBrushes( e.brushes, &e.firstBrush, &e.numBrushes );
 
 	/* just put all the brushes in headnode */
-	for ( b = e->brushes; b; b = b->next )
-	{
-		bc = CopyBrush( b );
-		bc->next = node->brushlist;
-		node->brushlist = bc;
-	}
+	tree.headnode->brushlist = e.brushes;
 
 	/* subdivide each drawsurf as required by shader tesselation */
 	if ( !nosubdivide ) {
-		SubdivideFaceSurfaces( e, tree );
+		SubdivideFaceSurfaces( e );
 	}
 
 	/* add in any vertexes required to fix t-junctions */
@@ -568,7 +516,7 @@ void ProcessSubModel( void ){
 	FixBrushSides( e );
 
 	/* finish */
-	EndModel( e, node );
+	EndModel( e, tree.headnode );
 	FreeTree( tree );
 }
 
@@ -579,13 +527,9 @@ void ProcessSubModel( void ){
    process world + other models into the bsp
  */
 
-void ProcessModels( void ){
-	bool oldVerbose;
-	entity_t    *entity;
-
-
+static void ProcessModels(){
 	/* preserve -v setting */
-	oldVerbose = verbose;
+	const bool oldVerbose = verbose;
 
 	/* start a new bsp */
 	BeginBSPFile();
@@ -594,21 +538,21 @@ void ProcessModels( void ){
 	CreateMapFogs();
 
 	/* walk entity list */
-	for ( mapEntityNum = 0; mapEntityNum < entities.size(); mapEntityNum++ )
+	for ( size_t entityNum = 0; entityNum < entities.size(); ++entityNum )
 	{
 		/* get entity */
-		entity = &entities[ mapEntityNum ];
-		if ( entity->brushes == NULL && entity->patches == NULL ) {
+		entity_t& entity = entities[ entityNum ];
+		if ( entity.brushes.empty() && entity.patches == NULL ) {
 			continue;
 		}
 
 		/* process the model */
-		Sys_FPrintf( SYS_VRB, "############### model %i ###############\n", numBSPModels );
-		if ( mapEntityNum == 0 ) {
-			ProcessWorldModel();
+		Sys_FPrintf( SYS_VRB, "############### model %zu ###############\n", bspModels.size() );
+		if ( entityNum == 0 ) {
+			ProcessWorldModel( entity );
 		}
 		else{
-			ProcessSubModel();
+			ProcessSubModel( entity );
 		}
 
 		/* potentially turn off the deluge of text */
@@ -618,7 +562,7 @@ void ProcessModels( void ){
 	/* restore -v setting */
 	verbose = oldVerbose;
 
-	Sys_FPrintf( SYS_VRB, "%9i bspModels in total\n", numBSPModels );
+	Sys_FPrintf( SYS_VRB, "%9zu bspModels in total\n", bspModels.size() );
 
 	/* write fogs */
 	EmitFogs();
@@ -634,7 +578,7 @@ void ProcessModels( void ){
    this is probably broken unless teamed with a radiant version that preserves entity order
  */
 
-void OnlyEnts( void ){
+static void OnlyEnts( const char *filename ){
 	/* note it */
 	Sys_Printf( "--- OnlyEnts ---\n" );
 
@@ -649,7 +593,7 @@ void OnlyEnts( void ){
 	entities.clear();
 
 	LoadShaderInfo();
-	LoadMapFile( name, false, false );
+	LoadMapFile( filename, false, false );
 	SetModelNumbers();
 	SetLightStyles();
 
@@ -676,290 +620,255 @@ void OnlyEnts( void ){
    handles creation of a bsp from a map file
  */
 
-int BSPMain( int argc, char **argv ){
-	int i;
+int BSPMain( Args& args ){
 	char tempSource[ 1024 ];
 	bool onlyents = false;
 
-	if ( argc >= 2 && striEqual( argv[ 1 ], "-bsp" ) ) {
+	if ( args.takeFront( "-bsp" ) ) {
 		Sys_Printf( "-bsp argument unnecessary\n" );
-		argv++;
-		argc--;
 	}
 
 	/* note it */
 	Sys_Printf( "--- BSP ---\n" );
 
 	doingBSP = true;
-	SetDrawSurfacesBuffer();
 	mapDrawSurfs = safe_calloc( sizeof( mapDrawSurface_t ) * MAX_MAP_DRAW_SURFS );
 	numMapDrawSurfs = 0;
 
 	strClear( tempSource );
 
 	/* set standard game flags */
-	maxLMSurfaceVerts = game->maxLMSurfaceVerts;
-	maxSurfaceVerts = game->maxSurfaceVerts;
-	maxSurfaceIndexes = game->maxSurfaceIndexes;
-	emitFlares = game->emitFlares;
-	texturesRGB = game->texturesRGB;
-	colorsRGB = game->colorsRGB;
-	keepLights = game->keepLights;
+	maxLMSurfaceVerts = g_game->maxLMSurfaceVerts;
+	maxSurfaceVerts = g_game->maxSurfaceVerts;
+	maxSurfaceIndexes = g_game->maxSurfaceIndexes;
+	emitFlares = g_game->emitFlares;
+	texturesRGB = g_game->texturesRGB;
+	colorsRGB = g_game->colorsRGB;
+	keepLights = g_game->keepLights;
 
 	/* process arguments */
-	for ( i = 1; i < ( argc - 1 ); i++ )
+	/* fixme: print more useful usage here */
+	if ( args.empty() ) {
+		Error( "usage: q3map2 [options] mapfile" );
+	}
+
+	const char *fileName = args.takeBack();
+	auto argsToInject = args.getVector();
 	{
-		if ( striEqual( argv[ i ], "-onlyents" ) ) {
+		while ( args.takeArg( "-onlyents" ) ) {
 			Sys_Printf( "Running entity-only compile\n" );
 			onlyents = true;
 		}
-		else if ( striEqual( argv[ i ], "-tempname" ) ) {
-			strcpy( tempSource, argv[ ++i ] );
+		while ( args.takeArg( "-tempname" ) ) {
+			strcpy( tempSource, args.takeNext() );
 		}
-		else if ( striEqual( argv[ i ],  "-nowater" ) ) {
+		while ( args.takeArg( "-nowater" ) ) {
 			Sys_Printf( "Disabling water\n" );
 			nowater = true;
 		}
-		else if ( striEqual( argv[ i ], "-keeplights" ) ) {
+		while ( args.takeArg( "-keeplights" ) ) {
 			keepLights = true;
 			Sys_Printf( "Leaving light entities on map after compile\n" );
 		}
-		else if ( striEqual( argv[ i ],  "-nodetail" ) ) {
-			Sys_Printf( "Ignoring detail brushes\n" ) ;
+		while ( args.takeArg( "-nodetail" ) ) {
+			Sys_Printf( "Ignoring detail brushes\n" );
 			nodetail = true;
 		}
-		else if ( striEqual( argv[ i ],  "-fulldetail" ) ) {
+		while ( args.takeArg( "-fulldetail" ) ) {
 			Sys_Printf( "Turning detail brushes into structural brushes\n" );
 			fulldetail = true;
 		}
-		else if ( striEqual( argv[ i ],  "-nofog" ) ) {
+		while ( args.takeArg( "-nofog" ) ) {
 			Sys_Printf( "Fog volumes disabled\n" );
 			nofog = true;
 		}
-		else if ( striEqual( argv[ i ],  "-nosubdivide" ) ) {
+		while ( args.takeArg( "-nosubdivide" ) ) {
 			Sys_Printf( "Disabling brush face subdivision\n" );
 			nosubdivide = true;
 		}
-		else if ( striEqual( argv[ i ],  "-leaktest" ) ) {
+		while ( args.takeArg( "-leaktest" ) ) {
 			Sys_Printf( "Leaktest enabled\n" );
 			leaktest = true;
 		}
-		else if ( striEqual( argv[ i ],  "-verboseentities" ) ) {
+		while ( args.takeArg( "-verboseentities" ) ) {
 			Sys_Printf( "Verbose entities enabled\n" );
 			verboseEntities = true;
 		}
-		else if ( striEqual( argv[ i ], "-nocurves" ) ) {
+		while ( args.takeArg( "-nocurves" ) ) {
 			Sys_Printf( "Ignoring curved surfaces (patches)\n" );
 			noCurveBrushes = true;
 		}
-		else if ( striEqual( argv[ i ], "-notjunc" ) ) {
+		while ( args.takeArg( "-notjunc" ) ) {
 			Sys_Printf( "T-junction fixing disabled\n" );
 			notjunc = true;
 		}
-		else if ( striEqual( argv[ i ], "-fakemap" ) ) {
+		while ( args.takeArg( "-fakemap" ) ) {
 			Sys_Printf( "Generating fakemap.map\n" );
 			fakemap = true;
 		}
-		else if ( striEqual( argv[ i ],  "-samplesize" ) ) {
-			sampleSize = std::max( 1, atoi( argv[ i + 1 ] ) );
-			i++;
+		while ( args.takeArg( "-samplesize" ) ) {
+			sampleSize = std::max( 1, atoi( args.takeNext() ) );
 			Sys_Printf( "Lightmap sample size set to %dx%d units\n", sampleSize, sampleSize );
 		}
-		else if ( striEqual( argv[ i ], "-minsamplesize" ) ) {
-			minSampleSize = std::max( 1, atoi( argv[ i + 1 ] ) );
-			i++;
+		while ( args.takeArg( "-minsamplesize" ) ) {
+			minSampleSize = std::max( 1, atoi( args.takeNext() ) );
 			Sys_Printf( "Minimum lightmap sample size set to %dx%d units\n", minSampleSize, minSampleSize );
 		}
-		else if ( striEqual( argv[ i ],  "-custinfoparms" ) ) {
+		while ( args.takeArg( "-custinfoparms" ) ) {
 			Sys_Printf( "Custom info parms enabled\n" );
 			useCustomInfoParms = true;
 		}
 
 		/* sof2 args */
-		else if ( striEqual( argv[ i ], "-rename" ) ) {
+		while ( args.takeArg( "-rename" ) ) {
 			Sys_Printf( "Appending _bsp suffix to misc_model shaders (SOF2)\n" );
 			renameModelShaders = true;
 		}
 
 		/* ydnar args */
-		else if ( striEqual( argv[ i ],  "-ne" ) ) {
-			normalEpsilon = atof( argv[ i + 1 ] );
-			i++;
+		while ( args.takeArg( "-ne" ) ) {
+			normalEpsilon = atof( args.takeNext() );
 			Sys_Printf( "Normal epsilon set to %f\n", normalEpsilon );
 		}
-		else if ( striEqual( argv[ i ],  "-de" ) ) {
-			distanceEpsilon = atof( argv[ i + 1 ] );
-			i++;
+		while ( args.takeArg( "-de" ) ) {
+			distanceEpsilon = atof( args.takeNext() );
 			Sys_Printf( "Distance epsilon set to %f\n", distanceEpsilon );
 		}
-		else if ( striEqual( argv[ i ],  "-mv" ) ) {
-			maxLMSurfaceVerts = std::max( 3, atoi( argv[ i + 1 ] ) );
+		while ( args.takeArg( "-mv" ) ) {
+			maxLMSurfaceVerts = std::max( 3, atoi( args.takeNext() ) );
 			value_maximize( maxSurfaceVerts, maxLMSurfaceVerts );
-			i++;
 			Sys_Printf( "Maximum lightmapped surface vertex count set to %d\n", maxLMSurfaceVerts );
 		}
-		else if ( striEqual( argv[ i ],  "-mi" ) ) {
-			maxSurfaceIndexes = std::max( 3, atoi( argv[ i + 1 ] ) );
+		while ( args.takeArg( "-mi" ) ) {
+			maxSurfaceIndexes = std::max( 3, atoi( args.takeNext() ) );
 			Sys_Printf( "Maximum per-surface index count set to %d\n", maxSurfaceIndexes );
-			i++;
 		}
-		else if ( striEqual( argv[ i ], "-np" ) ) {
-			npDegrees = std::max( 0.0, atof( argv[ i + 1 ] ) );
+		while ( args.takeArg( "-np" ) ) {
+			npDegrees = std::max( 0.0, atof( args.takeNext() ) );
 			if ( npDegrees > 0.0f ) {
 				Sys_Printf( "Forcing nonplanar surfaces with a breaking angle of %f degrees\n", npDegrees );
 			}
-			i++;
 		}
-		else if ( striEqual( argv[ i ],  "-snap" ) ) {
-			bevelSnap = std::max( 0, atoi( argv[ i + 1 ] ) );
+		while ( args.takeArg( "-snap" ) ) {
+			bevelSnap = std::max( 0, atoi( args.takeNext() ) );
 			if ( bevelSnap > 0 ) {
 				Sys_Printf( "Snapping brush bevel planes to %d units\n", bevelSnap );
 			}
-			i++;
 		}
-		else if ( striEqual( argv[ i ],  "-texrange" ) ) {
-			texRange = std::max( 0, atoi( argv[ i + 1 ] ) );
-			i++;
-			Sys_Printf( "Limiting per-surface texture range to %d texels\n", texRange );
-		}
-		else if ( striEqual( argv[ i ], "-nohint" ) ) {
+		while ( args.takeArg( "-nohint" ) ) {
 			Sys_Printf( "Hint brushes disabled\n" );
 			noHint = true;
 		}
-		else if ( striEqual( argv[ i ], "-flat" ) ) {
+		while ( args.takeArg( "-flat" ) ) {
 			Sys_Printf( "Flatshading enabled\n" );
 			flat = true;
 		}
-		else if ( striEqual( argv[ i ], "-celshader" ) ) {
-			++i;
-			if ( !strEmpty( argv[ i ] ) ) {
-				globalCelShader( "textures/", argv[ i ] );
-			}
-			else{
-				globalCelShader.clear();
-			}
+		while ( args.takeArg( "-celshader" ) ) {
+			globalCelShader( "textures/", args.takeNext() );
 			Sys_Printf( "Global cel shader set to \"%s\"\n", globalCelShader.c_str() );
 		}
-		else if ( striEqual( argv[ i ], "-meta" ) ) {
+		while ( args.takeArg( "-meta" ) ) {
 			Sys_Printf( "Creating meta surfaces from brush faces\n" );
 			meta = true;
 		}
-		else if ( striEqual( argv[ i ], "-metaadequatescore" ) ) {
-			metaAdequateScore = std::max( -1, atoi( argv[ i + 1 ] ) );
-			i++;
+		while ( args.takeArg( "-metaadequatescore" ) ) {
+			metaAdequateScore = std::max( -1, atoi( args.takeNext() ) );
 			if ( metaAdequateScore >= 0 ) {
 				Sys_Printf( "Setting ADEQUATE meta score to %d (see surface_meta.c)\n", metaAdequateScore );
 			}
 		}
-		else if ( striEqual( argv[ i ], "-metagoodscore" ) ) {
-			metaGoodScore = std::max( -1, atoi( argv[ i + 1 ] ) );
-			i++;
+		while ( args.takeArg( "-metagoodscore" ) ) {
+			metaGoodScore = std::max( -1, atoi( args.takeNext() ) );
 			if ( metaGoodScore >= 0 ) {
 				Sys_Printf( "Setting GOOD meta score to %d (see surface_meta.c)\n", metaGoodScore );
 			}
 		}
-		else if ( striEqual( argv[ i ], "-metamaxbboxdistance" ) ) {
-			metaMaxBBoxDistance = atof( argv[ i + 1 ] );
-			if ( metaMaxBBoxDistance < 0 ) {
-				metaMaxBBoxDistance = -1;
-			}
-			i++;
-			if ( metaMaxBBoxDistance >= 0 ) {
-				Sys_Printf( "Setting meta maximum bounding box distance to %f\n", metaMaxBBoxDistance );
-			}
-		}
-		else if ( striEqual( argv[ i ], "-patchmeta" ) ) {
+		while ( args.takeArg( "-patchmeta" ) ) {
 			Sys_Printf( "Creating meta surfaces from patches\n" );
 			patchMeta = true;
 		}
-		else if ( striEqual( argv[ i ], "-flares" ) ) {
+		while ( args.takeArg( "-flares" ) ) {
 			Sys_Printf( "Flare surfaces enabled\n" );
 			emitFlares = true;
 		}
-		else if ( striEqual( argv[ i ], "-noflares" ) ) {
+		while ( args.takeArg( "-noflares" ) ) {
 			Sys_Printf( "Flare surfaces disabled\n" );
 			emitFlares = false;
 		}
-		else if ( striEqual( argv[ i ], "-skyfix" ) ) {
+		while ( args.takeArg( "-skyfix" ) ) {
 			Sys_Printf( "GL_CLAMP sky fix/hack/workaround enabled\n" );
 			skyFixHack = true;
 		}
-		else if ( striEqual( argv[ i ], "-debugsurfaces" ) ) {
+		while ( args.takeArg( "-debugsurfaces" ) ) {
 			Sys_Printf( "emitting debug surfaces\n" );
 			debugSurfaces = true;
 		}
-		else if ( striEqual( argv[ i ], "-debuginset" ) ) {
+		while ( args.takeArg( "-debuginset" ) ) {
 			Sys_Printf( "Debug surface triangle insetting enabled\n" );
 			debugInset = true;
 		}
-		else if ( striEqual( argv[ i ], "-debugportals" ) ) {
+		while ( args.takeArg( "-debugportals" ) ) {
 			Sys_Printf( "Debug portal surfaces enabled\n" );
 			debugPortals = true;
 		}
-		else if ( striEqual( argv[ i ], "-debugclip" ) ) {
+		while ( args.takeArg( "-debugclip" ) ) {
 			Sys_Printf( "Debug model clip enabled\n" );
 			debugClip = true;
 		}
-		else if ( striEqual( argv[ i ],  "-clipdepth" ) ) {
-			clipDepthGlobal = atof( argv[ i + 1 ] );
-			i++;
+		while ( args.takeArg(  "-clipdepth" ) ) {
+			clipDepthGlobal = atof( args.takeNext() );
 			Sys_Printf( "Model autoclip thickness set to %.3f\n", clipDepthGlobal );
 		}
-		else if ( striEqual( argv[ i ], "-sRGBtex" ) ) {
+		while ( args.takeArg( "-sRGBtex" ) ) {
 			texturesRGB = true;
 			Sys_Printf( "Textures are in sRGB\n" );
 		}
-		else if ( striEqual( argv[ i ], "-nosRGBtex" ) ) {
+		while ( args.takeArg( "-nosRGBtex" ) ) {
 			texturesRGB = false;
 			Sys_Printf( "Textures are linear\n" );
 		}
-		else if ( striEqual( argv[ i ], "-sRGBcolor" ) ) {
+		while ( args.takeArg( "-sRGBcolor" ) ) {
 			colorsRGB = true;
 			Sys_Printf( "Colors are in sRGB\n" );
 		}
-		else if ( striEqual( argv[ i ], "-nosRGBcolor" ) ) {
+		while ( args.takeArg( "-nosRGBcolor" ) ) {
 			colorsRGB = false;
 			Sys_Printf( "Colors are linear\n" );
 		}
-		else if ( striEqual( argv[ i ], "-nosRGB" ) ) {
+		while ( args.takeArg( "-nosRGB" ) ) {
 			texturesRGB = false;
 			Sys_Printf( "Textures are linear\n" );
 			colorsRGB = false;
 			Sys_Printf( "Colors are linear\n" );
 		}
-		else if ( striEqual( argv[ i ], "-altsplit" ) ) {
+		while ( args.takeArg( "-altsplit" ) ) {
 			Sys_Printf( "Alternate BSP splitting (by 27) enabled\n" );
 			bspAlternateSplitWeights = true;
 		}
-		else if ( striEqual( argv[ i ], "-deep" ) ) {
+		while ( args.takeArg( "-deep" ) ) {
 			Sys_Printf( "Deep BSP tree generation enabled\n" );
 			deepBSP = true;
 		}
-		else if ( striEqual( argv[ i ], "-maxarea" ) ) {
+		while ( args.takeArg( "-maxarea" ) ) {
 			Sys_Printf( "Max Area face surface generation enabled\n" );
 			maxAreaFaceSurface = true;
 		}
-		else if ( striEqual( argv[ i ], "-noob" ) ) {
+		while ( args.takeArg( "-noob" ) ) {
 			Sys_Printf( "No oBs!\n" );
-			noob = true;
+			g_noob = true;
 		}
-		else if ( striEqual( argv[ i ], "-autocaulk" ) ) {
+		while ( args.takeArg( "-autocaulk" ) ) {
 			Sys_Printf( "\trunning in autocaulk mode\n" );
 			g_autocaulk = true;
 		}
-		else
+		while( !args.empty() )
 		{
-			Sys_Warning( "Unknown option \"%s\"\n", argv[ i ] );
+			Sys_Warning( "Unknown option \"%s\"\n", args.takeFront() );
 		}
 	}
 
-	/* fixme: print more useful usage here */
-	if ( i != ( argc - 1 ) ) {
-		Error( "usage: q3map2 [options] mapfile" );
-	}
-
 	/* copy source name */
-	strcpy( source, ExpandArg( argv[ i ] ) );
+	strcpy( source, ExpandArg( fileName ) );
 	StripExtension( source );
 
 	/* ydnar: set default sample size */
@@ -970,19 +879,20 @@ int BSPMain( int argc, char **argv ){
 	remove( StringOutputStream( 256 )( source, ".lin" ) );
 	//%	remove( StringOutputStream( 256 )( source, ".srf" ) );	/* ydnar */
 
-	/* expand mapname */
-	strcpy( name, ExpandArg( argv[ i ] ) );
-	if ( !striEqual( path_get_filename_base_end( name ), ".reg" ) ) { /* not .reg */
-		/* if we are doing a full map, delete the last saved region map */
+	/* if we are doing a full map, delete the last saved region map */
+	if ( !path_extension_is( fileName, "reg" ) )
 		remove( StringOutputStream( 256 )( source, ".reg" ) );
-		if ( !onlyents || !striEqual( path_get_filename_base_end( name ), ".ent" ) ) {
-			path_set_extension( name, ".map" );   /* .reg and .ent are ok too */
-		}
-	}
+
+	/* expand mapname */
+	StringOutputStream mapFileName( 256 );
+	if ( path_extension_is( fileName, "reg" ) || ( onlyents && path_extension_is( fileName, "ent" ) ) )
+		mapFileName << ExpandArg( fileName );
+	else
+		mapFileName << PathExtensionless( ExpandArg( fileName ) ) << ".map";
 
 	/* if onlyents, just grab the entites and resave */
 	if ( onlyents ) {
-		OnlyEnts();
+		OnlyEnts( mapFileName );
 		return 0;
 	}
 
@@ -994,11 +904,11 @@ int BSPMain( int argc, char **argv ){
 		LoadMapFile( tempSource, false, g_autocaulk );
 	}
 	else{
-		LoadMapFile( name, false, g_autocaulk );
+		LoadMapFile( mapFileName, false, g_autocaulk );
 	}
 
 	/* div0: inject command line parameters */
-	InjectCommandLine( argv, 1, argc - 1 );
+	InjectCommandLine( "-bsp", argsToInject );
 
 	/* ydnar: decal setup */
 	ProcessDecals();

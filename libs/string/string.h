@@ -19,8 +19,7 @@
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#if !defined( INCLUDED_STRING_STRING_H )
-#define INCLUDED_STRING_STRING_H
+#pragma once
 
 /// \file
 /// C-style null-terminated-character-array string library.
@@ -129,6 +128,27 @@ inline bool string_greater_nocase( const char* string, const char* other ){
 	return string_compare_nocase( string, other ) > 0;
 }
 
+/*!
+   This behaves identically to stricmp(a,b), except that ASCII chars
+   [\]^`_ come AFTER alphabet chars instead of before. This is because
+   it converts all alphabet chars to uppercase before comparison,
+   while stricmp converts them to lowercase.
+ */
+inline int string_compare_nocase_upper( const char* a, const char* b ){
+	for (;; )
+	{
+		const int c1 = std::toupper( *a++ );
+		const int c2 = std::toupper( *b++ );
+
+		if ( c1 < c2 )
+			return -1; // a < b
+		if ( c1 > c2 )
+			return 1; // a > b
+		if ( c1 == 0 )
+			return 0; // a == b
+	}
+}
+
 /// \brief Returns the number of non-null characters in \p string.
 /// O(n)
 inline std::size_t string_length( const char* string ){
@@ -192,9 +212,8 @@ inline char* string_clone( const char* other, Allocator& allocator ){
 /// The returned buffer must be released with \c string_release using a matching \p allocator.
 template<typename Allocator>
 inline char* string_clone_range( StringRange range, Allocator& allocator ){
-	std::size_t length = range.last - range.first;
-	char* copied = strncpy( string_new( length, allocator ), range.first, length );
-	copied[length] = '\0';
+	char* copied = strncpy( string_new( range.size(), allocator ), range.data(), range.size() );
+	copied[range.size()] = '\0';
 	return copied;
 }
 
@@ -347,10 +366,17 @@ public:
 	String( const String& other )
 		: Buffer( other ){
 	}
+	String( String&& other ) noexcept {
+		swap( other );
+	}
 
 	String& operator=( const String& other ){
 		String temp( other );
 		temp.swap( *this );
+		return *this;
+	}
+	String& operator=( String&& other ) noexcept {
+		swap( other );
 		return *this;
 	}
 	String& operator=( const char* string ){
@@ -462,6 +488,14 @@ public:
 typedef String< CopiedBuffer< DefaultAllocator<char> > > CopiedString;
 
 
+/// \brief Writes CopiedString \p string to \p ostream.
+template<typename TextOutputStreamType>
+inline TextOutputStreamType& ostream_write( TextOutputStreamType& ostream, const CopiedString& string ){
+	ostream.write( string.c_str(), strlen( string.c_str() ) );
+	return ostream;
+}
+
+
 /// \brief A non-mutable string buffer which uses reference-counting to avoid unnecessary allocations.
 template<typename Allocator>
 class SmartBuffer : private Allocator
@@ -469,9 +503,9 @@ class SmartBuffer : private Allocator
 	char* m_buffer;
 
 	char* copy_range( StringRange range ){
-		char* buffer = Allocator::allocate( sizeof( std::size_t ) + ( range.last - range.first ) + 1 );
-		strncpy( buffer + sizeof( std::size_t ), range.first, range.last - range.first );
-		buffer[sizeof( std::size_t ) + ( range.last - range.first )] = '\0';
+		char* buffer = Allocator::allocate( sizeof( std::size_t ) + range.size() + 1 );
+		strncpy( buffer + sizeof( std::size_t ), range.data(), range.size() );
+		buffer[sizeof( std::size_t ) + range.size()] = '\0';
 		*reinterpret_cast<std::size_t*>( buffer ) = 0;
 		return buffer;
 	}
@@ -565,5 +599,3 @@ struct RawStringLessNoCase
 		return string_less_nocase( x, y );
 	}
 };
-
-#endif

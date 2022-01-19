@@ -44,7 +44,7 @@
 #include <gtk/gtk.h>
 
 #include "stream/textfilestream.h"
-#include "cmdlib.h"
+#include "commandlib.h"
 #include "stream/stringstream.h"
 #include "os/path.h"
 #include "scenelib.h"
@@ -66,6 +66,10 @@ QEGlobals_t g_qeglobals;
 
 #if defined( WIN32 )
 #define PATH_MAX 260
+#endif
+
+#if defined( POSIX )
+#include <sys/stat.h> // chmod
 #endif
 
 #define RADIANT_MONITOR_ADDRESS "127.0.0.1:39000"
@@ -230,27 +234,8 @@ public:
 	}
 };
 
-bool Region_cameraValid(){
-	Vector3 vOrig( vector3_snapped( Camera_getOrigin( *g_pParentWnd->GetCamWnd() ) ) );
-
-	for ( int i = 0 ; i < 3 ; i++ )
-	{
-		if ( vOrig[i] > g_region_maxs[i] || vOrig[i] < g_region_mins[i] ) {
-			return false;
-		}
-	}
-	return true;
-}
-
 
 void RunBSP( const char* name ){
-	// http://zerowing.idsoftware.com/bugzilla/show_bug.cgi?id=503
-	// make sure we don't attempt to region compile a map with the camera outside the region
-	if ( g_region_active && !Region_cameraValid() ) {
-		globalErrorStream() << "The camera must be in the region to start a region compile.\n";
-		return;
-	}
-
 	if( !g_region_active )
 		SaveMap();
 
@@ -342,7 +327,7 @@ void Sys_SetTitle( const char *text, bool modified ){
 
 bool g_bWaitCursor = false;
 
-void Sys_BeginWait( void ){
+void Sys_BeginWait(){
 	ScreenUpdates_Disable( "Processing...", "Please Wait" );
 	GdkCursor *cursor = gdk_cursor_new( GDK_WATCH );
 	gdk_window_set_cursor( gtk_widget_get_window( GTK_WIDGET( MainFrame_getWindow() ) ), cursor );
@@ -350,12 +335,12 @@ void Sys_BeginWait( void ){
 	g_bWaitCursor = true;
 }
 
-void Sys_EndWait( void ){
+void Sys_EndWait(){
 	ScreenUpdates_Enable();
 	gdk_window_set_cursor( gtk_widget_get_window( GTK_WIDGET( MainFrame_getWindow() ) ), 0 );
 	g_bWaitCursor = false;
 }
 
-void Sys_Beep( void ){
+void Sys_Beep(){
 	gdk_beep();
 }

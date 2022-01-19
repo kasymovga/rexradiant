@@ -30,11 +30,13 @@
 
 /* dependencies */
 #include "q3map2.h"
+#include "vis.h"
+#include "visflow.h"
+
+vportal_t          *sorted_portals[ MAX_MAP_PORTALS * 2 ];
 
 
-
-
-visPlane_t PlaneFromWinding( const fixedWinding_t *w ){
+static visPlane_t PlaneFromWinding( const fixedWinding_t *w ){
 	// calc plane
 	visPlane_t plane;
 	PlaneFromPoints( plane, w->points[0], w->points[1], w->points[2] );
@@ -48,7 +50,7 @@ visPlane_t PlaneFromWinding( const fixedWinding_t *w ){
    ydnar: altered this a bit to reconcile multiply-defined winding_t
  */
 
-fixedWinding_t *NewFixedWinding( int numpoints ){
+static fixedWinding_t *NewFixedWinding( int numpoints ){
 	if ( numpoints > MAX_POINTS_ON_WINDING ) {
 		Error( "NewWinding: %i points", numpoints );
 	}
@@ -57,16 +59,11 @@ fixedWinding_t *NewFixedWinding( int numpoints ){
 
 
 
-void prl( leaf_t *l ){
-	int i;
-	vportal_t   *p;
-	visPlane_t pl;
-
-	for ( i = 0 ; i < l->numportals ; i++ )
+static void print_leaf( const leaf_t *l ){
+	for ( const vportal_t *p : Span( l->portals, l->numportals ) )
 	{
-		p = l->portals[i];
-		pl = p->plane;
-		Sys_Printf( "portal %4i to leaf %4i : %7.1f : (%4.1f, %4.1f, %4.1f)\n",(int)( p - portals ),p->leaf,pl.dist(), pl.normal()[0], pl.normal()[1], pl.normal()[2] );
+		const visPlane_t pl = p->plane;
+		Sys_Printf( "portal %4i to leaf %4i : %7.1f : (%4.1f, %4.1f, %4.1f)\n",(int)( p - portals ), p->leaf, pl.dist(), pl.normal()[0], pl.normal()[1], pl.normal()[2] );
 	}
 }
 
@@ -81,8 +78,8 @@ void prl( leaf_t *l ){
    the earlier information.
    =============
  */
-void SortPortals( void ){
-	for ( int i = 0 ; i < numportals * 2 ; i++ )
+static void SortPortals(){
+	for ( int i = 0; i < numportals * 2; ++i )
 		sorted_portals[i] = &portals[i];
 
 	if ( !nosort ) {
@@ -98,34 +95,26 @@ void SortPortals( void ){
    LeafVectorFromPortalVector
    ==============
  */
-int LeafVectorFromPortalVector( byte *portalbits, byte *leafbits ){
-	int i, j, leafnum;
-	vportal_t   *p;
-	int c_leafs;
-
-
-	for ( i = 0 ; i < numportals * 2 ; i++ )
+static int LeafVectorFromPortalVector( byte *portalbits, byte *leafbits ){
+	for ( int i = 0; i < numportals * 2; ++i )
 	{
-		if ( portalbits[i >> 3] & ( 1 << ( i & 7 ) ) ) {
-			p = portals + i;
-			leafbits[p->leaf >> 3] |= ( 1 << ( p->leaf & 7 ) );
+		if ( bit_is_enabled( portalbits, i ) ) {
+			const vportal_t& p = portals[i];
+			bit_enable( leafbits, p.leaf );
 		}
 	}
 
-	for ( j = 0; j < portalclusters; j++ )
+	for ( int i = 0; i < portalclusters; ++i )
 	{
-		leafnum = j;
+		int leafnum = i;
 		while ( leafs[leafnum].merged >= 0 )
 			leafnum = leafs[leafnum].merged;
 		//if the merged leaf is visible then the original leaf is visible
-		if ( leafbits[leafnum >> 3] & ( 1 << ( leafnum & 7 ) ) ) {
-			leafbits[j >> 3] |= ( 1 << ( j & 7 ) );
+		if ( bit_is_enabled( leafbits, leafnum ) ) {
+			bit_enable( leafbits, i );
 		}
 	}
-
-	c_leafs = CountBits( leafbits, portalclusters );
-
-	return c_leafs;
+	return CountBits( leafbits, portalclusters ); //c_leafs
 }
 
 
@@ -137,14 +126,11 @@ int LeafVectorFromPortalVector( byte *portalbits, byte *leafbits ){
    ===============
  */
 static int clustersizehistogram[MAX_MAP_LEAFS] = {0};
-void ClusterMerge( int leafnum ){
-	leaf_t      *leaf;
+
+static void ClusterMerge( int leafnum ){
 	byte portalvector[MAX_PORTALS / 8];
 	byte uncompressed[MAX_MAP_LEAFS / 8];
-	int i, j;
 	int numvis, mergedleafnum;
-	vportal_t   *p;
-	int pnum;
 
 	// OR together all the portalvis bits
 
@@ -153,10 +139,9 @@ void ClusterMerge( int leafnum ){
 		mergedleafnum = leafs[mergedleafnum].merged;
 
 	memset( portalvector, 0, portalbytes );
-	leaf = &leafs[mergedleafnum];
-	for ( i = 0; i < leaf->numportals; i++ )
+
+	for ( const vportal_t *p : Span( leafs[mergedleafnum].portals, leafs[mergedleafnum].numportals ) )
 	{
-		p = leaf->portals[i];
 		if ( p->removed ) {
 			continue;
 		}
@@ -164,15 +149,14 @@ void ClusterMerge( int leafnum ){
 		if ( p->status != EVStatus::Done ) {
 			Error( "portal not done" );
 		}
-		for ( j = 0 ; j < portallongs ; j++ )
+		for ( int j = 0; j < portallongs; ++j )
 			( (long *)portalvector )[j] |= ( (long *)p->portalvis )[j];
-		pnum = p - portals;
-		portalvector[pnum >> 3] |= 1 << ( pnum & 7 );
+		bit_enable( portalvector, p - portals );
 	}
 
 	memset( uncompressed, 0, leafbytes );
 
-	uncompressed[mergedleafnum >> 3] |= ( 1 << ( mergedleafnum & 7 ) );
+	bit_enable( uncompressed, mergedleafnum );
 	// convert portal bits to leaf bits
 	numvis = LeafVectorFromPortalVector( portalvector, uncompressed );
 
@@ -186,7 +170,7 @@ void ClusterMerge( int leafnum ){
 	//Sys_FPrintf( SYS_VRB, "cluster %4i : %4i visible\n", leafnum, numvis );
 	++clustersizehistogram[numvis];
 
-	memcpy( bspVisBytes + VIS_HEADER_SIZE + leafnum * leafbytes, uncompressed, leafbytes );
+	memcpy( bspVisBytes.data() + VIS_HEADER_SIZE + leafnum * leafbytes, uncompressed, leafbytes );
 }
 
 /*
@@ -194,7 +178,7 @@ void ClusterMerge( int leafnum ){
    CalcPortalVis
    ==================
  */
-void CalcPortalVis( void ){
+static void CalcPortalVis(){
 #ifdef MREDEBUG
 	Sys_Printf( "%6d portals out of %d", 0, numportals * 2 );
 	//get rid of the counter
@@ -210,7 +194,7 @@ void CalcPortalVis( void ){
    CalcPassageVis
    ==================
  */
-void CalcPassageVis( void ){
+static void CalcPassageVis(){
 	PassageMemory();
 
 #ifdef MREDEBUG
@@ -234,7 +218,7 @@ void CalcPassageVis( void ){
    CalcPassagePortalVis
    ==================
  */
-void CalcPassagePortalVis( void ){
+static void CalcPassagePortalVis(){
 	PassageMemory();
 
 #ifdef MREDEBUG
@@ -258,14 +242,12 @@ void CalcPassagePortalVis( void ){
    CalcFastVis
    ==================
  */
-void CalcFastVis( void ){
-	int i;
-
+static void CalcFastVis(){
 	// fastvis just uses mightsee for a very loose bound
-	for ( i = 0 ; i < numportals * 2 ; i++ )
+	for ( vportal_t& p : Span( portals, numportals * 2 ) )
 	{
-		portals[i].portalvis = portals[i].portalflood;
-		portals[i].status = EVStatus::Done;
+		p.portalvis = p.portalflood;
+		p.status = EVStatus::Done;
 	}
 }
 
@@ -274,7 +256,7 @@ void CalcFastVis( void ){
    CalcVis
    ==================
  */
-void CalcVis( void ){
+static void CalcVis(){
 	int i, minvis, maxvis;
 	double mu, sigma, totalvis, totalvis2;
 
@@ -320,7 +302,7 @@ void CalcVis( void ){
 	// assemble the leaf vis lists by oring and compressing the portal lists
 	//
 	Sys_Printf( "creating leaf vis...\n" );
-	for ( i = 0 ; i < portalclusters ; i++ )
+	for ( i = 0; i < portalclusters; ++i )
 		ClusterMerge( i );
 
 	totalvis = 0;
@@ -358,25 +340,23 @@ void CalcVis( void ){
    SetPortalSphere
    ==================
  */
-void SetPortalSphere( vportal_t *p ){
-	Vector3 total( 0 );
-	fixedWinding_t  *w;
+static void SetPortalSphere( vportal_t& p ){
+	Vector3 origin( 0 );
 
-	w = p->winding;
-	for ( int i = 0; i < w->numpoints; i++ )
+	for ( const Vector3& point : Span( p.winding->points, p.winding->numpoints ) )
 	{
-		total += w->points[i];
+		origin += point;
 	}
 
-	total /= w->numpoints;
+	origin /= p.winding->numpoints;
 
 	double bestr = 0;
-	for ( int i = 0; i < w->numpoints; i++ )
+	for ( const Vector3& point : Span( p.winding->points, p.winding->numpoints ) )
 	{
-		value_maximize( bestr, vector3_length( w->points[i] - total ) );
+		value_maximize( bestr, vector3_length( point - origin ) );
 	}
-	p->origin = total;
-	p->radius = bestr;
+	p.origin = origin;
+	p.radius = bestr;
 }
 
 /*
@@ -388,23 +368,21 @@ void SetPortalSphere( vportal_t *p ){
 
 static bool Winding_PlanesConcave( const fixedWinding_t *w1, const fixedWinding_t *w2,
                                    const Plane3f& plane1, const Plane3f& plane2 ){
-	int i;
-
 	if ( !w1 || !w2 ) {
 		return false;
 	}
 
 	// check if one of the points of winding 1 is at the front of the plane of winding 2
-	for ( i = 0; i < w1->numpoints; i++ )
+	for ( const Vector3& point : Span( w1->points, w1->numpoints ) )
 	{
-		if ( plane3_distance_to_point( plane2, w1->points[i] ) > WCONVEX_EPSILON ) {
+		if ( plane3_distance_to_point( plane2, point ) > WCONVEX_EPSILON ) {
 			return true;
 		}
 	}
 	// check if one of the points of winding 2 is at the front of the plane of winding 1
-	for ( i = 0; i < w2->numpoints; i++ )
+	for ( const Vector3& point : Span( w2->points, w2->numpoints ) )
 	{
-		if ( plane3_distance_to_point( plane1, w2->points[i] ) > WCONVEX_EPSILON ) {
+		if ( plane3_distance_to_point( plane1, point ) > WCONVEX_EPSILON ) {
 			return true;
 		}
 	}
@@ -418,36 +396,19 @@ static bool Winding_PlanesConcave( const fixedWinding_t *w1, const fixedWinding_
    ============
  */
 static bool TryMergeLeaves( int l1num, int l2num ){
-	int i, j, k, n, numportals;
-	leaf_t *l1, *l2;
-	vportal_t *p1, *p2;
 	vportal_t *portals[MAX_PORTALS_ON_LEAF];
 
-	for ( k = 0; k < 2; k++ )
+	for ( const leaf_t *l1 : { &faceleafs[l1num], &leafs[l1num] } )
 	{
-		if ( k ) {
-			l1 = &leafs[l1num];
-		}
-		else{
-			l1 = &faceleafs[l1num];
-		}
-		for ( i = 0; i < l1->numportals; i++ )
+		for ( const vportal_t *p1 : Span( l1->portals, l1->numportals ) )
 		{
-			p1 = l1->portals[i];
 			if ( p1->leaf == l2num ) {
 				continue;
 			}
-			for ( n = 0; n < 2; n++ )
+			for ( const leaf_t *l2 : { &faceleafs[l2num], &leafs[l2num] } )
 			{
-				if ( n ) {
-					l2 = &leafs[l2num];
-				}
-				else{
-					l2 = &faceleafs[l2num];
-				}
-				for ( j = 0; j < l2->numportals; j++ )
+				for ( const vportal_t *p2 : Span( l2->portals, l2->numportals ) )
 				{
-					p2 = l2->portals[j];
 					if ( p2->leaf == l1num ) {
 						continue;
 					}
@@ -459,43 +420,31 @@ static bool TryMergeLeaves( int l1num, int l2num ){
 			}
 		}
 	}
-	for ( k = 0; k < 2; k++ )
+	for ( leaf_t *lfs : { faceleafs, leafs } )
 	{
-		if ( k ) {
-			l1 = &leafs[l1num];
-			l2 = &leafs[l2num];
-		}
-		else
-		{
-			l1 = &faceleafs[l1num];
-			l2 = &faceleafs[l2num];
-		}
-		numportals = 0;
+		leaf_t& l1 = lfs[l1num];
+		leaf_t& l2 = lfs[l2num];
+		int numportals = 0;
 		//the leaves can be merged now
-		for ( i = 0; i < l1->numportals; i++ )
+		for ( vportal_t *p1 : Span( l1.portals, l1.numportals ) )
 		{
-			p1 = l1->portals[i];
 			if ( p1->leaf == l2num ) {
 				p1->removed = true;
 				continue;
 			}
 			portals[numportals++] = p1;
 		}
-		for ( j = 0; j < l2->numportals; j++ )
+		for ( vportal_t *p2 : Span( l2.portals, l2.numportals ) )
 		{
-			p2 = l2->portals[j];
 			if ( p2->leaf == l1num ) {
 				p2->removed = true;
 				continue;
 			}
 			portals[numportals++] = p2;
 		}
-		for ( i = 0; i < numportals; i++ )
-		{
-			l2->portals[i] = portals[i];
-		}
-		l2->numportals = numportals;
-		l1->merged = l2num;
+		std::copy_n( portals, numportals, l2.portals );
+		l2.numportals = numportals;
+		l1.merged = l2num;
 	}
 	return true;
 }
@@ -505,19 +454,11 @@ static bool TryMergeLeaves( int l1num, int l2num ){
    UpdatePortals
    ============
  */
-void UpdatePortals( void ){
-	int i;
-	vportal_t *p;
-
-	for ( i = 0; i < numportals * 2; i++ )
-	{
-		p = &portals[i];
-		if ( p->removed ) {
-			continue;
-		}
-		while ( leafs[p->leaf].merged >= 0 )
-			p->leaf = leafs[p->leaf].merged;
-	}
+static void UpdatePortals(){
+	for ( vportal_t& p : Span( portals, numportals * 2 ) )
+		if ( !p.removed )
+			while ( leafs[p.leaf].merged >= 0 )
+				p.leaf = leafs[p.leaf].merged;
 }
 
 /*
@@ -527,41 +468,32 @@ void UpdatePortals( void ){
    try to merge leaves but don't merge through hint splitters
    ============
  */
-void MergeLeaves( void ){
-	int i, j, nummerges, totalnummerges;
-	leaf_t *leaf;
-	vportal_t *p;
+static void MergeLeaves(){
+	int nummerges, totalnummerges = 0;
 
-	totalnummerges = 0;
 	do
 	{
 		nummerges = 0;
-		for ( i = 0; i < portalclusters; i++ )
+		for ( int i = 0; i < portalclusters; ++i )
 		{
-			leaf = &leafs[i];
+			const leaf_t& leaf = leafs[i];
 			//if this leaf is merged already
 
 			/* ydnar: vmods: merge all non-hint portals */
-			if ( leaf->merged >= 0 && !hint ) {
+			if ( leaf.merged >= 0 && !hint ) {
 				continue;
 			}
 
 
-			for ( j = 0; j < leaf->numportals; j++ )
+			for ( const vportal_t *p : Span( leaf.portals, leaf.numportals ) )
 			{
-				p = leaf->portals[j];
-				//
-				if ( p->removed ) {
-					continue;
-				}
 				//never merge through hint portals
-				if ( p->hint ) {
-					continue;
-				}
-				if ( TryMergeLeaves( i, p->leaf ) ) {
-					UpdatePortals();
-					nummerges++;
-					break;
+				if ( !p->removed && !p->hint ) {
+					if ( TryMergeLeaves( i, p->leaf ) ) {
+						UpdatePortals();
+						nummerges++;
+						break;
+					}
 				}
 			}
 		}
@@ -577,7 +509,7 @@ void MergeLeaves( void ){
  */
 #define CONTINUOUS_EPSILON  0.005
 
-fixedWinding_t *TryMergeWinding( fixedWinding_t *f1, fixedWinding_t *f2, const Vector3& planenormal ){
+static fixedWinding_t *TryMergeWinding( fixedWinding_t *f1, fixedWinding_t *f2, const Vector3& planenormal ){
 	const Vector3       *p1, *p2, *p3, *p4, *back;
 	fixedWinding_t  *newf;
 	int i, j, k, l;
@@ -608,15 +540,15 @@ fixedWinding_t *TryMergeWinding( fixedWinding_t *f1, fixedWinding_t *f2, const V
 				if ( fabs( (*p2)[k] - (*p3)[k] ) > 0.1 ) { //EQUAL_EPSILON) //ME
 					break;
 				}
-			} //end for
+			}
 			if ( k == 3 ) {
 				break;
 			}
-		} //end for
+		}
 		if ( j < f2->numpoints ) {
 			break;
 		}
-	} //end for
+	}
 
 	if ( i == f1->numpoints ) {
 		return NULL;            // no matching edges
@@ -652,7 +584,7 @@ fixedWinding_t *TryMergeWinding( fixedWinding_t *f1, fixedWinding_t *f2, const V
 	newf = NewFixedWinding( f1->numpoints + f2->numpoints );
 
 	// copy first polygon
-	for ( k = ( i + 1 ) % f1->numpoints ; k != i ; k = ( k + 1 ) % f1->numpoints )
+	for ( k = ( i + 1 ) % f1->numpoints; k != i; k = ( k + 1 ) % f1->numpoints )
 	{
 		if ( k == ( i + 1 ) % f1->numpoints && !keep2 ) {
 			continue;
@@ -663,7 +595,7 @@ fixedWinding_t *TryMergeWinding( fixedWinding_t *f1, fixedWinding_t *f2, const V
 	}
 
 	// copy second polygon
-	for ( l = ( j + 1 ) % f2->numpoints ; l != j ; l = ( l + 1 ) % f2->numpoints )
+	for ( l = ( j + 1 ) % f2->numpoints; l != j; l = ( l + 1 ) % f2->numpoints )
 	{
 		if ( l == ( j + 1 ) % f2->numpoints && !keep1 ) {
 			continue;
@@ -680,7 +612,7 @@ fixedWinding_t *TryMergeWinding( fixedWinding_t *f1, fixedWinding_t *f2, const V
    MergeLeafPortals
    ============
  */
-void MergeLeafPortals( void ){
+static void MergeLeafPortals(){
 	int i, j, k, nummerges, hintsmerged;
 	leaf_t *leaf;
 	vportal_t *p1, *p2;
@@ -715,7 +647,7 @@ void MergeLeafPortals( void ){
 							hintsmerged++;
 						}
 						p1->hint |= p2->hint;
-						SetPortalSphere( p1 );
+						SetPortalSphere( *p1 );
 						p2->removed = true;
 						nummerges++;
 						i--;
@@ -738,22 +670,16 @@ void MergeLeafPortals( void ){
    WritePortals
    ============
  */
-int CountActivePortals( void ){
-	int num, hints, j;
-	vportal_t *p;
+static int CountActivePortals(){
+	int num = 0, hints = 0;
 
-	num = 0;
-	hints = 0;
-	for ( j = 0; j < numportals * 2; j++ )
+	for ( const vportal_t& p : Span( portals, numportals * 2 ) )
 	{
-		p = portals + j;
-		if ( p->removed ) {
-			continue;
+		if ( !p.removed ) {
+			num++;
+			if ( p.hint )
+				hints++;
 		}
-		if ( p->hint ) {
-			hints++;
-		}
-		num++;
 	}
 	Sys_Printf( "%6d active portals\n", num );
 	Sys_Printf( "%6d hint portals\n", hints );
@@ -762,93 +688,13 @@ int CountActivePortals( void ){
 
 /*
    ============
-   WritePortals
-   ============
- */
-void WriteFloat( FILE *f, float v );
-
-void WritePortals( char *filename ){
-	int i, j, num;
-	vportal_t *p;
-	fixedWinding_t *w;
-
-	// write the file
-	FILE *pf = SafeOpenWrite( filename, "wt" );
-
-	num = 0;
-	for ( j = 0; j < numportals * 2; j++ )
-	{
-		p = portals + j;
-		if ( p->removed ) {
-			continue;
-		}
-//		if (!p->hint)
-//			continue;
-		num++;
-	}
-
-	fprintf( pf, "%s\n", PORTALFILE );
-	fprintf( pf, "%i\n", 0 );
-	fprintf( pf, "%i\n", num ); // + numfaces);
-	fprintf( pf, "%i\n", 0 );
-
-	for ( j = 0; j < numportals * 2; j++ )
-	{
-		p = portals + j;
-		if ( p->removed ) {
-			continue;
-		}
-//		if (!p->hint)
-//			continue;
-		w = p->winding;
-		fprintf( pf, "%i %i %i ",w->numpoints, 0, 0 );
-		fprintf( pf, "%d ", p->hint );
-		for ( i = 0 ; i < w->numpoints ; i++ )
-		{
-			fprintf( pf, "(" );
-			WriteFloat( pf, w->points[i][0] );
-			WriteFloat( pf, w->points[i][1] );
-			WriteFloat( pf, w->points[i][2] );
-			fprintf( pf, ") " );
-		}
-		fprintf( pf, "\n" );
-	}
-
-	/*
-	   for (j = 0; j < numfaces; j++)
-	   {
-	    p = faces + j;
-	    w = p->winding;
-	    fprintf (pf,"%i %i %i ",w->numpoints, 0, 0);
-	    fprintf (pf, "0 ");
-	    for (i=0 ; i<w->numpoints ; i++)
-	    {
-	        fprintf (pf,"(");
-	        WriteFloat (pf, w->points[i][0]);
-	        WriteFloat (pf, w->points[i][1]);
-	        WriteFloat (pf, w->points[i][2]);
-	        fprintf (pf,") ");
-	    }
-	    fprintf (pf,"\n");
-	   }*/
-
-	fclose( pf );
-}
-
-/*
-   ============
    LoadPortals
    ============
  */
-void LoadPortals( char *name ){
-	int i, j, flags;
-	vportal_t   *p;
-	leaf_t      *l;
+static void LoadPortals( char *name ){
 	char magic[80];
 	FILE        *f;
-	int numpoints;
-	fixedWinding_t  *w;
-	int leafnums[2];
+	int numpoints, leafnums[2], flags;
 
 	if ( strEqual( name, "-" ) ) {
 		f = stdin;
@@ -883,19 +729,19 @@ void LoadPortals( char *name ){
 	portals = safe_calloc( 2 * numportals * sizeof( vportal_t ) );
 	leafs = safe_calloc( portalclusters * sizeof( leaf_t ) );
 
-	for ( i = 0; i < portalclusters; i++ )
-		leafs[i].merged = -1;
+	for ( leaf_t& leaf : Span( leafs, portalclusters ) )
+		leaf.merged = -1;
 
-	numBSPVisBytes = VIS_HEADER_SIZE + portalclusters * leafbytes;
+	bspVisBytes.resize( VIS_HEADER_SIZE + portalclusters * leafbytes );
 
-	if ( numBSPVisBytes > MAX_MAP_VISIBILITY ) {
+	if ( bspVisBytes.size() > MAX_MAP_VISIBILITY ) {
 		Error( "MAX_MAP_VISIBILITY exceeded" );
 	}
 
-	( (int *)bspVisBytes )[0] = portalclusters;
-	( (int *)bspVisBytes )[1] = leafbytes;
+	( (int *)bspVisBytes.data() )[0] = portalclusters;
+	( (int *)bspVisBytes.data() )[1] = leafbytes;
 
-	for ( i = 0, p = portals ; i < numportals ; i++ )
+	for ( int i = 0; i < numportals; ++i )
 	{
 		if ( fscanf( f, "%i %i %i ", &numpoints, &leafnums[0], &leafnums[1] ) != 3 ) {
 			Error( "LoadPortals: reading portal %i", i );
@@ -911,13 +757,13 @@ void LoadPortals( char *name ){
 			Error( "LoadPortals: reading flags" );
 		}
 
-		w = p->winding = NewFixedWinding( numpoints );
+		fixedWinding_t *w = NewFixedWinding( numpoints );
 		w->numpoints = numpoints;
 
-		for ( j = 0 ; j < numpoints ; j++ )
+		for ( Vector3& point : Span( w->points, w->numpoints ) )
 		{
 			if ( fscanf( f, "(%f %f %f ) ",
-			             &w->points[j][0], &w->points[j][1], &w->points[j][2] ) != 3 ) {
+			             &point[0], &point[1], &point[2] ) != 3 ) {
 				Error( "LoadPortals: reading portal %i", i );
 			}
 		}
@@ -929,62 +775,62 @@ void LoadPortals( char *name ){
 		const visPlane_t plane = PlaneFromWinding( w );
 
 		// create forward portal
-		l = &leafs[leafnums[0]];
-		if ( l->numportals == MAX_PORTALS_ON_LEAF ) {
-			Error( "Leaf with too many portals" );
-		}
-		l->portals[l->numportals] = p;
-		l->numportals++;
+		{
+			vportal_t& p = portals[i * 2];
+			p.num = i + 1;
+			p.hint = ((flags & 1) != 0);
+			p.sky = ((flags & 2) != 0);
+			p.winding = w;
+			p.plane = plane3_flipped( plane );
+			p.leaf = leafnums[1];
+			SetPortalSphere( p );
 
-		p->num = i + 1;
-		p->hint = ((flags & 1) != 0);
-		p->sky = ((flags & 2) != 0);
-		p->winding = w;
-		p->plane = plane3_flipped( plane );
-		p->leaf = leafnums[1];
-		SetPortalSphere( p );
-		p++;
+			leaf_t& l = leafs[leafnums[0]];
+			if ( l.numportals == MAX_PORTALS_ON_LEAF ) {
+				Error( "Leaf with too many portals" );
+			}
+			l.portals[l.numportals] = &p;
+			l.numportals++;
+		}
 
 		// create backwards portal
-		l = &leafs[leafnums[1]];
-		if ( l->numportals == MAX_PORTALS_ON_LEAF ) {
-			Error( "Leaf with too many portals" );
-		}
-		l->portals[l->numportals] = p;
-		l->numportals++;
-
-		p->num = i + 1;
-		p->hint = hint;
-		p->winding = NewFixedWinding( w->numpoints );
-		p->winding->numpoints = w->numpoints;
-		for ( j = 0 ; j < w->numpoints ; j++ )
 		{
-			p->winding->points[j] = w->points[w->numpoints - 1 - j];
+			vportal_t& p = portals[i * 2 + 1];
+			p.num = i + 1;
+			p.hint = hint;
+			p.winding = NewFixedWinding( w->numpoints );
+			p.winding->numpoints = w->numpoints;
+			std::reverse_copy( w->points, w->points + w->numpoints, p.winding->points );
+
+			p.plane = plane;
+			p.leaf = leafnums[0];
+			SetPortalSphere( p );
+
+			leaf_t& l = leafs[leafnums[1]];
+			if ( l.numportals == MAX_PORTALS_ON_LEAF ) {
+				Error( "Leaf with too many portals" );
+			}
+			l.portals[l.numportals] = &p;
+			l.numportals++;
 		}
-
-		p->plane = plane;
-		p->leaf = leafnums[0];
-		SetPortalSphere( p );
-		p++;
-
 	}
 
-	faces = safe_calloc( 2 * numfaces * sizeof( vportal_t ) );
+	faces = safe_calloc( numfaces * sizeof( vportal_t ) );
 	faceleafs = safe_calloc( portalclusters * sizeof( leaf_t ) );
 
-	for ( i = 0, p = faces; i < numfaces; i++ )
+	for ( int i = 0; i < numfaces; ++i )
 	{
 		if ( fscanf( f, "%i %i ", &numpoints, &leafnums[0] ) != 2 ) {
 			Error( "LoadPortals: reading portal %i", i );
 		}
 
-		w = p->winding = NewFixedWinding( numpoints );
+		fixedWinding_t *w = NewFixedWinding( numpoints );
 		w->numpoints = numpoints;
 
-		for ( j = 0 ; j < numpoints ; j++ )
+		for ( Vector3& point : Span( w->points, w->numpoints ) )
 		{
 			if ( fscanf( f, "(%f %f %f ) ",
-			             &w->points[j][0], &w->points[j][1], &w->points[j][2] ) != 3 ) {
+			             &point[0], &point[1], &point[2] ) != 3 ) {
 				Error( "LoadPortals: reading portal %i", i );
 			}
 		}
@@ -992,24 +838,21 @@ void LoadPortals( char *name ){
 			// silence gcc warning
 		}
 
-		// calc plane
-		const visPlane_t plane = PlaneFromWinding( w );
+		vportal_t& p = faces[i];
+		p.num = i + 1;
+		p.winding = w;
+		// normal pointing out of the leaf
+		p.plane = plane3_flipped( PlaneFromWinding( w ) );
+		p.leaf = -1;
+		SetPortalSphere( p );
 
-		l = &faceleafs[leafnums[0]];
-		l->merged = -1;
-		if ( l->numportals == MAX_PORTALS_ON_LEAF ) {
+		leaf_t& l = faceleafs[leafnums[0]];
+		l.merged = -1;
+		if ( l.numportals == MAX_PORTALS_ON_LEAF ) {
 			Error( "Leaf with too many faces" );
 		}
-		l->portals[l->numportals] = p;
-		l->numportals++;
-
-		p->num = i + 1;
-		p->winding = w;
-		// normal pointing out of the leaf
-		p->plane = plane3_flipped( plane );
-		p->leaf = -1;
-		SetPortalSphere( p );
-		p++;
+		l.portals[l.numportals] = &p;
+		l.numportals++;
 	}
 
 	fclose( f );
@@ -1022,75 +865,74 @@ void LoadPortals( char *name ){
    VisMain
    ===========
  */
-int VisMain( int argc, char **argv ){
+int VisMain( Args& args ){
 	char portalfile[1024];
-	int i;
 
 
 	/* note it */
 	Sys_Printf( "--- Vis ---\n" );
 
 	/* process arguments */
-	for ( i = 1 ; i < ( argc - 1 ) ; i++ )
+	if ( args.empty() ) {
+		Error( "usage: vis [-threads #] [-fast] [-v] bspfile" );
+	}
+	const char *fileName = args.takeBack();
+	const auto argsToInject = args.getVector();
 	{
-		if ( striEqual( argv[i], "-fast" ) ) {
+		while ( args.takeArg( "-fast" ) ) {
 			Sys_Printf( "fastvis = true\n" );
 			fastvis = true;
 		}
-		else if ( striEqual( argv[i], "-merge" ) ) {
+		while ( args.takeArg( "-merge" ) ) {
 			Sys_Printf( "merge = true\n" );
 			mergevis = true;
 		}
-		else if ( striEqual( argv[i], "-mergeportals" ) ) {
+		while ( args.takeArg( "-mergeportals" ) ) {
 			Sys_Printf( "mergeportals = true\n" );
 			mergevisportals = true;
 		}
-		else if ( striEqual( argv[i], "-nopassage" ) ) {
+		while ( args.takeArg( "-nopassage" ) ) {
 			Sys_Printf( "nopassage = true\n" );
 			noPassageVis = true;
 		}
-		else if ( striEqual( argv[i], "-passageOnly" ) ) {
+		while ( args.takeArg( "-passageOnly" ) ) {
 			Sys_Printf( "passageOnly = true\n" );
 			passageVisOnly = true;
 		}
-		else if ( striEqual( argv[i], "-nosort" ) ) {
+		while ( args.takeArg( "-nosort" ) ) {
 			Sys_Printf( "nosort = true\n" );
 			nosort = true;
 		}
-		else if ( striEqual( argv[i], "-saveprt" ) ) {
+		while ( args.takeArg( "-saveprt" ) ) {
 			Sys_Printf( "saveprt = true\n" );
 			saveprt = true;
 		}
-		else if ( striEqual( argv[ i ], "-v" ) ) {
+		while ( args.takeArg( "-v" ) ) {
 			debugCluster = true;
 			Sys_Printf( "Extra verbose mode enabled\n" );
 		}
 		/* ydnar: -hint to merge all but hint portals */
-		else if ( striEqual( argv[ i ], "-hint" ) ) {
+		while ( args.takeArg( "-hint" ) ) {
 			Sys_Printf( "hint = true\n" );
 			hint = true;
 			mergevis = true;
 		}
 
-		else
+		while( !args.empty() )
 		{
-			Sys_Warning( "Unknown option \"%s\"\n", argv[ i ] );
+			Sys_Warning( "Unknown option \"%s\"\n", args.takeFront() );
 		}
-	}
-
-	if ( i != argc - 1 ) {
-		Error( "usage: vis [-threads #] [-level 0-4] [-fast] [-v] bspfile" );
 	}
 
 
 	/* load the bsp */
-	strcpy( source, ExpandArg( argv[ i ] ) );
+	strcpy( source, ExpandArg( fileName ) );
 	path_set_extension( source, ".bsp" );
 	Sys_Printf( "Loading %s\n", source );
 	LoadBSPFile( source );
 
 	/* load the portal file */
-	strcpy( portalfile, ExpandArg( argv[ i ] ) );
+	strcpy( portalfile, ExpandArg( fileName ) );
 	path_set_extension( portalfile, ".prt" );
 	Sys_Printf( "Loading %s\n", portalfile );
 	LoadPortals( portalfile );
@@ -1105,7 +947,7 @@ int VisMain( int argc, char **argv ){
 	ParseEntities();
 
 	/* inject command line parameters */
-	InjectCommandLine( argv, 0, argc - 1 );
+	InjectCommandLine( "-vis", argsToInject );
 	UnparseEntities();
 
 	if ( mergevis ) {
@@ -1117,9 +959,8 @@ int VisMain( int argc, char **argv ){
 	}
 
 	CountActivePortals();
-	/* WritePortals( "maps/hints.prs" );*/
 
-	Sys_Printf( "visdatasize:%i\n", numBSPVisBytes );
+	Sys_Printf( "visdatasize:%zu\n", bspVisBytes.size() );
 
 	CalcVis();
 

@@ -41,7 +41,7 @@
 #include "container/array.h"
 #include "scenelib.h"
 #include "render.h"
-#include "cmdlib.h"
+#include "commandlib.h"
 #include "math/frustum.h"
 
 #include "gtkutil/widget.h"
@@ -251,7 +251,7 @@ void Camera_updateProjection( camera_t& camera ){
 }
 
 void Camera_updateVectors( camera_t& camera ){
-	for ( int i = 0 ; i < 3 ; i++ )
+	for ( int i = 0; i < 3; i++ )
 	{
 		camera.vright[i] = camera.modelview[( i << 2 ) + 0];
 		camera.vup[i] = camera.modelview[( i << 2 ) + 1];
@@ -466,7 +466,7 @@ void Cam_KeyControl( camera_t& camera, float dtime ){
 	else{ /* accelerate */
 		camera.m_keymove_speed_current = std::min( camera.m_keymove_speed_current
 		                                           + g_camwindow_globals_private.m_nMoveSpeed * dtime
-		                                           / g_camwindow_globals_private.m_time_toMaxSpeed * static_cast<float>( msec_per_sec ),
+		                                           / g_camwindow_globals_private.m_time_toMaxSpeed * 1000,
 		                                           static_cast<float>( g_camwindow_globals_private.m_nMoveSpeed ) );
 	}
 	const float dpos = dtime * camera.m_keymove_speed_current;
@@ -500,7 +500,7 @@ void Camera_keyMove( camera_t& camera ){
 	camera.m_mouseMove.flush();
 
 	//globalOutputStream() << "keymove... ";
-	float time_seconds = camera.m_keycontrol_timer.elapsed_msec() / static_cast<float>( msec_per_sec );
+	float time_seconds = camera.m_keycontrol_timer.elapsed_sec();
 	if( time_seconds == 0 ) /* some reasonable move at the very start */
 		time_seconds = 0.008f;
 	camera.m_keycontrol_timer.start();
@@ -2214,8 +2214,9 @@ void CamWnd::draw(){
 }
 
 void CamWnd::BenchMark(){
-	double dStart = Sys_DoubleTime();
-	for ( int i = 0 ; i < 100 ; i++ )
+	Timer timer;
+	timer.start();
+	for ( int i = 0; i < 100; i++ )
 	{
 		Vector3 angles;
 		angles[CAMERA_ROLL] = 0;
@@ -2223,8 +2224,7 @@ void CamWnd::BenchMark(){
 		angles[CAMERA_YAW] = static_cast<float>( i * ( 360.0 / 100.0 ) );
 		Camera_setAngles( *this, angles );
 	}
-	double dEnd = Sys_DoubleTime();
-	globalOutputStream() << FloatFormat( dEnd - dStart, 5, 2 ) << " seconds\n";
+	globalOutputStream() << timer.elapsed_msec() << " milliseconds\n";
 }
 
 
@@ -2385,7 +2385,7 @@ void CamWnd_SetMode( camera_draw_mode mode ){
 	}
 }
 
-void CamWnd_TogglePreview( void ){
+void CamWnd_TogglePreview(){
 	// gametype must be doom3 for this function to work
 	// if the gametype is not doom3 something is wrong with the
 	// global command list or somebody else calls this function.
@@ -2519,7 +2519,7 @@ void Camera_constructPreferences( PreferencesPage& page ){
 	const char* render_modes[]{ "Wireframe", "Flatshade", "Textured", "Textured+Wire", "Lighting" };
 	page.appendCombo(
 	    "Render Mode",
-	    StringArrayRange( render_modes, render_modes + ARRAY_SIZE( render_modes ) - ( g_pGameDescription->mGameType == "doom3"? 0 : 1 ) ),
+	    StringArrayRange( render_modes, std::size( render_modes ) - ( g_pGameDescription->mGameType == "doom3"? 0 : 1 ) ),
 	    IntImportCallback( RenderModeImportCaller() ),
 	    IntExportCallback( RenderModeExportCaller() )
 	);
@@ -2529,7 +2529,7 @@ void Camera_constructPreferences( PreferencesPage& page ){
 
 		page.appendCombo(
 		    "MSAA",
-		    STRING_ARRAY_RANGE( samples ),
+		    StringArrayRange( samples ),
 		    IntImportCallback( MSAAImportCaller() ),
 		    IntExportCallback( MSAAExportCaller() )
 		);
@@ -2540,7 +2540,7 @@ void Camera_constructPreferences( PreferencesPage& page ){
 	page.appendCombo(
 	    "Strafe Mode",
 	    g_camwindow_globals_private.m_strafeMode,
-	    STRING_ARRAY_RANGE( strafe_mode )
+	    StringArrayRange( strafe_mode )
 	);
 
 	page.appendSpinner(	"Field Of View", 110.0, 1.0, 175.0,

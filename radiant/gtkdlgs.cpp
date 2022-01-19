@@ -65,7 +65,7 @@
 #include "mainframe.h"
 #include "preferences.h"
 #include "url.h"
-#include "cmdlib.h"
+#include "commandlib.h"
 
 #include "qerplugin.h"
 #include "os/file.h"
@@ -803,7 +803,7 @@ class TextEditor
 		gtk_widget_set_sensitive( self->m_button, modified );
 
 		StringOutputStream str( 256 );
-		str << ( modified? "*" : "" ) << self->m_filename.c_str();
+		str << ( modified? "*" : "" ) << self->m_filename;
 		gtk_window_set_title( GTK_WINDOW( self->m_window ), str.c_str() );
 	}
 
@@ -930,7 +930,7 @@ EMessageBoxReturn DoLightIntensityDlg( int *intensity ){
 // =============================================================================
 // Add new shader tag dialog
 
-EMessageBoxReturn DoShaderTagDlg( CopiedString* tag, const char* title ){
+EMessageBoxReturn DoShaderTagDlg( CopiedString& tag, const char* title ){
 	ModalDialog dialog;
 	GtkEntry* textentry;
 	ModalDialogButton ok_button( dialog, eIDOK );
@@ -983,7 +983,7 @@ EMessageBoxReturn DoShaderTagDlg( CopiedString* tag, const char* title ){
 
 	EMessageBoxReturn ret = modal_dialog_show( window, dialog );
 	if ( ret == eIDOK ) {
-		*tag = gtk_entry_get_text( textentry );
+		tag = gtk_entry_get_text( textentry );
 	}
 
 	gtk_widget_destroy( GTK_WIDGET( window ) );
@@ -1074,7 +1074,7 @@ void DoShaderView( const char *shaderFileName, const char *shaderName, bool exte
 		}
 		else{
 			StringOutputStream command( 256 );
-			command << g_TextEditor_editorCommand.c_str() << " \"" << pathFull.c_str() << "\"";
+			command << g_TextEditor_editorCommand << " \"" << pathFull.c_str() << "\"";
 			globalOutputStream() << "Launching: " << command.c_str() << "\n";
 			// note: linux does not return false if the command failed so it will assume success
 			if ( !Q_Exec( 0, const_cast<char*>( command.c_str() ), 0, true, false ) )

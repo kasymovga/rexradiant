@@ -19,8 +19,7 @@
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#if !defined ( INCLUDED_OS_PATH_H )
-#define INCLUDED_OS_PATH_H
+#pragma once
 
 /// \file
 /// \brief OS file-system path comparison, decomposition and manipulation.
@@ -185,6 +184,12 @@ inline bool extension_equal( const char* extension, const char* other ){
 	return string_equal_nocase( extension, other );
 }
 
+/// \brief Returns true if \p extension equals one of \p path. \p extension without period.
+/// O(n)
+inline bool path_extension_is( const char* path, const char* extension ){
+	return extension_equal( path_get_extension( path ), extension );
+}
+
 template<typename Functor>
 class MatchFileExtension
 {
@@ -225,25 +230,24 @@ inline StringRange PathFilenameless( const char *path ){
 class PathCleaned
 {
 public:
-	const char* m_path;
-	const char* m_end;
-	PathCleaned( const char* path ) : m_path( path ), m_end( path + std::strlen( path ) ){
+	const StringRange m_path;
+	PathCleaned( const char* path ) : m_path( path, std::strlen( path ) ){
 	}
-	PathCleaned( const StringRange& range ) : m_path( range.first ), m_end( range.last ){
+	PathCleaned( const StringRange& range ) : m_path( range ){
 	}
 };
 
 /// \brief Writes \p path to \p ostream with dos-style separators replaced by unix-style separators.
 template<typename TextOutputStreamType>
 TextOutputStreamType& ostream_write( TextOutputStreamType& ostream, const PathCleaned& path ){
-	for ( const char* i = path.m_path; i != path.m_end; ++i )
+	for ( const char c : path.m_path )
 	{
-		if ( *i == '\\' ) {
+		if ( c == '\\' ) {
 			ostream << '/';
 		}
 		else
 		{
-			ostream << *i;
+			ostream << c;
 		}
 	}
 	return ostream;
@@ -272,8 +276,7 @@ TextOutputStreamType& ostream_write( TextOutputStreamType& ostream, const Direct
 				ostream << *i;
 			}
 		}
-		--i;
-		if ( *i != '/' && *i != '\\' ) {
+		if ( !path_separator( *--i ) ) {
 			ostream << '/';
 		}
 	}
@@ -281,4 +284,27 @@ TextOutputStreamType& ostream_write( TextOutputStreamType& ostream, const Direct
 }
 
 
-#endif
+template<typename SRC>
+class PathDefaultExtension
+{
+public:
+	static_assert( std::is_same_v<SRC, PathCleaned> || std::is_same_v<SRC, const char*> );
+	const SRC& m_path;
+	const char* m_extension;
+	PathDefaultExtension( const SRC& path, const char* extension ) : m_path( path ), m_extension( extension ) {}
+};
+
+/// \brief Writes \p path to \p ostream and appends extension, if there is none.
+template<typename TextOutputStreamType, typename SRC>
+TextOutputStreamType& ostream_write( TextOutputStreamType& ostream, const PathDefaultExtension<SRC>& path ){
+	ostream << path.m_path;
+	if constexpr ( std::is_same_v<SRC, PathCleaned> ){
+		if( strEmpty( path_get_extension( path.m_path.m_path.data() ) ) )
+			ostream << path.m_extension;
+	}
+	else if constexpr ( std::is_same_v<SRC, const char*> ){
+		if( strEmpty( path_get_extension( path.m_path ) ) )
+			ostream << path.m_extension;
+	}
+	return ostream;
+}

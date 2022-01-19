@@ -19,8 +19,7 @@
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#if !defined( INCLUDED_CONVERT_H )
-#define INCLUDED_CONVERT_H
+#pragma once
 
 /// \file
 /// \brief Character encoding conversion.
@@ -202,7 +201,7 @@ class ConvertUTF8ToLocale
 {
 public:
 	StringRange m_range;
-	ConvertUTF8ToLocale( const char* string ) : m_range( StringRange( string, string + strlen( string ) ) ){
+	ConvertUTF8ToLocale( const char* string ) : m_range( string, strlen( string ) ){
 	}
 	ConvertUTF8ToLocale( const StringRange& range ) : m_range( range ){
 	}
@@ -215,7 +214,7 @@ inline TextOutputStreamType& ostream_write( TextOutputStreamType& ostream, const
 		return ostream << convert.m_range;
 	}
 
-	for ( const char* p = convert.m_range.first; p != convert.m_range.last; )
+	for ( const char* p = convert.m_range.begin(); p != convert.m_range.end(); )
 	{
 		if ( !char_is_ascii( *p ) ) {
 			UTF8Character c( p );
@@ -235,7 +234,7 @@ class ConvertLocaleToUTF8
 {
 public:
 	StringRange m_range;
-	ConvertLocaleToUTF8( const char* string ) : m_range( StringRange( string, string + strlen( string ) ) ){
+	ConvertLocaleToUTF8( const char* string ) : m_range( string, strlen( string ) ){
 	}
 	ConvertLocaleToUTF8( const StringRange& range ) : m_range( range ){
 	}
@@ -248,7 +247,7 @@ inline TextOutputStreamType& ostream_write( TextOutputStreamType& ostream, const
 		return ostream << convert.m_range;
 	}
 
-	for ( const char* p = convert.m_range.first; p != convert.m_range.last; ++p )
+	for ( const char* p = convert.m_range.begin(); p != convert.m_range.end(); ++p )
 	{
 		if ( !char_is_ascii( *p ) ) {
 			UTF8Character c( globalExtendedASCIICharacterSet().decode( *p ) );
@@ -261,6 +260,3 @@ inline TextOutputStreamType& ostream_write( TextOutputStreamType& ostream, const
 	}
 	return ostream;
 }
-
-
-#endif

@@ -19,8 +19,7 @@
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#if !defined( INCLUDED_IBRUSH_H )
-#define INCLUDED_IBRUSH_H
+#pragma once
 
 #include "generic/constant.h"
 #include "generic/callback.h"
@@ -31,6 +30,8 @@ enum EBrushType
 {
 	eBrushTypeQuake,
 	eBrushTypeQuake2,
+	eBrushTypeQuake2BP,
+	eBrushTypeQuake2Valve220,
 	eBrushTypeQuake3,
 	eBrushTypeQuake3BP,
 	eBrushTypeQuake3Valve220,
@@ -98,9 +99,9 @@ class _QERFaceData
 public:
 	_QERFaceData() : m_shader( "" ), contents( 0 ), flags( 0 ), value( 0 ){
 	}
-	Vector3 m_p0;
-	Vector3 m_p1;
-	Vector3 m_p2;
+	DoubleVector3 m_p0;
+	DoubleVector3 m_p1;
+	DoubleVector3 m_p2;
 	texdef_t m_texdef;
 	const char* m_shader;
 	int contents;
@@ -135,5 +136,3 @@ typedef GlobalModuleRef<BrushCreator> GlobalBrushModuleRef;
 inline BrushCreator& GlobalBrushCreator(){
 	return GlobalBrushModule::getTable();
 }
-
-#endif

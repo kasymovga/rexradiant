@@ -30,6 +30,8 @@
 
 /* dependencies */
 #include "q3map2.h"
+#include "bspfile_ibsp.h"
+#include <ctime>
 
 
 
@@ -50,85 +52,12 @@
 
 
 
-/* FIXME: remove the functions below that handle memory management of bsp file chunks */
-
-int numBSPDrawVertsBuffer = 0;
-void IncDrawVerts(){
-	numBSPDrawVerts++;
-
-	if ( bspDrawVerts == 0 ) {
-		numBSPDrawVertsBuffer = 1024;
-
-		bspDrawVerts = safe_malloc_info( sizeof( bspDrawVert_t ) * numBSPDrawVertsBuffer, "IncDrawVerts" );
-
-	}
-	else if ( numBSPDrawVerts > numBSPDrawVertsBuffer ) {
-		bspDrawVert_t *newBspDrawVerts;
-
-		numBSPDrawVertsBuffer *= 3; // multiply by 1.5
-		numBSPDrawVertsBuffer /= 2;
-
-		newBspDrawVerts = void_ptr( realloc( bspDrawVerts, sizeof( bspDrawVert_t ) * numBSPDrawVertsBuffer ) );
-
-		if ( !newBspDrawVerts ) {
-			free (bspDrawVerts);
-			Error( "realloc() failed (IncDrawVerts)" );
-		}
-
-		bspDrawVerts = newBspDrawVerts;
-	}
-
-	memset( bspDrawVerts + ( numBSPDrawVerts - 1 ), 0, sizeof( bspDrawVert_t ) );
-}
-
-void SetDrawVerts( int n ){
-	free( bspDrawVerts );
-
-	numBSPDrawVerts =
-	numBSPDrawVertsBuffer = n;
-
-	bspDrawVerts = safe_calloc_info( sizeof( bspDrawVert_t ) * numBSPDrawVertsBuffer, "IncDrawVerts" );
-}
-
-int numBSPDrawSurfacesBuffer = 0;
-void SetDrawSurfacesBuffer(){
-	free( bspDrawSurfaces );
-
-	numBSPDrawSurfacesBuffer = MAX_MAP_DRAW_SURFS;
-
-	bspDrawSurfaces = safe_calloc_info( sizeof( bspDrawSurface_t ) * numBSPDrawSurfacesBuffer, "IncDrawSurfaces" );
-}
-
-void SetDrawSurfaces( int n ){
-	free( bspDrawSurfaces );
-
-	numBSPDrawSurfaces =
-	numBSPDrawSurfacesBuffer = n;
-
-	bspDrawSurfaces = safe_calloc_info( sizeof( bspDrawSurface_t ) * numBSPDrawSurfacesBuffer, "IncDrawSurfaces" );
-}
-
-void BSPFilesCleanup(){
-	free( bspDrawVerts );
-	free( bspDrawSurfaces );
-	free( bspLightBytes );
-	free( bspGridPoints );
-}
-
-
-
-
-
-
 /*
    SwapBlock()
    if all values are 32 bits, this can be used to swap everything
  */
 
 void SwapBlock( int *block, int size ){
-	int i;
-
-
 	/* dummy check */
 	if ( block == NULL ) {
 		return;
@@ -136,8 +65,21 @@ void SwapBlock( int *block, int size ){
 
 	/* swap */
 	size >>= 2;
-	for ( i = 0; i < size; i++ )
+	for ( int i = 0; i < size; ++i )
 		block[ i ] = LittleLong( block[ i ] );
+}
+
+/*
+   SwapBlock()
+   if all values are 32 bits, this can be used to swap everything
+ */
+template<typename T>
+void SwapBlock( std::vector<T>& block ){
+	const size_t size = ( sizeof( T ) * block.size() ) >> 2; // get size in integers
+	/* swap */
+	int *intptr = reinterpret_cast<int *>( block.data() );
+	for ( size_t i = 0; i < size; ++i )
+		intptr[ i ] = LittleLong( intptr[ i ] );
 }
 
 
@@ -147,198 +89,100 @@ void SwapBlock( int *block, int size ){
    byte swaps all data in the abstract bsp
  */
 
-void SwapBSPFile( void ){
-	int i, j;
-	shaderInfo_t    *si;
-
+static void SwapBSPFile(){
 	/* models */
-	SwapBlock( (int*) bspModels, numBSPModels * sizeof( bspModels[ 0 ] ) );
+	SwapBlock( bspModels );
 
 	/* shaders (don't swap the name) */
-	for ( i = 0; i < numBSPShaders ; i++ )
+	for ( bspShader_t& shader : bspShaders )
 	{
 		if ( doingBSP ){
-			si = ShaderInfoForShader( bspShaders[ i ].shader );
+			const shaderInfo_t *si = ShaderInfoForShader( shader.shader );
 			if ( !strEmptyOrNull( si->remapShader ) ) {
 				// copy and clear the rest of memory // check for overflow by String64
 				const auto remap = String64()( si->remapShader );
-				strncpy( bspShaders[ i ].shader, remap, sizeof( bspShaders[ i ].shader ) );
+				strncpy( shader.shader, remap, sizeof( shader.shader ) );
 			}
 		}
-		bspShaders[ i ].contentFlags = LittleLong( bspShaders[ i ].contentFlags );
-		bspShaders[ i ].surfaceFlags = LittleLong( bspShaders[ i ].surfaceFlags );
+		shader.contentFlags = LittleLong( shader.contentFlags );
+		shader.surfaceFlags = LittleLong( shader.surfaceFlags );
 	}
 
 	/* planes */
-	SwapBlock( (int*) bspPlanes, numBSPPlanes * sizeof( bspPlanes[ 0 ] ) );
+	SwapBlock( bspPlanes );
 
 	/* nodes */
-	SwapBlock( (int*) bspNodes, numBSPNodes * sizeof( bspNodes[ 0 ] ) );
+	SwapBlock( bspNodes );
 
 	/* leafs */
-	SwapBlock( (int*) bspLeafs, numBSPLeafs * sizeof( bspLeafs[ 0 ] ) );
+	SwapBlock( bspLeafs );
 
 	/* leaffaces */
-	SwapBlock( (int*) bspLeafSurfaces, numBSPLeafSurfaces * sizeof( bspLeafSurfaces[ 0 ] ) );
+	SwapBlock( bspLeafSurfaces );
 
 	/* leafbrushes */
-	SwapBlock( (int*) bspLeafBrushes, numBSPLeafBrushes * sizeof( bspLeafBrushes[ 0 ] ) );
+	SwapBlock( bspLeafBrushes );
 
 	// brushes
-	SwapBlock( (int*) bspBrushes, numBSPBrushes * sizeof( bspBrushes[ 0 ] ) );
+	SwapBlock( bspBrushes );
 
 	// brushsides
-	SwapBlock( (int*) bspBrushSides, numBSPBrushSides * sizeof( bspBrushSides[ 0 ] ) );
+	SwapBlock( bspBrushSides );
 
 	// vis
-	( (int*) &bspVisBytes )[ 0 ] = LittleLong( ( (int*) &bspVisBytes )[ 0 ] );
-	( (int*) &bspVisBytes )[ 1 ] = LittleLong( ( (int*) &bspVisBytes )[ 1 ] );
+	if( !bspVisBytes.empty() ){
+		( (int*) bspVisBytes.data() )[ 0 ] = LittleLong( ( (int*) bspVisBytes.data() )[ 0 ] );
+		( (int*) bspVisBytes.data() )[ 1 ] = LittleLong( ( (int*) bspVisBytes.data() )[ 1 ] );
+	}
 
 	/* drawverts (don't swap colors) */
-	for ( i = 0; i < numBSPDrawVerts; i++ )
+	for ( bspDrawVert_t& v : bspDrawVerts )
 	{
-		bspDrawVerts[ i ].xyz[ 0 ] = LittleFloat( bspDrawVerts[ i ].xyz[ 0 ] );
-		bspDrawVerts[ i ].xyz[ 1 ] = LittleFloat( bspDrawVerts[ i ].xyz[ 1 ] );
-		bspDrawVerts[ i ].xyz[ 2 ] = LittleFloat( bspDrawVerts[ i ].xyz[ 2 ] );
-		bspDrawVerts[ i ].normal[ 0 ] = LittleFloat( bspDrawVerts[ i ].normal[ 0 ] );
-		bspDrawVerts[ i ].normal[ 1 ] = LittleFloat( bspDrawVerts[ i ].normal[ 1 ] );
-		bspDrawVerts[ i ].normal[ 2 ] = LittleFloat( bspDrawVerts[ i ].normal[ 2 ] );
-		bspDrawVerts[ i ].st[ 0 ] = LittleFloat( bspDrawVerts[ i ].st[ 0 ] );
-		bspDrawVerts[ i ].st[ 1 ] = LittleFloat( bspDrawVerts[ i ].st[ 1 ] );
-		for ( j = 0; j < MAX_LIGHTMAPS; j++ )
+		v.xyz[ 0 ] = LittleFloat( v.xyz[ 0 ] );
+		v.xyz[ 1 ] = LittleFloat( v.xyz[ 1 ] );
+		v.xyz[ 2 ] = LittleFloat( v.xyz[ 2 ] );
+		v.normal[ 0 ] = LittleFloat( v.normal[ 0 ] );
+		v.normal[ 1 ] = LittleFloat( v.normal[ 1 ] );
+		v.normal[ 2 ] = LittleFloat( v.normal[ 2 ] );
+		v.st[ 0 ] = LittleFloat( v.st[ 0 ] );
+		v.st[ 1 ] = LittleFloat( v.st[ 1 ] );
+		for ( Vector2& lm : v.lightmap )
 		{
-			bspDrawVerts[ i ].lightmap[ j ][ 0 ] = LittleFloat( bspDrawVerts[ i ].lightmap[ j ][ 0 ] );
-			bspDrawVerts[ i ].lightmap[ j ][ 1 ] = LittleFloat( bspDrawVerts[ i ].lightmap[ j ][ 1 ] );
+			lm[ 0 ] = LittleFloat( lm[ 0 ] );
+			lm[ 1 ] = LittleFloat( lm[ 1 ] );
 		}
 	}
 
 	/* drawindexes */
-	SwapBlock( (int*) bspDrawIndexes, numBSPDrawIndexes * sizeof( bspDrawIndexes[0] ) );
+	SwapBlock( bspDrawIndexes );
 
 	/* drawsurfs */
 	/* note: rbsp files (and hence q3map2 abstract bsp) have byte lightstyles index arrays, this follows sof2map convention */
-	SwapBlock( (int*) bspDrawSurfaces, numBSPDrawSurfaces * sizeof( bspDrawSurfaces[ 0 ] ) );
+	SwapBlock( bspDrawSurfaces );
 
 	/* fogs */
-	for ( i = 0; i < numBSPFogs; i++ )
+	for ( bspFog_t& fog : bspFogs )
 	{
-		bspFogs[ i ].brushNum = LittleLong( bspFogs[ i ].brushNum );
-		bspFogs[ i ].visibleSide = LittleLong( bspFogs[ i ].visibleSide );
+		fog.brushNum = LittleLong( fog.brushNum );
+		fog.visibleSide = LittleLong( fog.visibleSide );
 	}
 
 	/* advertisements */
-	for ( i = 0; i < numBSPAds; i++ )
+	for ( bspAdvertisement_t& ad : bspAds )
 	{
-		bspAds[ i ].cellId = LittleLong( bspAds[ i ].cellId );
-		bspAds[ i ].normal[ 0 ] = LittleFloat( bspAds[ i ].normal[ 0 ] );
-		bspAds[ i ].normal[ 1 ] = LittleFloat( bspAds[ i ].normal[ 1 ] );
-		bspAds[ i ].normal[ 2 ] = LittleFloat( bspAds[ i ].normal[ 2 ] );
+		ad.cellId = LittleLong( ad.cellId );
+		ad.normal[ 0 ] = LittleFloat( ad.normal[ 0 ] );
+		ad.normal[ 1 ] = LittleFloat( ad.normal[ 1 ] );
+		ad.normal[ 2 ] = LittleFloat( ad.normal[ 2 ] );
 
-		for ( j = 0; j < 4; j++ )
+		for ( Vector3& v : ad.rect )
 		{
-			bspAds[ i ].rect[j][ 0 ] = LittleFloat( bspAds[ i ].rect[j][ 0 ] );
-			bspAds[ i ].rect[j][ 1 ] = LittleFloat( bspAds[ i ].rect[j][ 1 ] );
-			bspAds[ i ].rect[j][ 2 ] = LittleFloat( bspAds[ i ].rect[j][ 2 ] );
-		}
-
-		//bspAds[ i ].model[ MAX_QPATH ];
-	}
-}
-
-/*
-   GetLumpElements()
-   gets the number of elements in a bsp lump
- */
-
-int GetLumpElements( bspHeader_t *header, int lump, int size ){
-	/* check for odd size */
-	if ( header->lumps[ lump ].length % size ) {
-		if ( force ) {
-			Sys_Warning( "GetLumpElements: odd lump size (%d) in lump %d\n", header->lumps[ lump ].length, lump );
-			return 0;
-		}
-		else{
-			Error( "GetLumpElements: odd lump size (%d) in lump %d", header->lumps[ lump ].length, lump );
+			v[ 0 ] = LittleFloat( v[ 0 ] );
+			v[ 1 ] = LittleFloat( v[ 1 ] );
+			v[ 2 ] = LittleFloat( v[ 2 ] );
 		}
 	}
-
-	/* return element count */
-	return header->lumps[ lump ].length / size;
 }
-
-
-
-/*
-   GetLump()
-   returns a pointer to the specified lump
- */
-
-void_ptr GetLump( bspHeader_t *header, int lump ){
-	return (void*)( (byte*) header + header->lumps[ lump ].offset );
-}
-
-
-
-/*
-   CopyLump()
-   copies a bsp file lump into a destination buffer
- */
-
-int CopyLump( bspHeader_t *header, int lump, void *dest, int size ){
-	int length, offset;
-
-
-	/* get lump length and offset */
-	length = header->lumps[ lump ].length;
-	offset = header->lumps[ lump ].offset;
-
-	/* handle erroneous cases */
-	if ( length == 0 ) {
-		return 0;
-	}
-	if ( length % size ) {
-		if ( force ) {
-			Sys_Warning( "CopyLump: odd lump size (%d) in lump %d\n", length, lump );
-			return 0;
-		}
-		else{
-			Error( "CopyLump: odd lump size (%d) in lump %d", length, lump );
-		}
-	}
-
-	/* copy block of memory and return */
-	memcpy( dest, (byte*) header + offset, length );
-	return length / size;
-}
-
-int CopyLump_Allocate( bspHeader_t *header, int lump, void **dest, int size, int *allocationVariable ){
-	/* get lump length and offset */
-	*allocationVariable = header->lumps[ lump ].length / size;
-	*dest = realloc( *dest, size * *allocationVariable );
-	return CopyLump( header, lump, *dest, size );
-}
-
-
-/*
-   AddLump()
-   adds a lump to an outgoing bsp file
- */
-
-void AddLump( FILE *file, bspHeader_t *header, int lumpNum, const void *data, int length ){
-	bspLump_t   *lump;
-
-	/* add lump to bsp file header */
-	lump = &header->lumps[ lumpNum ];
-	lump->offset = LittleLong( ftell( file ) );
-	lump->length = LittleLong( length );
-
-	/* write lump to file */
-	SafeWrite( file, data, length );
-
-	/* write padding zeros */
-	SafeWrite( file, (const byte[3]){ 0, 0, 0 }, ( ( length + 3 ) & ~3 ) - length );
-}
-
 
 
 /*
@@ -348,51 +192,30 @@ void AddLump( FILE *file, bspHeader_t *header, int lumpNum, const void *data, in
 
 void LoadBSPFile( const char *filename ){
 	/* dummy check */
-	if ( game == NULL || game->load == NULL ) {
+	if ( g_game == NULL || g_game->load == NULL ) {
 		Error( "LoadBSPFile: unsupported BSP file format" );
 	}
 
 	/* load it, then byte swap the in-memory version */
-	game->load( filename );
+	g_game->load( filename );
 	SwapBSPFile();
 }
 
 /*
-   PartialLoadBSPFile()
-   partially loads a bsp file into memory
-   for autopacker
+   LoadBSPFilePartially()
+   loads bsp file parts meaningful for autopacker
  */
 
-void PartialLoadBSPFile( const char *filename ){
+void LoadBSPFilePartially( const char *filename ){
 	/* dummy check */
-	if ( game == NULL || game->load == NULL ) {
+	if ( g_game == NULL || g_game->load == NULL ) {
 		Error( "LoadBSPFile: unsupported BSP file format" );
 	}
 
 	/* load it, then byte swap the in-memory version */
-	//game->load( filename );
-	PartialLoadIBSPFile( filename );
-
-	/* PartialSwapBSPFile() */
-	int i;
-
-	/* shaders (don't swap the name) */
-	for ( i = 0; i < numBSPShaders ; i++ )
-	{
-		bspShaders[ i ].contentFlags = LittleLong( bspShaders[ i ].contentFlags );
-		bspShaders[ i ].surfaceFlags = LittleLong( bspShaders[ i ].surfaceFlags );
-	}
-
-	/* drawsurfs */
-	/* note: rbsp files (and hence q3map2 abstract bsp) have byte lightstyles index arrays, this follows sof2map convention */
-	SwapBlock( (int*) bspDrawSurfaces, numBSPDrawSurfaces * sizeof( bspDrawSurfaces[ 0 ] ) );
-
-	/* fogs */
-	for ( i = 0; i < numBSPFogs; i++ )
-	{
-		bspFogs[ i ].brushNum = LittleLong( bspFogs[ i ].brushNum );
-		bspFogs[ i ].visibleSide = LittleLong( bspFogs[ i ].visibleSide );
-	}
+	//g_game->load( filename );
+	LoadIBSPorRBSPFilePartially( filename );
+	SwapBSPFile();
 }
 
 /*
@@ -406,7 +229,7 @@ void WriteBSPFile( const char *filename ){
 
 
 	/* dummy check */
-	if ( game == NULL || game->write == NULL ) {
+	if ( g_game == NULL || g_game->write == NULL ) {
 		Error( "WriteBSPFile: unsupported BSP file format" );
 	}
 
@@ -416,7 +239,7 @@ void WriteBSPFile( const char *filename ){
 
 	/* byteswap, write the bsp, then swap back so it can be manipulated further */
 	SwapBSPFile();
-	game->write( tempname );
+	g_game->write( tempname );
 	SwapBSPFile();
 
 	/* replace existing bsp file */
@@ -431,63 +254,70 @@ void WriteBSPFile( const char *filename ){
    dumps info about current file
  */
 
-void PrintBSPFileSizes( void ){
+void PrintBSPFileSizes(){
 	/* parse entities first */
 	if ( entities.empty() ) {
 		ParseEntities();
 	}
-	int patchCount = 0;
-	bspDrawSurface_t *s;
-	for ( s = bspDrawSurfaces; s != bspDrawSurfaces + numBSPDrawSurfaces; ++s ){
-		if ( s->surfaceType == MST_PATCH )
+	int patchCount = 0, planarCount = 0, trisoupCount = 0;
+	for ( const bspDrawSurface_t& s : bspDrawSurfaces ){
+		if ( s.surfaceType == MST_PATCH )
 			++patchCount;
+		else if ( s.surfaceType == MST_PLANAR )
+			++planarCount;
+		else if ( s.surfaceType == MST_TRIANGLE_SOUP )
+			++trisoupCount;
 	}
 	/* note that this is abstracted */
 	Sys_Printf( "Abstracted BSP file components (*actual sizes may differ)\n" );
 
 	/* print various and sundry bits */
-	Sys_Printf( "%9d models        %9d\n",
-	            numBSPModels, (int) ( numBSPModels * sizeof( bspModel_t ) ) );
-	Sys_Printf( "%9d shaders       %9d\n",
-	            numBSPShaders, (int) ( numBSPShaders * sizeof( bspShader_t ) ) );
-	Sys_Printf( "%9d brushes       %9d\n",
-	            numBSPBrushes, (int) ( numBSPBrushes * sizeof( bspBrush_t ) ) );
-	Sys_Printf( "%9d brushsides    %9d *\n",
-	            numBSPBrushSides, (int) ( numBSPBrushSides * sizeof( bspBrushSide_t ) ) );
-	Sys_Printf( "%9d fogs          %9d\n",
-	            numBSPFogs, (int) ( numBSPFogs * sizeof( bspFog_t ) ) );
-	Sys_Printf( "%9d planes        %9d\n",
-	            numBSPPlanes, (int) ( numBSPPlanes * sizeof( bspPlane_t ) ) );
-	Sys_Printf( "%9zu entdata       %9d\n",
-	            entities.size(), bspEntDataSize );
+	Sys_Printf( "%9zu models        %9zu\n",
+	            bspModels.size(), bspModels.size() * sizeof( bspModels[0] ) );
+	Sys_Printf( "%9zu shaders       %9zu\n",
+	            bspShaders.size(), bspShaders.size() * sizeof( bspShaders[0] ) );
+	Sys_Printf( "%9zu brushes       %9zu\n",
+	            bspBrushes.size(), bspBrushes.size() * sizeof( bspBrushes[0] ) );
+	Sys_Printf( "%9zu brushsides    %9zu *\n",
+	            bspBrushSides.size(), bspBrushSides.size() * sizeof( bspBrushSides[0] ) );
+	Sys_Printf( "%9zu fogs          %9zu\n",
+	            bspFogs.size(), bspFogs.size() * sizeof( bspFogs[0] ) );
+	Sys_Printf( "%9zu planes        %9zu\n",
+	            bspPlanes.size(), bspPlanes.size() * sizeof( bspPlanes[0] ) );
+	Sys_Printf( "%9zu entdata       %9zu\n",
+	            entities.size(), bspEntData.size() );
 	Sys_Printf( "\n" );
 
-	Sys_Printf( "%9d nodes         %9d\n",
-	            numBSPNodes, (int) ( numBSPNodes * sizeof( bspNode_t ) ) );
-	Sys_Printf( "%9d leafs         %9d\n",
-	            numBSPLeafs, (int) ( numBSPLeafs * sizeof( bspLeaf_t ) ) );
-	Sys_Printf( "%9d leafsurfaces  %9d\n",
-	            numBSPLeafSurfaces, (int) ( numBSPLeafSurfaces * sizeof( *bspLeafSurfaces ) ) );
-	Sys_Printf( "%9d leafbrushes   %9d\n",
-	            numBSPLeafBrushes, (int) ( numBSPLeafBrushes * sizeof( *bspLeafBrushes ) ) );
+	Sys_Printf( "%9zu nodes         %9zu\n",
+	            bspNodes.size(), bspNodes.size() * sizeof( bspNodes[0] ) );
+	Sys_Printf( "%9zu leafs         %9zu\n",
+	            bspLeafs.size(), bspLeafs.size() * sizeof( bspLeafs[0] ) );
+	Sys_Printf( "%zu leafsurfaces  %zu\n",
+	            bspLeafSurfaces.size(), bspLeafSurfaces.size() * sizeof( bspLeafSurfaces[0] ) );
+	Sys_Printf( "%9zu leafbrushes   %9zu\n",
+	            bspLeafBrushes.size(), bspLeafBrushes.size() * sizeof( bspLeafBrushes[0] ) );
 	Sys_Printf( "\n" );
 
-	Sys_Printf( "%9d drawsurfaces  %9d *\n",
-	            numBSPDrawSurfaces, (int) ( numBSPDrawSurfaces * sizeof( *bspDrawSurfaces ) ) );
-	Sys_Printf( "%9d patchsurfaces       \n",
+	Sys_Printf( "%9zu drawsurfaces  %9zu *\n",
+	            bspDrawSurfaces.size(), bspDrawSurfaces.size() * sizeof( bspDrawSurfaces[0] ) );
+	Sys_Printf( "%9d   patch surfaces\n",
 	            patchCount );
-	Sys_Printf( "%9d drawverts     %9d *\n",
-	            numBSPDrawVerts, (int) ( numBSPDrawVerts * sizeof( *bspDrawVerts ) ) );
-	Sys_Printf( "%9d drawindexes   %9d\n",
-	            numBSPDrawIndexes, (int) ( numBSPDrawIndexes * sizeof( *bspDrawIndexes ) ) );
+	Sys_Printf( "%9d   planar surfaces\n",
+	            planarCount );
+	Sys_Printf( "%9d   trisoup surfaces\n",
+	            trisoupCount );
+	Sys_Printf( "%9zu drawverts     %9zu *\n",
+	            bspDrawVerts.size(), bspDrawVerts.size() * sizeof( bspDrawVerts[0] ) );
+	Sys_Printf( "%9zu drawindexes   %9zu\n",
+	            bspDrawIndexes.size(), bspDrawIndexes.size() * sizeof( bspDrawIndexes[0] ) );
 	Sys_Printf( "\n" );
 
-	Sys_Printf( "%9d lightmaps     %9d\n",
-	            numBSPLightBytes / ( game->lightmapSize * game->lightmapSize * 3 ), numBSPLightBytes );
-	Sys_Printf( "%9d lightgrid     %9d *\n",
-	            numBSPGridPoints, (int) ( numBSPGridPoints * sizeof( *bspGridPoints ) ) );
-	Sys_Printf( "          visibility    %9d\n",
-	            numBSPVisBytes );
+	Sys_Printf( "%9zu lightmaps     %9zu\n",
+	            bspLightBytes.size() / ( g_game->lightmapSize * g_game->lightmapSize * 3 ), bspLightBytes.size() );
+	Sys_Printf( "%9zu lightgrid     %9zu *\n",
+	            bspGridPoints.size(), bspGridPoints.size() * sizeof( bspGridPoints[0] ) );
+	Sys_Printf( "          visibility    %9zu\n",
+	            bspVisBytes.size() );
 }
 
 
@@ -504,7 +334,7 @@ void PrintBSPFileSizes( void ){
    strips low byte chars off the end of a string
  */
 
-StringRange StripTrailing( const char *string ){
+inline StringRange StripTrailing( const char *string ){
 	const char *end = string + strlen( string );
 	while ( end != string && end[-1] <= 32 ){
 		--end;
@@ -530,7 +360,7 @@ void ParseEPair( std::list<epair_t>& epairs ){
 	ep.value = StripTrailing( token );
 
 	if( !ep.key.empty() && !ep.value.empty() )
-		epairs.emplace_back( ep );
+		epairs.push_back( std::move( ep ) );
 }
 
 
@@ -540,7 +370,7 @@ void ParseEPair( std::list<epair_t>& epairs ){
    parses an entity's epairs
  */
 
-bool ParseEntity( void ){
+static bool ParseEntity(){
 	/* dummy check */
 	if ( !GetToken( true ) ) {
 		return false;
@@ -550,8 +380,7 @@ bool ParseEntity( void ){
 	}
 
 	/* create new entity */
-	entities.emplace_back();
-	mapEnt = &entities.back();
+	entity_t& e = entities.emplace_back();
 
 	/* parse */
 	while ( 1 )
@@ -562,7 +391,7 @@ bool ParseEntity( void ){
 		if ( strEqual( token, "}" ) ) {
 			break;
 		}
-		ParseEPair( mapEnt->epairs );
+		ParseEPair( e.epairs );
 	}
 
 	/* return to sender */
@@ -576,10 +405,10 @@ bool ParseEntity( void ){
    parses the bsp entity data string into entities
  */
 
-void ParseEntities( void ){
+void ParseEntities(){
 	entities.clear();
-	ParseFromMemory( bspEntData, bspEntDataSize );
-	while ( ParseEntity() ) ;
+	ParseFromMemory( bspEntData.data(), bspEntData.size() );
+	while ( ParseEntity() ){};
 
 	/* ydnar: set number of bsp entities in case a map is loaded on top */
 	numBSPEntities = entities.size();
@@ -588,41 +417,21 @@ void ParseEntities( void ){
 /*
  * must be called before UnparseEntities
  */
-void InjectCommandLine( char **argv, int beginArgs, int endArgs ){
-	char newCommandLine[1024];
-	const char *inpos;
-	char *outpos = newCommandLine;
-	char *sentinel = newCommandLine + sizeof( newCommandLine ) - 1;
-	int i;
+void InjectCommandLine( const char *stage, const std::vector<const char *>& args ){
+	auto str = StringOutputStream( 256 )( entities[ 0 ].valueForKey( "_q3map2_cmdline" ) ); // read previousCommandLine
+	if( !str.empty() )
+		str << "; ";
 
-	if ( nocmdline ){
-		return;
-	}
-	if ( entities[ 0 ].read_keyvalue( inpos, "_q3map2_cmdline" ) ) { // read previousCommandLine
-		while ( outpos != sentinel && *inpos )
-			*outpos++ = *inpos++;
-		if ( outpos != sentinel ) {
-			*outpos++ = ';';
-		}
-		if ( outpos != sentinel ) {
-			*outpos++ = ' ';
-		}
+	str << stage;
+
+	for ( const char *c : args ) {
+		str << ' ';
+		for( ; !strEmpty( c ); ++c )
+			if ( *c != '\\' && *c != '"' && *c != ';' && (unsigned char) *c >= ' ' )
+				str << *c;
 	}
 
-	for ( i = beginArgs; i < endArgs; ++i )
-	{
-		if ( outpos != sentinel && i != beginArgs ) {
-			*outpos++ = ' ';
-		}
-		inpos = argv[i];
-		while ( outpos != sentinel && *inpos )
-			if ( *inpos != '\\' && *inpos != '"' && *inpos != ';' && (unsigned char) *inpos >= ' ' ) {
-				*outpos++ = *inpos++;
-			}
-	}
-
-	*outpos = 0;
-	entities[0].setKeyValue( "_q3map2_cmdline", newCommandLine );
+	entities[0].setKeyValue( "_q3map2_cmdline", str );
 	entities[0].setKeyValue( "_q3map2_version", Q3MAP_VERSION );
 }
 
@@ -633,11 +442,11 @@ void InjectCommandLine( char **argv, int beginArgs, int endArgs ){
    pairs to the data created by the map editor
  */
 
-void UnparseEntities( void ){
+void UnparseEntities(){
 	StringOutputStream data( 8192 );
 
 	/* run through entity list */
-	for ( std::size_t i = 0; i < numBSPEntities && i < entities.size(); i++ )
+	for ( std::size_t i = 0; i < numBSPEntities && i < entities.size(); ++i )
 	{
 		const entity_t& e = entities[ i ];
 		/* get epair */
@@ -667,9 +476,7 @@ void UnparseEntities( void ){
 	}
 
 	/* save out */
-	bspEntDataSize = data.end() - data.begin() + 1;
-	AUTOEXPAND_BY_REALLOC( bspEntData, bspEntDataSize, allocatedBSPEntData, 1024 );
-	strcpy( bspEntData, data );
+	bspEntData = { data.begin(), data.end() + 1 }; // include '\0'
 }
 
 
@@ -770,16 +577,6 @@ bool entity_t::read_keyvalue_( Vector3& vector3_value, std::initializer_list<con
 	}
 	return false;
 }
-bool entity_t::read_keyvalue_( char (&string_value)[1024], std::initializer_list<const char*>&& keys ) const {
-	for( const char* key : keys ){
-		const char* value = valueForKey( key );
-		if( !strEmpty( value ) ){
-			strcpy( string_value, value );
-			return true;
-		}
-	}
-	return false;
-}
 bool entity_t::read_keyvalue_( const char *&string_ptr_value, std::initializer_list<const char*>&& keys ) const {
 	for( const char* key : keys ){
 		const char* value = valueForKey( key );
@@ -832,7 +629,7 @@ void GetEntityShadowFlags( const entity_t *ent, const entity_t *ent2, int *castS
 	}
 
 	/* vortex: game-specific default entity keys */
-	if ( striEqual( game->magic, "dq" ) || striEqual( game->magic, "prophecy" ) ) {
+	if ( striEqual( g_game->magic, "dq" ) || striEqual( g_game->magic, "prophecy" ) ) {
 		/* vortex: deluxe quake default shadow flags */
 		if ( ent->classname_is( "func_wall" ) ) {
 			if ( recvShadows != NULL ) {

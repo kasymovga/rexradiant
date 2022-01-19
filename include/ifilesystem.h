@@ -19,8 +19,7 @@
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#if !defined( INCLUDED_IFILESYSTEM_H )
-#define INCLUDED_IFILESYSTEM_H
+#pragma once
 
 #include <cstddef>
 #include "generic/constant.h"
@@ -75,18 +74,6 @@ public:
 /// Use "*" as \p extension to match all file extensions.
 	virtual void forEachFile( const char* basedir, const char* extension, const FileNameCallback& callback, std::size_t depth = 1 ) = 0;
 
-/// \brief Returns a list containing the relative names of all the directories under \p basedir.
-/// The caller must free the returned list by calling \c clearFileDirList;
-/// \deprecated Deprecated - use \c forEachDirectory.
-	virtual GSList* getDirList( const char *basedir ) = 0;
-/// \brief Returns a list containing the relative names of the files under \p basedir (\p extension can be "*" for all files).
-/// The caller must free the returned list by calling \c clearFileDirList.
-/// \deprecated Deprecated - use \c forEachFile.
-	virtual GSList* getFileList( const char *basedir, const char *extension ) = 0;
-/// \brief Frees the \p list returned from \c getDirList or \c getFileList.
-/// \deprecated Deprecated.
-	virtual void clearFileDirList( GSList **list ) = 0;
-
 /// \brief Returns the absolute filename for a relative \p name, or "" if not found.
 	virtual const char* findFile( const char* name ) = 0;
 /// \brief Returns the filesystem root for an absolute \p name, or "" if not found.
@@ -126,5 +113,3 @@ inline int vfsLoadFile( const char* filename, void** buffer, int index = 0 ){
 inline void vfsFreeFile( void* p ){
 	GlobalFileSystem().freeFile( p );
 }
-
-#endif

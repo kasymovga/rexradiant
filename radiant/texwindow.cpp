@@ -52,7 +52,7 @@
 #include "stream/memstream.h"
 #include "stream/textfilestream.h"
 #include "stream/stringstream.h"
-#include "cmdlib.h"
+#include "commandlib.h"
 #include "texmanip.h"
 #include "textures.h"
 #include "convert.h"
@@ -85,13 +85,13 @@
 #include "commands.h"
 
 bool string_equal_start( const char* string, StringRange start ){
-	return string_equal_n( string, start.first, start.last - start.first );
+	return string_equal_n( string, start.data(), start.size() );
 }
 
 typedef std::set<CopiedString> TextureGroups;
 
 void TextureGroups_addWad( TextureGroups& groups, const char* archive ){
-	if ( extension_equal( path_get_extension( archive ), "wad" ) ) {
+	if ( path_extension_is( archive, "wad" ) ) {
 #if 1
 		groups.insert( archive );
 #else
@@ -1314,7 +1314,7 @@ gboolean TextureBrowser_button_press( GtkWidget* widget, GdkEventButton* event, 
 	/* loads directory, containing active shader + focuses on it */
 	else if ( event->type == GDK_2BUTTON_PRESS && event->button == 1 && !TextureBrowser::wads ) {
 		const StringRange range( strchr( textureBrowser->shader.c_str(), '/' ) + 1, strrchr( textureBrowser->shader.c_str(), '/' ) + 1 );
-		if( range.last > range.first ){
+		if( !range.empty() ){
 			const CopiedString dir = range;
 			ScopeDisableScreenUpdates disableScreenUpdates( dir.c_str(), "Loading Textures" );
 			TextureBrowser_ShowDirectory( *textureBrowser, dir.c_str() );
@@ -1738,40 +1738,38 @@ GtkMenuItem* TextureBrowser_constructTagsMenu( GtkMenu* menu ){
 	return textures_menu_item;
 }
 
-gboolean TextureBrowser_tagMoveHelper( GtkTreeModel* model, GtkTreePath* path, GtkTreeIter* iter, GSList** selected ){
+gboolean TextureBrowser_tagMoveHelper( GtkTreeModel* model, GtkTreePath* path, GtkTreeIter* iter, std::vector<GtkTreeRowReference*>* selected ){
 	g_assert( selected != NULL );
 
 	GtkTreeRowReference* rowref = gtk_tree_row_reference_new( model, path );
-	*selected = g_slist_append( *selected, rowref );
+	selected->push_back( rowref );
 
 	return FALSE;
 }
 
 void TextureBrowser_assignTags(){
-	GSList* selected = NULL;
-	GSList* node;
-	gchar* tag_assigned;
+	std::vector<GtkTreeRowReference*> selected;
 
 	GtkTreeSelection* selection = gtk_tree_view_get_selection( GTK_TREE_VIEW( g_TextureBrowser.m_available_tree ) );
 
 	gtk_tree_selection_selected_foreach( selection, (GtkTreeSelectionForeachFunc)TextureBrowser_tagMoveHelper, &selected );
 
-	if ( selected != NULL ) {
-		for ( node = selected; node != NULL; node = node->next )
+	if ( !selected.empty() ) {
+		for ( GtkTreeRowReference* ref : selected )
 		{
-			GtkTreePath* path = gtk_tree_row_reference_get_path( (GtkTreeRowReference*)node->data );
+			GtkTreePath* path = gtk_tree_row_reference_get_path( ref );
 
 			if ( path ) {
 				GtkTreeIter iter;
 
 				if ( gtk_tree_model_get_iter( GTK_TREE_MODEL( g_TextureBrowser.m_available_store ), &iter, path ) ) {
+					gchar* tag_assigned;
 					gtk_tree_model_get( GTK_TREE_MODEL( g_TextureBrowser.m_available_store ), &iter, TAG_COLUMN, &tag_assigned, -1 );
 					if ( !TagBuilder.CheckShaderTag( g_TextureBrowser.shader.c_str() ) ) {
 						// create a custom shader/texture entry
 						IShader* ishader = QERApp_Shader_ForName( g_TextureBrowser.shader.c_str() );
-						CopiedString filename = ishader->getShaderFileName();
 
-						if ( filename.empty() ) {
+						if ( ishader->IsDefault() ) {
 							// it's a texture
 							TagBuilder.AddShaderNode( g_TextureBrowser.shader.c_str(), CUSTOM, TEXTURE );
 						}
@@ -1792,26 +1790,24 @@ void TextureBrowser_assignTags(){
 			}
 		}
 
-		g_slist_foreach( selected, (GFunc)gtk_tree_row_reference_free, NULL );
+		std::for_each( selected.begin(), selected.end(), gtk_tree_row_reference_free );
 
 		// Save changes
 		TagBuilder.SaveXmlDoc();
 	}
-	g_slist_free( selected );
 }
 
 void TextureBrowser_removeTags(){
-	GSList* selected = NULL;
-	GSList* node;
+	std::vector<GtkTreeRowReference*> selected;
 
 	GtkTreeSelection* selection = gtk_tree_view_get_selection( GTK_TREE_VIEW( g_TextureBrowser.m_assigned_tree ) );
 
 	gtk_tree_selection_selected_foreach( selection, (GtkTreeSelectionForeachFunc)TextureBrowser_tagMoveHelper, &selected );
 
-	if ( selected != NULL ) {
-		for ( node = selected; node != NULL; node = node->next )
+	if ( !selected.empty() ) {
+		for ( GtkTreeRowReference* ref : selected )
 		{
-			GtkTreePath* path = gtk_tree_row_reference_get_path( (GtkTreeRowReference*)node->data );
+			GtkTreePath* path = gtk_tree_row_reference_get_path( ref );
 
 			if ( path ) {
 				GtkTreeIter iter;
@@ -1826,7 +1822,7 @@ void TextureBrowser_removeTags(){
 			}
 		}
 
-		g_slist_foreach( selected, (GFunc)gtk_tree_row_reference_free, NULL );
+		std::for_each( selected.begin(), selected.end(), gtk_tree_row_reference_free );
 
 		// Update the "available tags list"
 		BuildStoreAvailableTags( g_TextureBrowser.m_available_store, g_TextureBrowser.m_assigned_store, g_TextureBrowser.m_all_tags, &g_TextureBrowser );
@@ -1834,7 +1830,6 @@ void TextureBrowser_removeTags(){
 		// Save changes
 		TagBuilder.SaveXmlDoc();
 	}
-	g_slist_free( selected );
 }
 
 void TextureBrowser_buildTagList(){
@@ -1851,8 +1846,7 @@ void TextureBrowser_buildTagList(){
 }
 
 void TextureBrowser_searchTags(){
-	GSList* selected = NULL;
-	GSList* node;
+	std::vector<GtkTreeRowReference*> selected;
 	char buffer[256];
 	char tags_searched[256];
 
@@ -1860,13 +1854,13 @@ void TextureBrowser_searchTags(){
 
 	gtk_tree_selection_selected_foreach( selection, (GtkTreeSelectionForeachFunc)TextureBrowser_tagMoveHelper, &selected );
 
-	if ( selected != NULL ) {
+	if ( !selected.empty() ) {
 		strcpy( buffer, "/root/*/*[tag='" );
 		strcpy( tags_searched, "[TAGS] " );
 
-		for ( node = selected; node != NULL; node = node->next )
+		for ( auto it = selected.begin(); it != selected.end(); ++it )
 		{
-			GtkTreePath* path = gtk_tree_row_reference_get_path( (GtkTreeRowReference*)node->data );
+			GtkTreePath* path = gtk_tree_row_reference_get_path( *it );
 
 			if ( path ) {
 				GtkTreeIter iter;
@@ -1878,7 +1872,7 @@ void TextureBrowser_searchTags(){
 					strcat( buffer, tag );
 					strcat( tags_searched, tag );
 					g_free( tag );
-					if ( node != g_slist_last( node ) ) {
+					if ( it + 1 != selected.end() ) {
 						strcat( buffer, "' and tag='" );
 						strcat( tags_searched, ", " );
 					}
@@ -1888,7 +1882,7 @@ void TextureBrowser_searchTags(){
 
 		strcat( buffer, "']" );
 
-		g_slist_foreach( selected, (GFunc)gtk_tree_row_reference_free, NULL );
+		std::for_each( selected.begin(), selected.end(), gtk_tree_row_reference_free );
 
 		g_TextureBrowser.m_found_shaders.clear(); // delete old list
 		TagBuilder.TagSearch( buffer, g_TextureBrowser.m_found_shaders );
@@ -1919,7 +1913,6 @@ void TextureBrowser_searchTags(){
 		TextureBrowser_heightChanged( g_TextureBrowser );
 		TextureBrowser_updateTitle();
 	}
-	g_slist_free( selected );
 }
 
 void TextureBrowser_toggleSearchButton(){
@@ -1969,7 +1962,7 @@ void TextureBrowser_checkTagFile(){
 	else
 	{
 		// load default tagfile
-		auto default_filename = StringOutputStream( 256 )( g_pGameDescription->mGameToolsPath.c_str(), SHADERTAG_FILE );
+		auto default_filename = StringOutputStream( 256 )( g_pGameDescription->mGameToolsPath, SHADERTAG_FILE );
 
 		if ( file_exists( default_filename ) ) {
 			g_TextureBrowser.m_tags = TagBuilder.OpenXmlDoc( default_filename, rc_filename );
@@ -2319,12 +2312,12 @@ void TextureBrowser_setBackgroundColour( TextureBrowser& textureBrowser, const V
 	TextureBrowser_queueDraw( textureBrowser );
 }
 
-void TextureBrowser_selectionHelper( GtkTreeModel* model, GtkTreePath* path, GtkTreeIter* iter, GSList** selected ){
+void TextureBrowser_selectionHelper( GtkTreeModel* model, GtkTreePath* path, GtkTreeIter* iter, std::vector<gchar*>* selected ){
 	g_assert( selected != NULL );
 
 	gchar* name;
 	gtk_tree_model_get( model, iter, TAG_COLUMN, &name, -1 );
-	*selected = g_slist_append( *selected, name );
+	selected->push_back( name );
 }
 
 void TextureBrowser_shaderInfo(){
@@ -2339,7 +2332,7 @@ void TextureBrowser_shaderInfo(){
 void TextureBrowser_addTag(){
 	CopiedString tag;
 
-	EMessageBoxReturn result = DoShaderTagDlg( &tag, "Add shader tag" );
+	EMessageBoxReturn result = DoShaderTagDlg( tag, "Add shader tag" );
 
 	if ( result == eIDOK && !tag.empty() ) {
 		GtkTreeIter iter, iter2;
@@ -2364,18 +2357,18 @@ void TextureBrowser_renameTag(){
 	   rows (which always contains a single row).
 	 */
 
-	GSList* selected = NULL;
+	std::vector<gchar*> selected;
 
 	GtkTreeSelection* selection = gtk_tree_view_get_selection( GTK_TREE_VIEW( g_TextureBrowser.m_treeViewTags ) );
 	gtk_tree_selection_selected_foreach( selection, GtkTreeSelectionForeachFunc( TextureBrowser_selectionHelper ), &selected );
 
-	if ( g_slist_length( selected ) == 1 ) { // we only rename a single tag
+	if ( selected.size() == 1 ) { // we only rename a single tag
 		CopiedString newTag;
-		EMessageBoxReturn result = DoShaderTagDlg( &newTag, "Rename shader tag" );
+		EMessageBoxReturn result = DoShaderTagDlg( newTag, "Rename shader tag" );
 
 		if ( result == eIDOK && !newTag.empty() ) {
 			GtkTreeIter iterList;
-			gchar* oldTag = (char*)selected->data;
+			gchar* oldTag = selected.front();
 
 			bool row = gtk_tree_model_get_iter_first( GTK_TREE_MODEL( g_TextureBrowser.m_all_tags_list ), &iterList ) != 0;
 
@@ -2405,22 +2398,22 @@ void TextureBrowser_renameTag(){
 		gtk_MessageBox( GTK_WIDGET( g_TextureBrowser.m_parent ), "Select a single tag for renaming." );
 	}
 
-	g_slist_free_full( selected, g_free );
+	std::for_each( selected.begin(), selected.end(), g_free );
 }
 
 void TextureBrowser_deleteTag(){
-	GSList* selected = NULL;
+	std::vector<gchar*> selected;
 
 	GtkTreeSelection* selection = gtk_tree_view_get_selection( GTK_TREE_VIEW( g_TextureBrowser.m_treeViewTags ) );
 	gtk_tree_selection_selected_foreach( selection, GtkTreeSelectionForeachFunc( TextureBrowser_selectionHelper ), &selected );
 
-	if ( g_slist_length( selected ) == 1 ) { // we only delete a single tag
+	if ( selected.size() == 1 ) { // we only delete a single tag
 		EMessageBoxReturn result = gtk_MessageBox( GTK_WIDGET( g_TextureBrowser.m_parent ), "Are you sure you want to delete the selected tag?", "Delete Tag", eMB_YESNO, eMB_ICONQUESTION );
 
 		if ( result == eIDYES ) {
 			GtkTreeIter iterSelected;
 
-			gchar* tagSelected = (char*)selected->data;
+			gchar* tagSelected = selected.front();
 
 			bool row = gtk_tree_model_get_iter_first( GTK_TREE_MODEL( g_TextureBrowser.m_all_tags_list ), &iterSelected ) != 0;
 
@@ -2449,7 +2442,7 @@ void TextureBrowser_deleteTag(){
 		gtk_MessageBox( GTK_WIDGET( g_TextureBrowser.m_parent ), "Select a single tag for deletion." );
 	}
 
-	g_slist_free_full( selected, g_free );
+	std::for_each( selected.begin(), selected.end(), g_free );
 }
 
 void TextureBrowser_copyTag(){
@@ -2459,7 +2452,7 @@ void TextureBrowser_copyTag(){
 
 void TextureBrowser_pasteTag(){
 	IShader* ishader = QERApp_Shader_ForName( g_TextureBrowser.shader.c_str() );
-	CopiedString shader = g_TextureBrowser.shader.c_str();
+	const CopiedString shader = g_TextureBrowser.shader;
 
 	if ( !TagBuilder.CheckShaderTag( shader.c_str() ) ) {
 		CopiedString shaderFile = ishader->getShaderFileName();
@@ -2600,8 +2593,8 @@ void TextureBrowser_filter_searchFromStart(){
 void TextureBrowser_exportTitle( const StringImportCallback& importer ){
 	StringOutputStream buffer( 64 );
 	buffer << "Textures: ";
-	if ( !string_empty( g_TextureBrowser_currentDirectory.c_str() ) ) {
-		buffer << g_TextureBrowser_currentDirectory.c_str();
+	if ( !g_TextureBrowser_currentDirectory.empty() ) {
+		buffer << g_TextureBrowser_currentDirectory;
 	}
 	else
 	{
@@ -2677,7 +2670,7 @@ void TextureBrowser_constructPreferences( PreferencesPage& page ){
 		const char* texture_scale[] = { "10%", "25%", "50%", "100%", "200%" };
 		page.appendCombo(
 		    "Texture Thumbnail Scale",
-		    STRING_ARRAY_RANGE( texture_scale ),
+		    StringArrayRange( texture_scale ),
 		    IntImportCallback( TextureScaleImportCaller( GlobalTextureBrowser() ) ),
 		    IntExportCallback( TextureScaleExportCaller( GlobalTextureBrowser() ) )
 		);
@@ -2687,7 +2680,7 @@ void TextureBrowser_constructPreferences( PreferencesPage& page ){
 	page.appendEntry( "Mousewheel Increment", GlobalTextureBrowser().m_mouseWheelScrollIncrement );
 	{
 		const char* startup_shaders[] = { "None", TextureBrowser_getCommonShadersName() };
-		page.appendCombo( "Load Shaders at Startup", reinterpret_cast<int&>( GlobalTextureBrowser().m_startupShaders ), STRING_ARRAY_RANGE( startup_shaders ) );
+		page.appendCombo( "Load Shaders at Startup", reinterpret_cast<int&>( GlobalTextureBrowser().m_startupShaders ), StringArrayRange( startup_shaders ) );
 	}
 	{
 		StringOutputStream sstream( 256 );

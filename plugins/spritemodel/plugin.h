@@ -26,13 +26,12 @@
 // Based on MD3Model source code by SPoG
 //
 
-#ifndef _PLUGIN_H_
-#define _PLUGIN_H_
+#pragma once
 
 #include "mathlib.h"
-#include <string.h>
+#include <cstring>
 #include "qertypes.h"
-#include <stdio.h>
+#include <cstdio>
 
 #define USE_QERTABLE_DEFINE
 #include "qerplugin.h"
@@ -43,5 +42,3 @@ extern _QERFuncTable_1 __QERTABLENAME;
 extern OpenGLBinding __QGLTABLENAME;
 
 #include "imodel.h"
-
-#endif // _PLUGIN_H_

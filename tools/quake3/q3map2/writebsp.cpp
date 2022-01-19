@@ -38,8 +38,7 @@
    emits a bsp shader entry
  */
 
-int EmitShader( const char *shader, int *contentFlags, int *surfaceFlags ){
-	int i;
+int EmitShader( const char *shader, const int *contentFlags, const int *surfaceFlags ){
 	shaderInfo_t    *si;
 
 
@@ -49,7 +48,7 @@ int EmitShader( const char *shader, int *contentFlags, int *surfaceFlags ){
 	}
 
 	/* try to find an existing shader */
-	for ( i = 0; i < numBSPShaders; i++ )
+	for ( size_t i = 0; i < bspShaders.size(); ++i )
 	{
 		/* ydnar: handle custom surface/content flags */
 		if ( surfaceFlags != NULL && bspShaders[ i ].surfaceFlags != *surfaceFlags ) {
@@ -70,27 +69,17 @@ int EmitShader( const char *shader, int *contentFlags, int *surfaceFlags ){
 		}
 	}
 
-	// i == numBSPShaders
-
 	/* get shaderinfo */
 	si = ShaderInfoForShader( shader );
 
 	/* emit a new shader */
-	AUTOEXPAND_BY_REALLOC_BSP( Shaders, 1024 );
+	const int i = bspShaders.size(); // store index
+	bspShader_t& bspShader = bspShaders.emplace_back();
 
-	numBSPShaders++;
-	// copy and clear the rest of memory
-	strncpy( bspShaders[ i ].shader, si->shader, sizeof( bspShaders[ i ].shader ) );
-	bspShaders[ i ].surfaceFlags = si->surfaceFlags;
-	bspShaders[ i ].contentFlags = si->contentFlags;
-
+	strcpy( bspShader.shader, si->shader );
 	/* handle custom content/surface flags */
-	if ( surfaceFlags != NULL ) {
-		bspShaders[ i ].surfaceFlags = *surfaceFlags;
-	}
-	if ( contentFlags != NULL ) {
-		bspShaders[ i ].contentFlags = *contentFlags;
-	}
+	bspShader.surfaceFlags = ( surfaceFlags != NULL )? *surfaceFlags : si->surfaceFlags;
+	bspShader.contentFlags = ( contentFlags != NULL )? *contentFlags : si->contentFlags;
 
 	/* recursively emit any damage shaders */
 	if ( !strEmptyOrNull( si->damageShader ) ) {
@@ -98,7 +87,7 @@ int EmitShader( const char *shader, int *contentFlags, int *surfaceFlags ){
 		EmitShader( si->damageShader, NULL, NULL );
 	}
 
-	/* return it */
+	/* return index */
 	return i;
 }
 
@@ -110,18 +99,16 @@ int EmitShader( const char *shader, int *contentFlags, int *surfaceFlags ){
    brushes will be saved in the map
  */
 
-void EmitPlanes( void ){
+static void EmitPlanes(){
+	bspPlanes.reserve( mapplanes.size() );
 	/* walk plane list */
-	plane_t *mp = mapplanes;
-	for ( int i = 0; i < nummapplanes; i++, mp++ )
+	for ( const plane_t& plane : mapplanes )
 	{
-		AUTOEXPAND_BY_REALLOC_BSP( Planes, 1024 );
-		bspPlanes[ numBSPPlanes ] = mp->plane;
-		numBSPPlanes++;
+		bspPlanes.push_back( plane.plane );
 	}
 
 	/* emit some statistics */
-	Sys_FPrintf( SYS_VRB, "%9d BSP planes\n", numBSPPlanes );
+	Sys_FPrintf( SYS_VRB, "%9zu BSP planes\n", bspPlanes.size() );
 }
 
 
@@ -131,45 +118,24 @@ void EmitPlanes( void ){
    emits a leafnode to the bsp file
  */
 
-void EmitLeaf( node_t *node ){
-	bspLeaf_t       *leaf_p;
-	brush_t         *b;
-	drawSurfRef_t   *dsr;
+static void EmitLeaf( node_t *node ){
+	bspLeaf_t& leaf = bspLeafs.emplace_back();
 
-
-	/* check limits */
-	if ( numBSPLeafs >= MAX_MAP_LEAFS ) {
-		Error( "MAX_MAP_LEAFS" );
-	}
-
-	leaf_p = &bspLeafs[numBSPLeafs];
-	numBSPLeafs++;
-
-	leaf_p->cluster = node->cluster;
-	leaf_p->area = node->area;
+	leaf.cluster = node->cluster;
+	leaf.area = node->area;
 
 	/* emit bounding box */
-	leaf_p->minmax.maxs = node->minmax.maxs;
-	leaf_p->minmax.mins = node->minmax.mins;
+	leaf.minmax.maxs = node->minmax.maxs;
+	leaf.minmax.mins = node->minmax.mins;
 
 	/* emit leaf brushes */
-	leaf_p->firstBSPLeafBrush = numBSPLeafBrushes;
-	for ( b = node->brushlist; b; b = b->next )
+	leaf.firstBSPLeafBrush = bspLeafBrushes.size();
+	for ( const brush_t& b : node->brushlist )
 	{
-		/* something is corrupting brushes */
-		if ( (size_t) b < 256 ) {
-			Sys_Warning( "Node brush list corrupted (0x%08X)\n", b );
-			break;
-		}
-		//%	if( b->guard != 0xDEADBEEF )
-		//%		Sys_Printf( "Brush %6d: 0x%08X Guard: 0x%08X Next: 0x%08X Original: 0x%08X Sides: %d\n", b->brushNum, b, b, b->next, b->original, b->numsides );
-
-		AUTOEXPAND_BY_REALLOC_BSP( LeafBrushes, 1024 );
-		bspLeafBrushes[ numBSPLeafBrushes ] = b->original->outputNum;
-		numBSPLeafBrushes++;
+		bspLeafBrushes.push_back( b.original->outputNum );
 	}
 
-	leaf_p->numBSPLeafBrushes = numBSPLeafBrushes - leaf_p->firstBSPLeafBrush;
+	leaf.numBSPLeafBrushes = bspLeafBrushes.size() - leaf.firstBSPLeafBrush;
 
 	/* emit leaf surfaces */
 	if ( node->opaque ) {
@@ -177,15 +143,13 @@ void EmitLeaf( node_t *node ){
 	}
 
 	/* add the drawSurfRef_t drawsurfs */
-	leaf_p->firstBSPLeafSurface = numBSPLeafSurfaces;
-	for ( dsr = node->drawSurfReferences; dsr; dsr = dsr->nextRef )
+	leaf.firstBSPLeafSurface = bspLeafSurfaces.size();
+	for ( const drawSurfRef_t *dsr = node->drawSurfReferences; dsr; dsr = dsr->nextRef )
 	{
-		AUTOEXPAND_BY_REALLOC_BSP( LeafSurfaces, 1024 );
-		bspLeafSurfaces[ numBSPLeafSurfaces ] = dsr->outputNum;
-		numBSPLeafSurfaces++;
+		bspLeafSurfaces.push_back( dsr->outputNum );
 	}
 
-	leaf_p->numBSPLeafSurfaces = numBSPLeafSurfaces - leaf_p->firstBSPLeafSurface;
+	leaf.numBSPLeafSurfaces = bspLeafSurfaces.size() - leaf.firstBSPLeafSurface;
 }
 
 
@@ -194,50 +158,45 @@ void EmitLeaf( node_t *node ){
    recursively emit the bsp nodes
  */
 
-int EmitDrawNode_r( node_t *node ){
-	bspNode_t   *n;
-	int i, n0;
-
-
+static int EmitDrawNode_r( node_t *node ){
 	/* check for leafnode */
 	if ( node->planenum == PLANENUM_LEAF ) {
 		EmitLeaf( node );
-		return -numBSPLeafs;
+		return -int( bspLeafs.size() );
 	}
 
 	/* emit a node */
-	AUTOEXPAND_BY_REALLOC_BSP( Nodes, 1024 );
-	n0 = numBSPNodes;
-	n = &bspNodes[ n0 ];
-	numBSPNodes++;
+	const int id = bspNodes.size();
+	{
+		bspNode_t& bnode = bspNodes.emplace_back();
 
-	n->minmax.mins = node->minmax.mins;
-	n->minmax.maxs = node->minmax.maxs;
+		bnode.minmax.mins = node->minmax.mins;
+		bnode.minmax.maxs = node->minmax.maxs;
 
-	if ( node->planenum & 1 ) {
-		Error( "WriteDrawNodes_r: odd planenum" );
+		if ( node->planenum & 1 ) {
+			Error( "WriteDrawNodes_r: odd planenum" );
+		}
+		bnode.planeNum = node->planenum;
 	}
-	n->planeNum = node->planenum;
 
 	//
 	// recursively output the other nodes
 	//
-	for ( i = 0 ; i < 2 ; i++ )
+	for ( int i = 0; i < 2; i++ )
 	{
+		// reference node by id, as it may be reallocated
 		if ( node->children[i]->planenum == PLANENUM_LEAF ) {
-			n->children[i] = -( numBSPLeafs + 1 );
+			bspNodes[id].children[i] = -int( bspLeafs.size() + 1 );
 			EmitLeaf( node->children[i] );
 		}
 		else
 		{
-			n->children[i] = numBSPNodes;
+			bspNodes[id].children[i] = bspNodes.size();
 			EmitDrawNode_r( node->children[i] );
-			// n may have become invalid here, so...
-			n = &bspNodes[ n0 ];
 		}
 	}
 
-	return n - bspNodes;
+	return id;
 }
 
 
@@ -247,13 +206,11 @@ int EmitDrawNode_r( node_t *node ){
    SetModelNumbers
    ============
  */
-void SetModelNumbers( void ){
-	int models;
-	char value[16];
-
-	models = 1;
+void SetModelNumbers(){
+	int models = 1;
 	for ( std::size_t i = 1; i < entities.size(); ++i ) {
-		if ( entities[i].brushes || entities[i].patches ) {
+		if ( !entities[i].brushes.empty() || entities[i].patches ) {
+			char value[16];
 			sprintf( value, "*%i", models );
 			models++;
 			entities[i].setKeyValue( "model", value );
@@ -270,12 +227,12 @@ void SetModelNumbers( void ){
    sets style keys for entity lights
  */
 
-void SetLightStyles( void ){
+void SetLightStyles(){
 	int j, numStyles;
-	entity_t    *e;
 	char value[ 10 ];
 	char lightTargets[ MAX_SWITCHED_LIGHTS ][ 64 ];
 	int lightStyles[ MAX_SWITCHED_LIGHTS ];
+	int numStrippedLights = 0;
 
 	/* -keeplights option: force lights to be kept and ignore what the map file says */
 	if ( keepLights ) {
@@ -289,16 +246,16 @@ void SetLightStyles( void ){
 	numStyles = 0;
 	for ( std::size_t i = 1; i < entities.size(); ++i )
 	{
-		e = &entities[ i ];
+		entity_t& e = entities[ i ];
 
-		if ( !e->classname_prefixed( "light" ) ) {
+		if ( !e.classname_prefixed( "light" ) ) {
 			continue;
 		}
 		const char *t;
-		if ( !e->read_keyvalue( t, "targetname" ) ) {
+		if ( !e.read_keyvalue( t, "targetname" ) ) {
 			/* ydnar: strip the light from the BSP file */
 			if ( !keepLights ) {
-				e->epairs.clear();
+				e.epairs.clear();
 				numStrippedLights++;
 			}
 
@@ -307,7 +264,7 @@ void SetLightStyles( void ){
 		}
 
 		/* get existing style */
-		const int style = e->intForKey( "style" );
+		const int style = e.intForKey( "style" );
 		if ( style < LS_NORMAL || style > LS_NONE ) {
 			Error( "Invalid lightstyle (%d) on entity %zu", style, i );
 		}
@@ -330,12 +287,12 @@ void SetLightStyles( void ){
 
 		/* set explicit style */
 		sprintf( value, "%d", 32 + j );
-		e->setKeyValue( "style", value );
+		e.setKeyValue( "style", value );
 
 		/* set old style */
 		if ( style != LS_NORMAL ) {
 			sprintf( value, "%d", style );
-			e->setKeyValue( "switch_style", value );
+			e.setKeyValue( "switch_style", value );
 		}
 	}
 
@@ -350,27 +307,19 @@ void SetLightStyles( void ){
    starts a new bsp file
  */
 
-void BeginBSPFile( void ){
+void BeginBSPFile(){
 	/* these values may actually be initialized if the file existed when loaded, so clear them explicitly */
-	numBSPModels = 0;
-	numBSPNodes = 0;
-	numBSPBrushSides = 0;
-	numBSPLeafSurfaces = 0;
-	numBSPLeafBrushes = 0;
+	bspModels.clear();
+	bspNodes.clear();
+	bspBrushSides.clear();
+	bspLeafSurfaces.clear();
+	bspLeafBrushes.clear();
 
 	/* leave leaf 0 as an error, because leafs are referenced as negative number nodes */
-	numBSPLeafs = 1;
-
+	bspLeafs.resize( 1 );
 
 	/* ydnar: gs mods: set the first 6 drawindexes to 0 1 2 2 1 3 for triangles and quads */
-	numBSPDrawIndexes = 6;
-	AUTOEXPAND_BY_REALLOC_BSP( DrawIndexes, 1024 );
-	bspDrawIndexes[ 0 ] = 0;
-	bspDrawIndexes[ 1 ] = 1;
-	bspDrawIndexes[ 2 ] = 2;
-	bspDrawIndexes[ 3 ] = 0;
-	bspDrawIndexes[ 4 ] = 2;
-	bspDrawIndexes[ 5 ] = 3;
+	bspDrawIndexes = { 0, 1, 2, 0, 2, 3 };
 }
 
 
@@ -406,64 +355,50 @@ void EndBSPFile( bool do_write ){
    writes the brush list to the bsp
  */
 
-void EmitBrushes( brush_t *brushes, int *firstBrush, int *numBrushes ){
-	int j;
-	brush_t         *b;
-	bspBrush_t      *db;
-	bspBrushSide_t  *cp;
-
-
+void EmitBrushes( brushlist_t& brushes, int *firstBrush, int *numBrushes ){
 	/* set initial brush */
 	if ( firstBrush != NULL ) {
-		*firstBrush = numBSPBrushes;
+		*firstBrush = bspBrushes.size();
 	}
 	if ( numBrushes != NULL ) {
 		*numBrushes = 0;
 	}
 
 	/* walk list of brushes */
-	for ( b = brushes; b != NULL; b = b->next )
+	for ( brush_t& b : brushes )
 	{
-		/* check limits */
-		AUTOEXPAND_BY_REALLOC_BSP( Brushes, 1024 );
-
 		/* get bsp brush */
-		b->outputNum = numBSPBrushes;
-		db = &bspBrushes[ numBSPBrushes ];
-		numBSPBrushes++;
+		b.outputNum = bspBrushes.size();
+		bspBrush_t& db = bspBrushes.emplace_back();
 		if ( numBrushes != NULL ) {
 			( *numBrushes )++;
 		}
 
-		db->shaderNum = EmitShader( b->contentShader->shader, &b->contentShader->contentFlags, &b->contentShader->surfaceFlags );
-		db->firstSide = numBSPBrushSides;
+		db.shaderNum = EmitShader( b.contentShader->shader, &b.contentShader->contentFlags, &b.contentShader->surfaceFlags );
+		db.firstSide = bspBrushSides.size();
 
 		/* walk sides */
-		db->numSides = 0;
-		for ( j = 0; j < b->numsides; j++ )
+		db.numSides = 0;
+		for ( side_t& side : b.sides )
 		{
 			/* set output number to bogus initially */
-			b->sides[ j ].outputNum = -1;
-
-			/* check count */
-			AUTOEXPAND_BY_REALLOC_BSP( BrushSides, 1024 );
+			side.outputNum = -1;
 
 			/* emit side */
-			b->sides[ j ].outputNum = numBSPBrushSides;
-			cp = &bspBrushSides[ numBSPBrushSides ];
-			db->numSides++;
-			numBSPBrushSides++;
-			cp->planeNum = b->sides[ j ].planenum;
+			side.outputNum = bspBrushSides.size();
+			bspBrushSide_t& cp = bspBrushSides.emplace_back();
+			db.numSides++;
+			cp.planeNum = side.planenum;
 
 			/* emit shader */
-			if ( b->sides[ j ].shaderInfo ) {
-				cp->shaderNum = EmitShader( b->sides[ j ].shaderInfo->shader, &b->sides[ j ].shaderInfo->contentFlags, &b->sides[ j ].shaderInfo->surfaceFlags );
+			if ( side.shaderInfo ) {
+				cp.shaderNum = EmitShader( side.shaderInfo->shader, &side.shaderInfo->contentFlags, &side.shaderInfo->surfaceFlags );
 			}
-			else if( b->sides[ j ].bevel ) { /* emit surfaceFlags for bevels to get correct physics at walkable brush edges and vertices */
-				cp->shaderNum = EmitShader( NULL, NULL, &b->sides[ j ].surfaceFlags );
+			else if( side.bevel ) { /* emit surfaceFlags for bevels to get correct physics at walkable brush edges and vertices */
+				cp.shaderNum = EmitShader( NULL, NULL, &side.surfaceFlags );
 			}
 			else{
-				cp->shaderNum = EmitShader( NULL, NULL, NULL );
+				cp.shaderNum = EmitShader( NULL, NULL, NULL );
 			}
 		}
 	}
@@ -476,47 +411,62 @@ void EmitBrushes( brush_t *brushes, int *firstBrush, int *numBrushes ){
    turns map fogs into bsp fogs
  */
 
-void EmitFogs( void ){
-	int i, j;
-
-
-	/* setup */
-	numBSPFogs = numMapFogs;
-
+void EmitFogs(){
 	/* walk list */
-	for ( i = 0; i < numMapFogs; i++ )
+	for ( size_t i = 0; i < mapFogs.size(); ++i )
 	{
+		const fog_t& fog = mapFogs[i];
+		bspFog_t& bspFog = bspFogs.emplace_back();
 		/* set shader */
-		// copy and clear the rest of memory
-		strncpy( bspFogs[ i ].shader, mapFogs[ i ].si->shader, sizeof( bspFogs[ i ].shader ) );
+		strcpy( bspFog.shader, fog.si->shader );
 
 		/* global fog doesn't have an associated brush */
-		if ( mapFogs[ i ].brush == NULL ) {
-			bspFogs[ i ].brushNum = -1;
-			bspFogs[ i ].visibleSide = -1;
+		if ( fog.brush == NULL ) {
+			bspFog.brushNum = -1;
+			bspFog.visibleSide = -1;
 		}
 		else
 		{
 			/* set brush */
-			bspFogs[ i ].brushNum = mapFogs[ i ].brush->outputNum;
+			bspFog.brushNum = fog.brush->outputNum;
+			bspFog.visibleSide = -1; // default to something sensible, not just zero index
 
 			/* try to use forced visible side */
-			if ( mapFogs[ i ].visibleSide >= 0 ) {
-				bspFogs[ i ].visibleSide = mapFogs[ i ].visibleSide;
+			if ( fog.visibleSide >= 0 ) {
+				bspFog.visibleSide = fog.visibleSide;
 				continue;
 			}
 
-			/* find visible side */
-			for ( j = 0; j < 6; j++ )
+			/* find visible axial side */
+			for ( size_t j = 6; j-- > 0; ) // prioritize +Z (index 5) then -Z (index 4) in ambiguous case; fogged pit is assumed as most likely case
 			{
-				if ( mapFogs[ i ].brush->sides[ j ].visibleHull != NULL ) {
-					Sys_Printf( "Fog %d has visible side %d\n", i, j );
-					bspFogs[ i ].visibleSide = j;
+				if ( !fog.brush->sides[ j ].visibleHull.empty() ) {
+					Sys_Printf( "Fog %zu has visible side %zu\n", i, j );
+					bspFog.visibleSide = j;
 					break;
+				}
+			}
+			/* try other sides */
+			if( bspFog.visibleSide < 0 ){
+				for ( size_t j = 6; j < fog.brush->sides.size(); ++j )
+				{
+					if ( !fog.brush->sides[ j ].visibleHull.empty() ) {
+						Sys_Printf( "Fog %zu has visible side %zu\n", i, j );
+						bspFog.visibleSide = j;
+						break;
+					}
 				}
 			}
 		}
 	}
+
+	/* warn about overflow */
+	if( strEqual( g_game->bspIdent, "RBSP" ) ){
+		if( mapFogs.size() > MAX_RBSP_FOGS )
+			Sys_Warning( "MAX_RBSP_FOGS (%i) exceeded (%zu). Visual inconsistencies are expected.\n", MAX_RBSP_FOGS, mapFogs.size() );
+	}
+	else if( mapFogs.size() > MAX_IBSP_FOGS )
+		Sys_Warning( "MAX_IBSP_FOGS (%i) exceeded (%zu). Visual inconsistencies are expected.\n", MAX_IBSP_FOGS, mapFogs.size() );
 }
 
 
@@ -526,48 +476,44 @@ void EmitFogs( void ){
    sets up a new brush model
  */
 
-void BeginModel( void ){
+void BeginModel( const entity_t& e ){
 	MinMax minmax;
 	MinMax lgMinmax;          /* ydnar: lightgrid mins/maxs */
 
-	/* test limits */
-	AUTOEXPAND_BY_REALLOC_BSP( Models, 256 );
-
-	/* get model and entity */
-	bspModel_t *mod = &bspModels[ numBSPModels ];
-	const entity_t& e = entities[ mapEntityNum ];
-
 	/* bound the brushes */
-	for ( const brush_t *b = e.brushes; b; b = b->next )
+	for ( const brush_t& b : e.brushes )
 	{
 		/* ignore non-real brushes (origin, etc) */
-		if ( b->numsides == 0 ) {
+		if ( b.sides.empty() ) {
 			continue;
 		}
-		minmax.extend( b->minmax );
+		minmax.extend( b.minmax );
 
 		/* ydnar: lightgrid bounds */
-		if ( b->compileFlags & C_LIGHTGRID ) {
-			lgMinmax.extend( b->minmax );
+		if ( b.compileFlags & C_LIGHTGRID ) {
+			lgMinmax.extend( b.minmax );
 		}
 	}
 
 	/* bound patches */
 	for ( const parseMesh_t *p = e.patches; p; p = p->next )
 	{
-		for ( int i = 0; i < ( p->mesh.width * p->mesh.height ); i++ )
-			minmax.extend( p->mesh.verts[i].xyz );
+		for ( const bspDrawVert_t& vert : Span( p->mesh.verts, p->mesh.width * p->mesh.height ) )
+			minmax.extend( vert.xyz );
 	}
+
+	/* get model */
+	bspModel_t& mod = bspModels.emplace_back();
 
 	/* ydnar: lightgrid mins/maxs */
 	if ( lgMinmax.valid() ) {
 		/* use lightgrid bounds */
-		mod->minmax = lgMinmax;
+		mod.minmax = lgMinmax;
 	}
 	else
 	{
 		/* use brush/patch bounds */
-		mod->minmax = minmax;
+		mod.minmax = minmax;
 	}
 
 	/* note size */
@@ -576,8 +522,8 @@ void BeginModel( void ){
 		Sys_FPrintf( SYS_VRB, "Lightgrid bounds: { %f %f %f } { %f %f %f }\n", lgMinmax.mins[0], lgMinmax.mins[1], lgMinmax.mins[2], lgMinmax.maxs[0], lgMinmax.maxs[1], lgMinmax.maxs[2] );
 
 	/* set firsts */
-	mod->firstBSPSurface = numBSPDrawSurfaces;
-	mod->firstBSPBrush = numBSPBrushes;
+	mod.firstBSPSurface = bspDrawSurfaces.size();
+	mod.firstBSPBrush = bspBrushes.size();
 }
 
 
@@ -588,22 +534,16 @@ void BeginModel( void ){
    finish a model's processing
  */
 
-void EndModel( entity_t *e, node_t *headnode ){
-	bspModel_t  *mod;
-
-
+void EndModel( const entity_t& e, node_t *headnode ){
 	/* note it */
 	Sys_FPrintf( SYS_VRB, "--- EndModel ---\n" );
 
 	/* emit the bsp */
-	mod = &bspModels[ numBSPModels ];
+	bspModel_t& mod = bspModels.back();
 	EmitDrawNode_r( headnode );
 
 	/* set surfaces and brushes */
-	mod->numBSPSurfaces = numBSPDrawSurfaces - mod->firstBSPSurface;
-	mod->firstBSPBrush = e->firstBrush;
-	mod->numBSPBrushes = e->numBrushes;
-
-	/* increment model count */
-	numBSPModels++;
+	mod.numBSPSurfaces = bspDrawSurfaces.size() - mod.firstBSPSurface;
+	mod.firstBSPBrush = e.firstBrush;
+	mod.numBSPBrushes = e.numBrushes;
 }

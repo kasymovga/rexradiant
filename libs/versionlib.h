@@ -19,11 +19,10 @@
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#if !defined( INCLUDED_VERSIONLIB_H )
-#define INCLUDED_VERSIONLIB_H
+#pragma once
 
 #include <cstddef>
-#include <string.h>
+#include <cstring>
 #include <algorithm>
 
 class Version
@@ -80,5 +79,3 @@ inline Version version_parse( const char* versionString ){
 
 	return version;
 }
-
-#endif

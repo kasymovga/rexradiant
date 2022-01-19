@@ -454,18 +454,12 @@ binaries-qdata3: \
 
 .PHONY: binaries-h2data
 binaries-h2data: \
-	$(INSTALLDIR)/heretic2/h2data.$(EXE) \
-	$(INSTALLDIR)/heretic2/h2data \
+	$(INSTALLDIR)/h2data.$(EXE) \
+	$(INSTALLDIR)/h2data \
 
 .PHONY: binaries-tools-quake3
 binaries-tools-quake3: \
-	binaries-q3data \
 	binaries-q3map2 \
-
-.PHONY: binaries-q3data
-binaries-q3data: \
-	$(INSTALLDIR)/q3data.$(EXE) \
-	$(INSTALLDIR)/q3data \
 
 .PHONY: binaries-q3map2
 binaries-q3map2: \
@@ -529,7 +523,7 @@ $(INSTALLDIR)/q3map2.$(EXE): LIBS_EXTRA := $(LIBS_XML) $(LIBS_GLIB) $(LIBS_PNG) 
 $(INSTALLDIR)/q3map2.$(EXE): CPPFLAGS_EXTRA := $(CPPFLAGS_XML) $(CPPFLAGS_GLIB) $(CPPFLAGS_PNG) $(CPPFLAGS_JPEG) -Itools/quake3/common -Ilibs -Iinclude -Ilibs/assimp/include
 $(INSTALLDIR)/q3map2.$(EXE): \
 	tools/quake3/common/cmdlib.o \
-	tools/quake3/common/imagelib.o \
+	tools/quake3/common/qimagelib.o \
 	tools/quake3/common/inout.o \
 	tools/quake3/common/jpeg.o \
 	tools/quake3/common/md4.o \
@@ -548,12 +542,14 @@ $(INSTALLDIR)/q3map2.$(EXE): \
 	tools/quake3/q3map2/bsp.o \
 	tools/quake3/q3map2/convert_ase.o \
 	tools/quake3/q3map2/convert_bsp.o \
-	tools/quake3/q3map2/convert_obj.o \
+	tools/quake3/q3map2/convert_json.o \
 	tools/quake3/q3map2/convert_map.o \
+	tools/quake3/q3map2/convert_obj.o \
 	tools/quake3/q3map2/decals.o \
 	tools/quake3/q3map2/exportents.o \
 	tools/quake3/q3map2/facebsp.o \
 	tools/quake3/q3map2/fog.o \
+	tools/quake3/q3map2/games.o \
 	tools/quake3/q3map2/help.o \
 	tools/quake3/q3map2/image.o \
 	tools/quake3/q3map2/leakfile.o \
@@ -583,6 +579,7 @@ $(INSTALLDIR)/q3map2.$(EXE): \
 	tools/quake3/q3map2/vis.o \
 	tools/quake3/q3map2/writebsp.o \
 	libddslib.$(A) \
+	libetclib.$(A) \
 	libfilematch.$(A) \
 	libl_net.$(A) \
 	$(if $(findstring Win32,$(OS)),icons/q3map2.o,) \
@@ -769,6 +766,7 @@ $(INSTALLDIR)/libassimp_.$(DLL): \
 	libs/assimp/code/AssetLib/FBX/FBXDeformer.o \
 	libs/assimp/code/AssetLib/FBX/FBXBinaryTokenizer.o \
 	libs/assimp/code/AssetLib/FBX/FBXDocumentUtil.o \
+	libs/assimp/code/AssetLib/IQM/IQMImporter.o \
 	libs/assimp/code/AssetLib/Q3D/Q3DLoader.o \
 	libs/assimp/code/AssetLib/Q3BSP/Q3BSPFileParser.o \
 	libs/assimp/code/AssetLib/Q3BSP/Q3BSPFileImporter.o \
@@ -781,11 +779,24 @@ $(INSTALLDIR)/libassimp_.$(DLL): \
 	libs/assimp/code/AssetLib/X/XFileImporter.o \
 	libs/assimp/code/AssetLib/X/XFileParser.o \
 	libs/assimp/code/AssetLib/X3D/X3DImporter.o \
+	libs/assimp/code/AssetLib/X3D/X3DGeoHelper.o \
+	libs/assimp/code/AssetLib/X3D/X3DImporter_Geometry2D.o \
+	libs/assimp/code/AssetLib/X3D/X3DImporter_Geometry3D.o \
+	libs/assimp/code/AssetLib/X3D/X3DImporter_Group.o \
+	libs/assimp/code/AssetLib/X3D/X3DImporter_Light.o \
+	libs/assimp/code/AssetLib/X3D/X3DImporter_Metadata.o \
+	libs/assimp/code/AssetLib/X3D/X3DImporter_Networking.o \
+	libs/assimp/code/AssetLib/X3D/X3DImporter_Postprocess.o \
+	libs/assimp/code/AssetLib/X3D/X3DImporter_Rendering.o \
+	libs/assimp/code/AssetLib/X3D/X3DImporter_Shape.o \
+	libs/assimp/code/AssetLib/X3D/X3DImporter_Texturing.o \
+	libs/assimp/code/AssetLib/X3D/X3DXmlHelper.o \
 	libs/assimp/code/AssetLib/glTF/glTFCommon.o \
 	libs/assimp/code/AssetLib/glTF/glTFImporter.o \
 	libs/assimp/code/AssetLib/glTF2/glTF2Importer.o \
 	libs/assimp/code/AssetLib/3MF/D3MFImporter.o \
 	libs/assimp/code/AssetLib/3MF/D3MFOpcPackage.o \
+	libs/assimp/code/AssetLib/3MF/XmlSerializer.o \
 	libs/assimp/code/AssetLib/MMD/MMDImporter.o \
 	libs/assimp/code/AssetLib/MMD/MMDPmxParser.o \
 	libs/assimp/contrib/unzip/crypt.o \
@@ -814,34 +825,9 @@ libddslib.$(A): CPPFLAGS_EXTRA := -Ilibs
 libddslib.$(A): \
 	libs/ddslib/ddslib.o \
 
-$(INSTALLDIR)/q3data.$(EXE): LIBS_EXTRA := $(LIBS_XML) $(LIBS_GLIB) $(LIBS_ZLIB)
-$(INSTALLDIR)/q3data.$(EXE): CPPFLAGS_EXTRA := $(CPPFLAGS_XML) $(CPPFLAGS_GLIB) $(CPPFLAGS_ZLIB) -Itools/quake3/common -Ilibs -Iinclude
-$(INSTALLDIR)/q3data.$(EXE): \
-	tools/quake3/common/aselib.o \
-	tools/quake3/common/bspfile.o \
-	tools/quake3/common/cmdlib.o \
-	tools/quake3/common/imagelib.o \
-	tools/quake3/common/inout.o \
-	tools/quake3/common/md4.o \
-	tools/quake3/common/scriplib.o \
-	tools/quake3/common/trilib.o \
-	tools/quake3/common/unzip.o \
-	tools/quake3/common/vfs.o \
-	tools/quake3/common/miniz.o \
-	tools/quake3/q3data/3dslib.o \
-	tools/quake3/q3data/compress.o \
-	tools/quake3/q3data/images.o \
-	tools/quake3/q3data/md3lib.o \
-	tools/quake3/q3data/models.o \
-	tools/quake3/q3data/p3dlib.o \
-	tools/quake3/q3data/polyset.o \
-	tools/quake3/q3data/q3data.o \
-	tools/quake3/q3data/stripper.o \
-	tools/quake3/q3data/video.o \
-	libfilematch.$(A) \
-	libl_net.$(A) \
-	libmathlib.$(A) \
-	$(if $(findstring Win32,$(OS)),icons/q3data.o,) \
+libetclib.$(A): CPPFLAGS_EXTRA := -Ilibs
+libetclib.$(A): \
+	libs/etclib.o \
 
 $(INSTALLDIR)/radiant.$(EXE): LDFLAGS_EXTRA := $(MWINDOWS)
 $(INSTALLDIR)/radiant.$(EXE): LIBS_EXTRA := $(LIBS_GL) $(LIBS_DL) $(LIBS_XML) $(LIBS_GLIB) $(LIBS_GTK) $(LIBS_GTKGLEXT) $(LIBS_ZLIB) $(LIBS_PANGOFT2)
@@ -920,7 +906,6 @@ $(INSTALLDIR)/radiant.$(EXE): \
 	radiant/texmanip.o \
 	radiant/textures.o \
 	radiant/texwindow.o \
-	radiant/timer.o \
 	radiant/treemodel.o \
 	radiant/undo.o \
 	radiant/url.o \
@@ -930,7 +915,7 @@ $(INSTALLDIR)/radiant.$(EXE): \
 	radiant/windowobservers.o \
 	radiant/xmlstuff.o \
 	radiant/xywindow.o \
-	libcmdlib.$(A) \
+	libcommandlib.$(A) \
 	libgtkutil.$(A) \
 	libl_net.$(A) \
 	libprofile.$(A) \
@@ -942,9 +927,9 @@ libfilematch.$(A): CPPFLAGS_EXTRA := -Ilibs
 libfilematch.$(A): \
 	libs/filematch.o \
 
-libcmdlib.$(A): CPPFLAGS_EXTRA := -Ilibs
-libcmdlib.$(A): \
-	libs/cmdlib/cmdlib.o \
+libcommandlib.$(A): CPPFLAGS_EXTRA := -Ilibs
+libcommandlib.$(A): \
+	libs/commandlib.o \
 
 libprofile.$(A): CPPFLAGS_EXTRA := -Ilibs -Iinclude
 libprofile.$(A): \
@@ -1039,9 +1024,11 @@ $(INSTALLDIR)/modules/image.$(DLL): \
 	plugins/image/dds.o \
 	plugins/image/image.o \
 	plugins/image/jpeg.o \
+	plugins/image/ktx.o \
 	plugins/image/pcx.o \
 	plugins/image/tga.o \
 	libddslib.$(A) \
+	libetclib.$(A) \
 
 $(INSTALLDIR)/modules/imageq2.$(DLL): CPPFLAGS_EXTRA := -Ilibs -Iinclude
 $(INSTALLDIR)/modules/imageq2.$(DLL): \
@@ -1090,6 +1077,7 @@ $(INSTALLDIR)/modules/shaders.$(DLL): CPPFLAGS_EXTRA := $(CPPFLAGS_GLIB) -Ilibs 
 $(INSTALLDIR)/modules/shaders.$(DLL): \
 	plugins/shaders/plugin.o \
 	plugins/shaders/shaders.o \
+	libcommandlib.$(A) \
 
 $(INSTALLDIR)/modules/vfspk3.$(DLL): LIBS_EXTRA := $(LIBS_GLIB)
 $(INSTALLDIR)/modules/vfspk3.$(DLL): CPPFLAGS_EXTRA := $(CPPFLAGS_GLIB) -Ilibs -Iinclude
@@ -1125,7 +1113,7 @@ $(INSTALLDIR)/plugins/bobtoolz.$(DLL): \
 	contrib/bobtoolz/ScriptParser.o \
 	contrib/bobtoolz/shapes.o \
 	contrib/bobtoolz/visfind.o \
-	libcmdlib.$(A) \
+	libcommandlib.$(A) \
 	libmathlib.$(A) \
 	libprofile.$(A) \
 
@@ -1253,9 +1241,9 @@ $(INSTALLDIR)/plugins/bkgrnd2d.$(DLL): \
 	contrib/bkgrnd2d/dialog.o \
 	contrib/bkgrnd2d/plugin.o \
 
-$(INSTALLDIR)/heretic2/h2data.$(EXE): LIBS_EXTRA := $(LIBS_XML)
-$(INSTALLDIR)/heretic2/h2data.$(EXE): CPPFLAGS_EXTRA := $(CPPFLAGS_XML) -Itools/quake2/qdata_heretic2/common -Itools/quake2/qdata_heretic2/qcommon -Itools/quake2/qdata_heretic2 -Itools/quake2/common -Ilibs -Iinclude
-$(INSTALLDIR)/heretic2/h2data.$(EXE): \
+$(INSTALLDIR)/h2data.$(EXE): LIBS_EXTRA := $(LIBS_XML)
+$(INSTALLDIR)/h2data.$(EXE): CPPFLAGS_EXTRA := $(CPPFLAGS_XML) -Itools/quake2/qdata_heretic2/common -Itools/quake2/qdata_heretic2/qcommon -Itools/quake2/qdata_heretic2 -Itools/quake2/common -Ilibs -Iinclude
+$(INSTALLDIR)/h2data.$(EXE): \
 	tools/quake2/qdata_heretic2/common/bspfile.o \
 	tools/quake2/qdata_heretic2/common/cmdlib.o \
 	tools/quake2/qdata_heretic2/common/inout.o \
@@ -1353,9 +1341,9 @@ $(INSTALLDIR)/mbspc.$(EXE): \
 
 .PHONY: install-data
 install-data: binaries
-	$(MKDIR) $(INSTALLDIR)/games
+	$(MKDIR) $(INSTALLDIR)/gamepacks/games
 	$(FIND) $(INSTALLDIR_BASE)/ -name .svn -exec $(RM_R) {} \; -prune
-	DOWNLOAD_GAMEPACKS="$(DOWNLOAD_GAMEPACKS)" GIT="$(GIT)" SVN="$(SVN)" WGET="$(WGET)" RM_R="$(RM_R)" MV="$(MV)" UNZIPPER="$(UNZIPPER)" ECHO="$(ECHO)" SH="$(SH)" CP="$(CP)" CP_R="$(CP_R)" $(SH) install-gamepacks.sh "$(INSTALLDIR)"
+	DOWNLOAD_GAMEPACKS="$(DOWNLOAD_GAMEPACKS)" GIT="$(GIT)" SVN="$(SVN)" WGET="$(WGET)" RM_R="$(RM_R)" MV="$(MV)" UNZIPPER="$(UNZIPPER)" ECHO="$(ECHO)" SH="$(SH)" CP="$(CP)" CP_R="$(CP_R)" $(SH) install-gamepacks.sh "$(INSTALLDIR)/gamepacks"
 	$(ECHO) $(RADIANT_MINOR_VERSION) > $(INSTALLDIR)/RADIANT_MINOR
 	$(ECHO) $(RADIANT_MAJOR_VERSION) > $(INSTALLDIR)/RADIANT_MAJOR
 	$(CP_R) setup/data/tools/* $(INSTALLDIR)/

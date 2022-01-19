@@ -24,9 +24,9 @@
 
 #include "debugging/debugging.h"
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
 #if defined( _WIN32 )
 #define WINGDIAPI __declspec( dllimport )
@@ -106,7 +106,7 @@ const GLubyte* qgluErrorString( GLenum errCode ){
 		if ( errCode == glu_errlist[search].errnum ) {
 			return (const GLubyte *)glu_errlist[search].errstr;
 		}
-	} //end for
+	}
 	return (const GLubyte *)"Unknown error";
 }
 

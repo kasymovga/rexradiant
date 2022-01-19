@@ -19,8 +19,7 @@
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#if !defined( INCLUDED_TARGETABLE_H )
-#define INCLUDED_TARGETABLE_H
+#pragma once
 
 #include <set>
 #include <map>
@@ -196,7 +195,7 @@ public:
 			Vector3 hack( 0.57735f, 0.57735f, 0.57735f );
 			int maxI = 0;
 			float max = 0;
-			for ( int i = 0; i < 3 ; ++i ){
+			for ( int i = 0; i < 3; ++i ){
 				if ( dir[i] < 0 ){
 					hack[i] *= -1.f;
 				}
@@ -448,5 +447,3 @@ public:
 };
 
 typedef Static<RenderableConnectionLines> StaticRenderableConnectionLines;
-
-#endif

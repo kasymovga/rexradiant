@@ -30,6 +30,7 @@
 #include "inout.h"
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <algorithm>
 #include "generic/vector.h"
 
 #ifdef WIN32
@@ -54,7 +55,6 @@ bool verbose = false;
 // possibly written to disk at the end of the run
 //++timo FIXME: need to be global, required when creating nodes?
 xmlDocPtr doc;
-xmlNodePtr tree;
 
 // some useful stuff
 xmlNodePtr xml_NodeForVec( const Vector3& v ){
@@ -148,7 +148,7 @@ void xml_Select( const char *msg, int entitynum, int brushnum, bool bError ){
 	sprintf( buf, "Entity %i, Brush %i: %s", entitynum, brushnum, msg );
 	node = xmlNewNode( NULL, (const xmlChar*)"select" );
 	xmlNodeAddContent( node, (const xmlChar*)buf );
-	level[0] = (int)'0' + ( bError ? SYS_ERR : SYS_WRN )  ;
+	level[0] = (int)'0' + ( bError ? SYS_ERR : SYS_WRN );
 	level[1] = 0;
 	xmlSetProp( node, (const xmlChar*)"level", (const xmlChar *)level );
 	// a 'select' information
@@ -194,7 +194,6 @@ void xml_Winding( const char *msg, const Vector3 p[], int numpoints, bool die ){
 	char buf[WINDING_BUFSIZE];
 	char smlbuf[128];
 	char level[2];
-	int i;
 
 	node = xmlNewNode( NULL, (const xmlChar*)"windingmsg" );
 	xmlNodeAddContent( node, (const xmlChar*)msg );
@@ -203,11 +202,11 @@ void xml_Winding( const char *msg, const Vector3 p[], int numpoints, bool die ){
 	xmlSetProp( node, (const xmlChar*)"level", (const xmlChar *)level );
 	// a 'winding' node
 	sprintf( buf, "%i ", numpoints );
-	for ( i = 0; i < numpoints; i++ )
+	for ( int i = 0; i < numpoints; ++i )
 	{
 		sprintf( smlbuf, "(%g %g %g)", p[i][0], p[i][1], p[i][2] );
 		// don't overflow
-		if ( strlen( buf ) + strlen( smlbuf ) > WINDING_BUFSIZE ) {
+		if ( strlen( buf ) + strlen( smlbuf ) >= WINDING_BUFSIZE ) {
 			break;
 		}
 		strcat( buf, smlbuf );

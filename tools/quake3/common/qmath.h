@@ -22,20 +22,26 @@ inline void value_minimize( T& value, const T& other ){
 }
 
 
+inline bool bit_is_enabled( const byte *bytes, int bit_index ){
+	return ( bytes[bit_index >> 3] & ( 1 << ( bit_index & 7 ) ) ) != 0;
+}
+inline void bit_enable( byte *bytes, int bit_index ){
+	bytes[bit_index >> 3] |= ( 1 << ( bit_index & 7 ) );
+}
+
+
 template<typename T>
 struct MinMax___
 {
 	BasicVector3<T> mins;
 	BasicVector3<T> maxs;
-	MinMax___(){
-		clear();
+	MinMax___() : mins( std::numeric_limits<T>::max() ), maxs( std::numeric_limits<T>::lowest() ) {
 	}
 	template<typename U>
 	MinMax___( const BasicVector3<U>& min, const BasicVector3<U>& max ) : mins( min ), maxs( max ){
 	}
 	void clear(){
-		mins.x() = mins.y() = mins.z() = std::numeric_limits<T>::max();
-		maxs.x() = maxs.y() = maxs.z() = std::numeric_limits<T>::lowest();
+		*this = MinMax___();
 	}
 	bool valid() const {
 		return mins.x() < maxs.x() && mins.y() < maxs.y() && mins.z() < maxs.z();
@@ -173,6 +179,11 @@ inline bool VectorIsOnAxis( const Vector3& v ){
 	return zeroComponentCount > 1; // The zero vector will be on axis.
 }
 
+/* (pitch yaw roll) -> (roll pitch yaw) */
+inline Vector3 angles_pyr2rpy( const Vector3& angles ){
+	return Vector3( angles.z(), angles.x(), angles.y() );
+}
+
 /*
    =====================
    PlaneFromPoints
@@ -265,14 +276,21 @@ inline void ComputeAxisBase( const BasicVector3<Element>& normal, BasicVector3<O
    ================
  */
 inline void MakeNormalVectors( const Vector3& forward, Vector3& right, Vector3& up ){
+#if 0
 	// this rotate and negate guarantees a vector
 	// not colinear with the original
+	//! fails with forward( -0.577350259 -0.577350259 0.577350259 )
+	//! colinear right( 0.577350259 0.577350259 -0.577350259 )
 	right[1] = -forward[0];
 	right[2] = forward[1];
 	right[0] = forward[2];
 
 	right = VectorNormalized( right - forward * vector3_dot( right, forward ) );
 	up = vector3_cross( right, forward );
+#else
+	right = VectorNormalized( vector3_cross( g_vector3_axes[ vector3_min_abs_component_index( forward ) ], forward ) );
+	up = vector3_cross( right, forward );
+#endif
 }
 
 

@@ -19,8 +19,7 @@
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#if !defined( INCLUDED_BYTESTREAMUTILS_H )
-#define INCLUDED_BYTESTREAMUTILS_H
+#pragma once
 
 #if defined( __GNUC__ )
 
@@ -30,7 +29,7 @@
 #define __USE_ISOC9X    1
 #define __USE_ISOC99    1
 
-#include <stdint.h>
+#include <cstdint>
 
 #endif
 
@@ -83,9 +82,23 @@ inline int16_t istream_read_int16_le( InputStreamType& istream ){
 }
 
 template<typename InputStreamType>
+inline int16_t istream_read_int16_be( InputStreamType& istream ){
+	int16_t value;
+	istream_read_big_endian( istream, value );
+	return value;
+}
+
+template<typename InputStreamType>
 inline uint16_t istream_read_uint16_le( InputStreamType& istream ){
 	uint16_t value;
 	istream_read_little_endian( istream, value );
+	return value;
+}
+
+template<typename InputStreamType>
+inline uint16_t istream_read_uint16_be( InputStreamType& istream ){
+	uint16_t value;
+	istream_read_big_endian( istream, value );
 	return value;
 }
 
@@ -97,9 +110,23 @@ inline int32_t istream_read_int32_le( InputStreamType& istream ){
 }
 
 template<typename InputStreamType>
+inline int32_t istream_read_int32_be( InputStreamType& istream ){
+	int32_t value;
+	istream_read_big_endian( istream, value );
+	return value;
+}
+
+template<typename InputStreamType>
 inline uint32_t istream_read_uint32_le( InputStreamType& istream ){
 	uint32_t value;
 	istream_read_little_endian( istream, value );
+	return value;
+}
+
+template<typename InputStreamType>
+inline uint32_t istream_read_uint32_be( InputStreamType& istream ){
+	uint32_t value;
+	istream_read_big_endian( istream, value );
 	return value;
 }
 
@@ -111,10 +138,15 @@ inline float istream_read_float32_le( InputStreamType& istream ){
 }
 
 template<typename InputStreamType>
+inline float istream_read_float32_be( InputStreamType& istream ){
+	float value;
+	istream_read_big_endian( istream, value );
+	return value;
+}
+
+template<typename InputStreamType>
 inline typename InputStreamType::byte_type istream_read_byte( InputStreamType& istream ){
 	typename InputStreamType::byte_type b;
 	istream.read( &b, sizeof( typename InputStreamType::byte_type ) );
 	return b;
 }
-
-#endif

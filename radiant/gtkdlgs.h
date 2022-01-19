@@ -28,14 +28,13 @@
    SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#if !defined( INCLUDED_GTKDLGS_H )
-#define INCLUDED_GTKDLGS_H
+#pragma once
 
 #include "qerplugin.h"
 #include "string/string.h"
 
 EMessageBoxReturn DoLightIntensityDlg( int *intensity );
-EMessageBoxReturn DoShaderTagDlg( CopiedString *tag, const char* title );
+EMessageBoxReturn DoShaderTagDlg( CopiedString& tag, const char* title );
 EMessageBoxReturn DoShaderInfoDlg( const char* name, const char* filename, const char* title );
 EMessageBoxReturn DoTextureLayout( float *fx, float *fy );
 void DoShaderView( const char *shaderFileName, const char *shaderName, bool external_editor );
@@ -49,6 +48,3 @@ void DoAbout();
 
 #include "string/stringfwd.h"
 extern CopiedString g_TextEditor_editorCommand;
-
-
-#endif

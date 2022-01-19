@@ -1,6 +1,5 @@
 
-#if !defined( INCLUDED_VECTOR_H )
-#define INCLUDED_VECTOR_H
+#pragma once
 
 #include <cstddef>
 
@@ -256,8 +255,5 @@ inline TextOutputStreamType& ostream_write( TextOutputStreamType& outputStream, 
 
 template<typename TextOutputStreamType>
 TextOutputStreamType& ostream_write( TextOutputStreamType& t, const Vector4& v ){
-	return t << "[ " << v.x() << " " << v.y() << " " << v.z() << " " << v.w() << " ]";
+	return t << "[ " << v.x() << ' ' << v.y() << ' ' << v.z() << ' ' << v.w() << " ]";
 }
-
-
-#endif

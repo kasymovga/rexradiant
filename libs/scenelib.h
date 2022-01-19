@@ -19,15 +19,14 @@
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#if !defined ( INCLUDED_SCENELIB_H )
-#define INCLUDED_SCENELIB_H
+#pragma once
 
 #include "iscenegraph.h"
 #include "iselection.h"
 
 #include "warnings.h"
 #include <cstddef>
-#include <string.h>
+#include <cstring>
 
 #include "math/aabb.h"
 #include "transformlib.h"
@@ -53,7 +52,7 @@ public:
 	virtual void gatherComponentsHighlight( std::vector<std::vector<Vector3>>& polygons, SelectionIntersection& intersection, SelectionTest& test, SelectionSystem::EComponentMode mode ) const = 0;
 };
 
-typedef std::function<void( const Vector3& )> Vector3Callback;
+typedef std::function<void( const DoubleVector3& )> Vector3Callback;
 
 class ComponentEditable
 {
@@ -117,7 +116,7 @@ template<typename Type>
 class StaticNodeType
 {
 public:
-	enum unnamed0 { SIZE = NODETYPEID_MAX };
+	static constexpr size_t SIZE = NODETYPEID_MAX;
 	static TypeId getTypeId(){
 		return Static< NodeType<Type> >::instance().getTypeId();
 	}
@@ -155,10 +154,12 @@ namespace scene
 class Node
 {
 public:
-	enum unnamed0 { eVisible = 0 };
-	enum unnamed1 { eHidden = 1 << 0 };
-	enum unnamed2 { eFiltered = 1 << 1 };
-	enum unnamed3 { eExcluded = 1 << 2 };
+	enum : unsigned int {
+		eVisible = 0,
+		eHidden = 1 << 0,
+		eFiltered = 1 << 1,
+		eExcluded = 1 << 2,
+	};
 
 	class Symbiot
 	{
@@ -451,7 +452,7 @@ template<typename Type>
 class StaticInstanceType
 {
 public:
-	enum unnamed0 { SIZE = INSTANCETYPEID_MAX };
+	static constexpr size_t SIZE = INSTANCETYPEID_MAX;
 	static TypeId getTypeId(){
 		return Static< InstanceType<Type> >::instance().getTypeId();
 	}
@@ -822,7 +823,7 @@ inline void Scene_forEachChildSelectable( const Functor& functor, const scene::P
 
 class SelectableSetSelected
 {
-	bool m_selected;
+	const bool m_selected;
 public:
 	SelectableSetSelected( bool selected ) : m_selected( selected ){
 	}
@@ -968,6 +969,3 @@ typedef ConstReference<scene::Path> PathConstReference;
 
 #include "generic/referencecounted.h"
 typedef SmartReference<scene::Node, IncRefDecRefCounter<scene::Node> > NodeSmartReference;
-
-
-#endif

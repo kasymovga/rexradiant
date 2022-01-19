@@ -43,8 +43,8 @@
 
 #include "vfs.h"
 
-#include <stdio.h>
-#include <stdlib.h>
+#include <cstdio>
+#include <cstdlib>
 #include <glib.h>
 
 #include "qerplugin.h"
@@ -85,16 +85,18 @@ struct archive_entry_t
 
 #include <list>
 
-typedef std::list<archive_entry_t> archives_t;
+using archives_t = std::list<archive_entry_t>;
 
 static archives_t g_archives;
 static char g_strDirs[VFS_MAXDIRS][PATH_MAX + 1];
 static int g_numDirs;
 static char g_strForbiddenDirs[VFS_MAXDIRS][PATH_MAX + 1];
 static int g_numForbiddenDirs = 0;
-static bool g_bUsePak = true;
+static constexpr bool g_bUsePak = true;
 
 ModuleObservers g_observers;
+
+using StrList = std::vector<CopiedString>;
 
 // =============================================================================
 // Static functions
@@ -136,32 +138,23 @@ static void InitPakFile( ArchiveModules& archiveModules, const char *filename ){
 	const _QERArchiveTable* table = GetArchiveTable( archiveModules, path_get_extension( filename ) );
 
 	if ( table != 0 ) {
-		archive_entry_t entry;
-		entry.name = filename;
-
-		entry.archive = table->m_pfnOpenArchive( filename );
-		entry.is_pakfile = true;
-		g_archives.push_back( entry );
+		g_archives.push_back( archive_entry_t{ filename, table->m_pfnOpenArchive( filename ), true } );
 		globalOutputStream() << "  pak file: " << filename << "\n";
 	}
 }
 
-inline void pathlist_prepend_unique( GSList*& pathlist, char* path ){
-	if ( g_slist_find_custom( pathlist, path, (GCompareFunc)path_compare ) == 0 ) {
-		pathlist = g_slist_prepend( pathlist, path );
-	}
-	else
-	{
-		g_free( path );
-	}
+inline void pathlist_append_unique( StrList& pathlist, CopiedString path ){
+	if( std::none_of( pathlist.cbegin(), pathlist.cend(),
+	[&path]( const CopiedString& str ){ return path_compare( str.c_str(), path.c_str() ) == 0; } ) )
+		pathlist.emplace_back( std::move( path ) );
 }
 
 class DirectoryListVisitor : public Archive::Visitor
 {
-	GSList*& m_matches;
+	StrList& m_matches;
 	const char* m_directory;
 public:
-	DirectoryListVisitor( GSList*& matches, const char* directory )
+	DirectoryListVisitor( StrList& matches, const char* directory )
 		: m_matches( matches ), m_directory( directory )
 	{}
 	void visit( const char* name ){
@@ -170,23 +163,22 @@ public:
 			if ( subname[0] == '/' ) {
 				++subname;
 			}
-			char* dir = g_strdup( subname );
-			char* last_char = dir + strlen( dir );
-			if ( last_char != dir && *( --last_char ) == '/' ) {
-				*last_char = '\0';
+			const char* last_char = subname + strlen( subname );
+			if ( last_char != subname && *( last_char - 1 ) == '/' ) {
+				--last_char;
 			}
-			pathlist_prepend_unique( m_matches, dir );
+			pathlist_append_unique( m_matches, StringRange( subname, last_char ) );
 		}
 	}
 };
 
 class FileListVisitor : public Archive::Visitor
 {
-	GSList*& m_matches;
+	StrList& m_matches;
 	const char* m_directory;
 	const char* m_extension;
 public:
-	FileListVisitor( GSList*& matches, const char* directory, const char* extension )
+	FileListVisitor( StrList& matches, const char* directory, const char* extension )
 		: m_matches( matches ), m_directory( directory ), m_extension( extension )
 	{}
 	void visit( const char* name ){
@@ -195,68 +187,35 @@ public:
 			if ( subname[0] == '/' ) {
 				++subname;
 			}
-			if ( m_extension[0] == '*' || extension_equal( path_get_extension( subname ), m_extension ) ) {
-				pathlist_prepend_unique( m_matches, g_strdup( subname ) );
+			if ( m_extension[0] == '*' || path_extension_is( subname, m_extension ) ) {
+				pathlist_append_unique( m_matches, subname );
 			}
 		}
 	}
 };
 
-static GSList* GetListInternal( const char *refdir, const char *ext, bool directories, std::size_t depth ){
-	GSList* files = 0;
+static StrList GetListInternal( const char *refdir, const char *ext, bool directories, std::size_t depth ){
+	StrList files;
 
 	ASSERT_MESSAGE( refdir[strlen( refdir ) - 1] == '/', "search path does not end in '/'" );
 
 	if ( directories ) {
-		for ( archives_t::iterator i = g_archives.begin(); i != g_archives.end(); ++i )
+		for ( archive_entry_t& arch : g_archives )
 		{
 			DirectoryListVisitor visitor( files, refdir );
-			( *i ).archive->forEachFile( Archive::VisitorFunc( visitor, Archive::eDirectories, depth ), refdir );
+			arch.archive->forEachFile( Archive::VisitorFunc( visitor, Archive::eDirectories, depth ), refdir );
 		}
 	}
 	else
 	{
-		for ( archives_t::iterator i = g_archives.begin(); i != g_archives.end(); ++i )
+		for ( archive_entry_t& arch : g_archives )
 		{
 			FileListVisitor visitor( files, refdir, ext );
-			( *i ).archive->forEachFile( Archive::VisitorFunc( visitor, Archive::eFiles, depth ), refdir );
+			arch.archive->forEachFile( Archive::VisitorFunc( visitor, Archive::eFiles, depth ), refdir );
 		}
 	}
-
-	files = g_slist_reverse( files );
 
 	return files;
-}
-
-inline int ascii_to_upper( int c ){
-	if ( c >= 'a' && c <= 'z' ) {
-		return c - ( 'a' - 'A' );
-	}
-	return c;
-}
-
-/*!
-   This behaves identically to stricmp(a,b), except that ASCII chars
-   [\]^`_ come AFTER alphabet chars instead of before. This is because
-   it converts all alphabet chars to uppercase before comparison,
-   while stricmp converts them to lowercase.
- */
-static int string_compare_nocase_upper( const char* a, const char* b ){
-	for (;; )
-	{
-		int c1 = ascii_to_upper( *a++ );
-		int c2 = ascii_to_upper( *b++ );
-
-		if ( c1 < c2 ) {
-			return -1; // a < b
-		}
-		if ( c1 > c2 ) {
-			return 1; // a > b
-		}
-		if ( c1 == 0 ) {
-			return 0; // a == b
-		}
-	}
 }
 
 // Arnout: note - sort pakfiles in reverse order. This ensures that
@@ -329,11 +288,7 @@ void InitDirectory( const char* directory, ArchiveModules& archiveModules ){
 	g_numDirs++;
 
 	{
-		archive_entry_t entry;
-		entry.name = path;
-		entry.archive = OpenArchive( path );
-		entry.is_pakfile = false;
-		g_archives.push_back( entry );
+		g_archives.push_back( archive_entry_t{ path, OpenArchive( path ), false } );
 	}
 
 	if ( g_bUsePak ) {
@@ -393,11 +348,7 @@ void InitDirectory( const char* directory, ArchiveModules& archiveModules ){
 					g_numDirs++;
 
 					{
-						archive_entry_t entry;
-						entry.name = g_strDirs[g_numDirs - 1];
-						entry.archive = OpenArchive( g_strDirs[g_numDirs - 1] );
-						entry.is_pakfile = false;
-						g_archives.push_back( entry );
+						g_archives.push_back( archive_entry_t{ g_strDirs[g_numDirs - 1], OpenArchive( g_strDirs[g_numDirs - 1] ), false } );
 					}
 				}
 
@@ -446,9 +397,9 @@ void InitDirectory( const char* directory, ArchiveModules& archiveModules ){
 // FIXME TTimo this should be improved so that we can shutdown and restart the VFS without exiting Radiant?
 //   (for instance when modifying the project settings)
 void Shutdown(){
-	for ( archives_t::iterator i = g_archives.begin(); i != g_archives.end(); ++i )
+	for ( archive_entry_t& arch : g_archives )
 	{
-		( *i ).archive->release();
+		arch.archive->release();
 	}
 	g_archives.clear();
 
@@ -471,11 +422,11 @@ int GetFileCount( const char *filename, int flag ){
 		flag = VFS_SEARCH_PAK | VFS_SEARCH_DIR;
 	}
 
-	for ( archives_t::iterator i = g_archives.begin(); i != g_archives.end(); ++i )
+	for ( archive_entry_t& arch : g_archives )
 	{
-		if ( ( ( *i ).is_pakfile && ( flag & VFS_SEARCH_PAK ) != 0 )
-		  || ( !( *i ).is_pakfile && ( flag & VFS_SEARCH_DIR ) != 0 ) ) {
-			if ( ( *i ).archive->containsFile( fixed ) ) {
+		if ( ( arch.is_pakfile && ( flag & VFS_SEARCH_PAK ) != 0 )
+		  || ( !arch.is_pakfile && ( flag & VFS_SEARCH_DIR ) != 0 ) ) {
+			if ( arch.archive->containsFile( fixed ) ) {
 				++count;
 			}
 		}
@@ -486,9 +437,9 @@ int GetFileCount( const char *filename, int flag ){
 
 ArchiveFile* OpenFile( const char* filename ){
 	ASSERT_MESSAGE( strchr( filename, '\\' ) == 0, "path contains invalid separator '\\': \"" << filename << "\"" );
-	for ( archives_t::iterator i = g_archives.begin(); i != g_archives.end(); ++i )
+	for ( archive_entry_t& arch : g_archives )
 	{
-		ArchiveFile* file = ( *i ).archive->openFile( filename );
+		ArchiveFile* file = arch.archive->openFile( filename );
 		if ( file != 0 ) {
 			return file;
 		}
@@ -499,9 +450,9 @@ ArchiveFile* OpenFile( const char* filename ){
 
 ArchiveTextFile* OpenTextFile( const char* filename ){
 	ASSERT_MESSAGE( strchr( filename, '\\' ) == 0, "path contains invalid separator '\\': \"" << filename << "\"" );
-	for ( archives_t::iterator i = g_archives.begin(); i != g_archives.end(); ++i )
+	for ( archive_entry_t& arch : g_archives )
 	{
-		ArchiveTextFile* file = ( *i ).archive->openTextFile( filename );
+		ArchiveTextFile* file = arch.archive->openTextFile( filename );
 		if ( file != 0 ) {
 			return file;
 		}
@@ -538,27 +489,19 @@ void FreeFile( void *p ){
 	free( p );
 }
 
-GSList* GetFileList( const char *dir, const char *ext, std::size_t depth ){
+StrList GetFileList( const char *dir, const char *ext, std::size_t depth ){
 	return GetListInternal( dir, ext, false, depth );
 }
 
-GSList* GetDirList( const char *dir, std::size_t depth ){
+StrList GetDirList( const char *dir, std::size_t depth ){
 	return GetListInternal( dir, 0, true, depth );
 }
 
-void ClearFileDirList( GSList **lst ){
-	while ( *lst )
-	{
-		g_free( ( *lst )->data );
-		*lst = g_slist_remove( *lst, ( *lst )->data );
-	}
-}
-
 const char* FindFile( const char* relative ){
-	for ( archives_t::iterator i = g_archives.begin(); i != g_archives.end(); ++i )
+	for ( const archive_entry_t& arch : g_archives )
 	{
-		if ( ( *i ).archive->containsFile( relative ) ) {
-			return ( *i ).name.c_str();
+		if ( arch.archive->containsFile( relative ) ) {
+			return arch.name.c_str();
 		}
 	}
 
@@ -567,11 +510,11 @@ const char* FindFile( const char* relative ){
 
 const char* FindPath( const char* absolute ){
 	const char *best = "";
-	for ( archives_t::iterator i = g_archives.begin(); i != g_archives.end(); ++i )
+	for ( const archive_entry_t& arch : g_archives )
 	{
-		if ( string_length( ( *i ).name.c_str() ) > string_length( best ) ) {
-			if ( path_equal_n( absolute, ( *i ).name.c_str(), string_length( ( *i ).name.c_str() ) ) ) {
-				best = ( *i ).name.c_str();
+		if ( string_length( arch.name.c_str() ) > string_length( best ) ) {
+			if ( path_equal_n( absolute, arch.name.c_str(), string_length( arch.name.c_str() ) ) ) {
+				best = arch.name.c_str();
 			}
 		}
 	}
@@ -613,36 +556,30 @@ public:
 	}
 
 	void forEachDirectory( const char* basedir, const FileNameCallback& callback, std::size_t depth ){
-		GSList* list = GetDirList( basedir, depth );
+		StrList list = GetDirList( basedir, depth );
 
-		for ( GSList* i = list; i != 0; i = g_slist_next( i ) )
+		for ( const CopiedString& str : list )
 		{
-			callback( reinterpret_cast<const char*>( ( *i ).data ) );
+			callback( str.c_str() );
 		}
-
-		ClearFileDirList( &list );
 	}
 	void forEachFile( const char* basedir, const char* extension, const FileNameCallback& callback, std::size_t depth ){
-		GSList* list = GetFileList( basedir, extension, depth );
+		StrList list = GetFileList( basedir, extension, depth );
 
-		for ( GSList* i = list; i != 0; i = g_slist_next( i ) )
+		for ( const CopiedString& str : list )
 		{
-			const char* name = reinterpret_cast<const char*>( ( *i ).data );
-			if ( extension_equal( path_get_extension( name ), extension ) ) {
-				callback( name );
-			}
+			callback( str.c_str() );
 		}
-
-		ClearFileDirList( &list );
 	}
-	GSList* getDirList( const char *basedir ){
+	/// \brief Returns a list containing the relative names of all the directories under \p basedir.
+	/// \deprecated Deprecated - use \c forEachDirectory.
+	StrList getDirList( const char *basedir ){
 		return GetDirList( basedir, 1 );
 	}
-	GSList* getFileList( const char *basedir, const char *extension ){
+	/// \brief Returns a list containing the relative names of the files under \p basedir (\p extension can be "*" for all files).
+	/// \deprecated Deprecated - use \c forEachFile.
+	StrList getFileList( const char *basedir, const char *extension ){
 		return GetFileList( basedir, extension, 1 );
-	}
-	void clearFileDirList( GSList **lst ){
-		ClearFileDirList( lst );
 	}
 
 	const char* findFile( const char *name ){
@@ -660,14 +597,14 @@ public:
 	}
 
 	Archive* getArchive( const char* archiveName, bool pakonly ){
-		for ( archives_t::iterator i = g_archives.begin(); i != g_archives.end(); ++i )
+		for ( archive_entry_t& arch : g_archives )
 		{
-			if ( pakonly && !( *i ).is_pakfile ) {
+			if ( pakonly && !arch.is_pakfile ) {
 				continue;
 			}
 
-			if ( path_equal( ( *i ).name.c_str(), archiveName ) ) {
-				return ( *i ).archive;
+			if ( path_equal( arch.name.c_str(), archiveName ) ) {
+				return arch.archive;
 			}
 		}
 		return 0;
@@ -677,13 +614,13 @@ public:
 			g_archives.reverse();
 		}
 
-		for ( archives_t::iterator i = g_archives.begin(); i != g_archives.end(); ++i )
+		for ( const archive_entry_t& arch : g_archives )
 		{
-			if ( pakonly && !( *i ).is_pakfile ) {
+			if ( pakonly && !arch.is_pakfile ) {
 				continue;
 			}
 
-			callback( ( *i ).name.c_str() );
+			callback( arch.name.c_str() );
 		}
 
 		if ( reverse ) {

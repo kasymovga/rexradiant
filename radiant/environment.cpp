@@ -27,7 +27,7 @@
 #include "debugging/debugging.h"
 #include "os/path.h"
 #include "os/file.h"
-#include "cmdlib.h"
+#include "commandlib.h"
 
 int g_argc;
 const char** g_argv;
@@ -191,7 +191,7 @@ const char* environment_get_app_filepath(){
 
 bool portable_app_setup(){
 	StringOutputStream confdir( 256 );
-	confdir << app_path.c_str() << "settings/";
+	confdir << app_path << "settings/";
 	if ( file_exists( confdir.c_str() ) ) {
 		home_path = confdir.c_str();
 		return true;
@@ -204,7 +204,7 @@ CopiedString g_openMapByCmd;
 
 void cmdMap(){
 	for ( int i = 1; i < g_argc; ++i )
-		if( extension_equal( path_get_extension( g_argv[i] ), "map" ) ){
+		if( path_extension_is( g_argv[i], "map" ) ){
 			g_openMapByCmd = StringOutputStream( 256 )( PathCleaned( g_argv[i] ) ).c_str();
 			return;
 		}
@@ -212,7 +212,7 @@ void cmdMap(){
 
 #if defined( POSIX )
 
-#include <stdlib.h>
+#include <cstdlib>
 #include <pwd.h>
 #include <unistd.h>
 

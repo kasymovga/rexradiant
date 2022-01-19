@@ -29,6 +29,7 @@
 #include "cmdlib.h"
 #include "inout.h"
 #include "qthreads.h"
+#include "timer.h"
 
 #define MAX_THREADS 64
 
@@ -45,7 +46,7 @@ bool threaded;
 
    =============
  */
-int GetThreadWork( void ){
+int GetThreadWork(){
 	int r;
 	int f;
 
@@ -125,7 +126,7 @@ int numthreads = -1;
 CRITICAL_SECTION crit;
 static int enter;
 
-void ThreadSetDefault( void ){
+void ThreadSetDefault(){
 	SYSTEM_INFO info;
 
 	if ( numthreads == -1 ) { // not set manually
@@ -140,7 +141,7 @@ void ThreadSetDefault( void ){
 }
 
 
-void ThreadLock( void ){
+void ThreadLock(){
 	if ( !threaded ) {
 		return;
 	}
@@ -151,7 +152,7 @@ void ThreadLock( void ){
 	enter = 1;
 }
 
-void ThreadUnlock( void ){
+void ThreadUnlock(){
 	if ( !threaded ) {
 		return;
 	}
@@ -170,9 +171,8 @@ void ThreadUnlock( void ){
 void RunThreadsOn( int workcnt, bool showpacifier, void ( *func )( int ) ){
 	HANDLE threadhandle[MAX_THREADS];
 	int i;
-	int start, end;
+	Timer timer;
 
-	start = I_FloatTime();
 	dispatch = 0;
 	workcount = workcnt;
 	oldf = -1;
@@ -189,7 +189,7 @@ void RunThreadsOn( int workcnt, bool showpacifier, void ( *func )( int ) ){
 	}
 	else
 	{
-		for ( i = 0 ; i < numthreads ; i++ )
+		for ( i = 0; i < numthreads; ++i )
 		{
 			threadhandle[i] = CreateThread(
 			                      NULL,                         // LPSECURITY_ATTRIBUTES  lpThreadAttributes,
@@ -204,15 +204,14 @@ void RunThreadsOn( int workcnt, bool showpacifier, void ( *func )( int ) ){
 			                      NULL );                       // LPDWORD                lpThreadId
 		}
 
-		for ( i = 0 ; i < numthreads ; i++ )
+		for ( i = 0; i < numthreads; ++i )
 			WaitForSingleObject( threadhandle[i], INFINITE );
 	}
 	DeleteCriticalSection( &crit );
 
 	threaded = false;
-	end = I_FloatTime();
 	if ( pacifier ) {
-		Sys_Printf( " (%i)\n", end - start );
+		Sys_Printf( " (%i)\n", int( timer.elapsed_sec() ) );
 	}
 }
 
@@ -232,7 +231,7 @@ void RunThreadsOn( int workcnt, bool showpacifier, void ( *func )( int ) ){
 
 int numthreads = 4;
 
-void ThreadSetDefault( void ){
+void ThreadSetDefault(){
 	if ( numthreads == -1 ) { // not set manually
 		numthreads = 4;
 	}
@@ -243,13 +242,13 @@ void ThreadSetDefault( void ){
 
 pthread_mutex_t *my_mutex;
 
-void ThreadLock( void ){
+void ThreadLock(){
 	if ( my_mutex ) {
 		pthread_mutex_lock( my_mutex );
 	}
 }
 
-void ThreadUnlock( void ){
+void ThreadUnlock(){
 	if ( my_mutex ) {
 		pthread_mutex_unlock( my_mutex );
 	}
@@ -267,9 +266,8 @@ void RunThreadsOn( int workcnt, bool showpacifier, void ( *func )( int ) ){
 	pthread_addr_t status;
 	pthread_attr_t attrib;
 	pthread_mutexattr_t mattrib;
-	int start, end;
+	Timer timer;
 
-	start = I_FloatTime();
 	dispatch = 0;
 	workcount = workcnt;
 	oldf = -1;
@@ -300,7 +298,7 @@ void RunThreadsOn( int workcnt, bool showpacifier, void ( *func )( int ) ){
 		Error( "pthread_attr_setstacksize failed" );
 	}
 
-	for ( i = 0 ; i < numthreads ; i++ )
+	for ( i = 0; i < numthreads; ++i )
 	{
 		if ( pthread_create( &work_threads[i], attrib
 		                     , (pthread_startroutine_t)func, (pthread_addr_t)i ) == -1 ) {
@@ -308,7 +306,7 @@ void RunThreadsOn( int workcnt, bool showpacifier, void ( *func )( int ) ){
 		}
 	}
 
-	for ( i = 0 ; i < numthreads ; i++ )
+	for ( i = 0; i < numthreads; ++i )
 	{
 		if ( pthread_join( work_threads[i], &status ) == -1 ) {
 			Error( "pthread_join failed" );
@@ -317,9 +315,8 @@ void RunThreadsOn( int workcnt, bool showpacifier, void ( *func )( int ) ){
 
 	threaded = false;
 
-	end = I_FloatTime();
 	if ( pacifier ) {
-		Sys_Printf( " (%i)\n", end - start );
+		Sys_Printf( " (%i)\n", int( timer.elapsed_sec() ) );
 	}
 }
 
@@ -346,7 +343,7 @@ void RunThreadsOn( int workcnt, bool showpacifier, void ( *func )( int ) ){
 int numthreads = -1;
 abilock_t lck;
 
-void ThreadSetDefault( void ){
+void ThreadSetDefault(){
 	if ( numthreads == -1 ) {
 		numthreads = prctl( PR_MAXPPROCS );
 	}
@@ -355,11 +352,11 @@ void ThreadSetDefault( void ){
 }
 
 
-void ThreadLock( void ){
+void ThreadLock(){
 	spin_lock( &lck );
 }
 
-void ThreadUnlock( void ){
+void ThreadUnlock(){
 	release_lock( &lck );
 }
 
@@ -372,9 +369,8 @@ void ThreadUnlock( void ){
 void RunThreadsOn( int workcnt, bool showpacifier, void ( *func )( int ) ){
 	int i;
 	int pid[MAX_THREADS];
-	int start, end;
+	Timer timer;
 
-	start = I_FloatTime();
 	dispatch = 0;
 	workcount = workcnt;
 	oldf = -1;
@@ -387,7 +383,7 @@ void RunThreadsOn( int workcnt, bool showpacifier, void ( *func )( int ) ){
 
 	init_lock( &lck );
 
-	for ( i = 0 ; i < numthreads - 1 ; i++ )
+	for ( i = 0; i < numthreads - 1; ++i )
 	{
 		pid[i] = sprocsp( ( void ( * )( void *, size_t ) )func, PR_SALL, (void *)i
 		                  , NULL, 0x200000 ); // 2 meg stacks
@@ -399,14 +395,13 @@ void RunThreadsOn( int workcnt, bool showpacifier, void ( *func )( int ) ){
 
 	func( i );
 
-	for ( i = 0 ; i < numthreads - 1 ; i++ )
+	for ( i = 0; i < numthreads - 1; ++i )
 		wait( NULL );
 
 	threaded = false;
 
-	end = I_FloatTime();
 	if ( pacifier ) {
-		Sys_Printf( " (%i)\n", end - start );
+		Sys_Printf( " (%i)\n", int( timer.elapsed_sec() ) );
 	}
 }
 
@@ -429,7 +424,7 @@ void RunThreadsOn( int workcnt, bool showpacifier, void ( *func )( int ) ){
 
 int numthreads = -1;
 
-void ThreadSetDefault( void ){
+void ThreadSetDefault(){
 	if ( numthreads == -1 ) { // not set manually
 #ifdef _SC_NPROCESSORS_ONLN
 		long cpus = sysconf( _SC_NPROCESSORS_ONLN );
@@ -459,7 +454,7 @@ struct pt_mutex_t
 
 pt_mutex_t global_lock;
 
-void ThreadLock( void ){
+void ThreadLock(){
 	pt_mutex_t *pt_mutex = &global_lock;
 
 	if ( !threaded ) {
@@ -492,7 +487,7 @@ void ThreadLock( void ){
 	pthread_mutex_unlock( &pt_mutex->a_mutex );
 }
 
-void ThreadUnlock( void ){
+void ThreadUnlock(){
 	pt_mutex_t *pt_mutex = &global_lock;
 
 	if ( !threaded ) {
@@ -535,10 +530,9 @@ void RunThreadsOn( int workcnt, bool showpacifier, void ( *func )( int ) ){
 	pthread_t work_threads[MAX_THREADS];
 	size_t stacksize;
 
-	int start, end;
+	Timer timer;
 	int i = 0;
 
-	start     = I_FloatTime();
 	pacifier  = showpacifier;
 
 	dispatch  = 0;
@@ -571,14 +565,14 @@ void RunThreadsOn( int workcnt, bool showpacifier, void ( *func )( int ) ){
 		}
 		recursive_mutex_init( mattrib );
 
-		for ( i = 0 ; i < numthreads ; i++ )
+		for ( i = 0; i < numthreads; ++i )
 		{
 			/* Default pthread attributes: joinable & non-realtime scheduling */
 			if ( pthread_create( &work_threads[i], &attr, (void *(*)(void *)) func, (void*)(size_t)i ) != 0 ) {
 				Error( "pthread_create failed" );
 			}
 		}
-		for ( i = 0 ; i < numthreads ; i++ )
+		for ( i = 0; i < numthreads; ++i )
 		{
 			if ( pthread_join( work_threads[i], NULL ) != 0 ) {
 				Error( "pthread_join failed" );
@@ -588,9 +582,8 @@ void RunThreadsOn( int workcnt, bool showpacifier, void ( *func )( int ) ){
 		threaded = false;
 	}
 
-	end = I_FloatTime();
 	if ( pacifier ) {
-		Sys_Printf( " (%i)\n", end - start );
+		Sys_Printf( " (%i)\n", int( timer.elapsed_sec() ) );
 	}
 }
 #endif // ifdef __linux__
@@ -608,14 +601,14 @@ void RunThreadsOn( int workcnt, bool showpacifier, void ( *func )( int ) ){
 
 int numthreads = 1;
 
-void ThreadSetDefault( void ){
+void ThreadSetDefault(){
 	numthreads = 1;
 }
 
-void ThreadLock( void ){
+void ThreadLock(){
 }
 
-void ThreadUnlock( void ){
+void ThreadUnlock(){
 }
 
 /*
@@ -625,18 +618,16 @@ void ThreadUnlock( void ){
  */
 void RunThreadsOn( int workcnt, bool showpacifier, void ( *func )( int ) ){
 	int i;
-	int start, end;
+	Timer timer;
 
 	dispatch = 0;
 	workcount = workcnt;
 	oldf = -1;
 	pacifier = showpacifier;
-	start = I_FloatTime();
 	func( 0 );
 
-	end = I_FloatTime();
 	if ( pacifier ) {
-		Sys_Printf( " (%i)\n", end - start );
+		Sys_Printf( " (%i)\n", int( timer.elapsed_sec() ) );
 	}
 }
 

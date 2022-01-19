@@ -314,12 +314,12 @@ const char* browse_sound( GtkWidget* parent, const char* filepath ){
 			buffer << root << filepath;
 	}
 	if( buffer.empty() ){
-		buffer << g_qeglobals.m_userGamePath.c_str() << "sound/";
+		buffer << g_qeglobals.m_userGamePath << "sound/";
 
 		if ( !file_readable( buffer.c_str() ) ) {
 			// just go to fsmain
 			buffer.clear();
-			buffer << g_qeglobals.m_userGamePath.c_str();
+			buffer << g_qeglobals.m_userGamePath;
 		}
 	}
 
@@ -453,12 +453,6 @@ public:
 	typedef MemberCaller1<AngleAttribute, const Vector3&, &AngleAttribute::apply> ApplyVecCaller;
 };
 
-namespace
-{
-typedef const char* String;
-const String buttons[] = { "up", "down", "yaw" };
-}
-
 class DirectionAttribute final : public EntityAttribute
 {
 	CopiedString m_key;
@@ -468,11 +462,12 @@ class DirectionAttribute final : public EntityAttribute
 	NonModalRadio m_nonModalRadio;
 	CamAnglesButton m_butt;
 	GtkHBox* m_hbox;
+	static constexpr const char *const buttons[] = { "up", "down", "yaw" };
 public:
 	DirectionAttribute( const char* key ) :
 		m_key( key ),
 		m_nonModal( ApplyCaller( *this ), UpdateCaller( *this ) ),
-		m_radio( RadioHBox_new( STRING_ARRAY_RANGE( buttons ) ) ),
+		m_radio( RadioHBox_new( StringArrayRange( buttons ) ) ),
 		m_nonModalRadio( ApplyRadioCaller( *this ) ),
 		m_butt( ApplyVecCaller( *this ) ){
 		m_entry = numeric_entry_new();
@@ -1008,7 +1003,7 @@ void SurfaceFlags_setEntityClass( EntityClass* eclass ){
 
 	{
 		// do a first pass to count the spawn flags, don't touch the widgets, we don't know in what state they are
-		for ( int i = 0 ; i < MAX_FLAGS ; i++ )
+		for ( int i = 0; i < MAX_FLAGS; i++ )
 		{
 			if ( eclass->flagnames[i] && eclass->flagnames[i][0] != 0 && strcmp( eclass->flagnames[i],"-" ) ) {
 				spawn_table[spawnflag_count] = i;
@@ -1221,9 +1216,9 @@ void EntityInspector_updateKeyValues(){
 		GtkTreeIter iter;
 		gtk_list_store_append( store, &iter );
 		StringOutputStream key( 64 );
-		key << ( *i ).first.c_str();
+		key << ( *i ).first;
 		StringOutputStream value( 64 );
-		value << ( *i ).second.c_str();
+		value << ( *i ).second;
 		gtk_list_store_set( store, &iter, 0, key.c_str(), 1, value.c_str(), -1 );
 	}
 

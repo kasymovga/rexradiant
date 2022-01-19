@@ -19,8 +19,7 @@
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#if !defined( INCLUDED_UNIQUENAMES_H )
-#define INCLUDED_UNIQUENAMES_H
+#pragma once
 
 #include "debugging/debugging.h"
 #include <map>
@@ -30,15 +29,16 @@
 #if 1
 class Postfix
 {
-	unsigned int m_value;
+	int m_value; // -1 is special value to handle empty postfix
 public:
-	Postfix( const char* postfix ) : m_value( atoi( postfix ) ){
+	Postfix( const char* postfix ) : m_value( string_empty( postfix )? -1 : atoi( postfix ) ){
 	}
-	unsigned int number() const {
+	int number() const {
 		return m_value;
 	}
 	void write( char* buffer ) const {
-		sprintf( buffer, "%u", m_value );
+		if( m_value != -1 )
+			sprintf( buffer, "%i", m_value );
 	}
 	Postfix& operator++(){
 		++m_value;
@@ -326,8 +326,5 @@ public:
 };
 
 const TestUniqueName g_testuniquename;
-
-#endif
-
 
 #endif

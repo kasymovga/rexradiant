@@ -19,13 +19,12 @@
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#if !defined ( INCLUDED_SELECTIONLIB_H )
-#define INCLUDED_SELECTIONLIB_H
+#pragma once
 
 #include "iselection.h"
 #include "generic/callback.h"
 #include "scenelib.h"
-#include <stdlib.h>
+#include <cstdlib>
 
 class SelectableBool : public Selectable
 {
@@ -148,10 +147,7 @@ private:
 public:
 
 	SelectionList() = default;
-	SelectionList( const SelectionList& ) = delete;
 	SelectionList( SelectionList&& ) noexcept = delete;
-	SelectionList& operator=( const SelectionList& ) = delete;
-	SelectionList& operator=( SelectionList&& ) noexcept = delete;
 
 	iterator begin(){
 		return m_selection.begin();
@@ -188,6 +184,3 @@ public:
 		m_set.erase( it );
 	}
 };
-
-
-#endif

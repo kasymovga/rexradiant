@@ -30,6 +30,7 @@
 
 /* dependencies */
 #include "q3map2.h"
+#include "vis.h"
 
 
 
@@ -53,13 +54,10 @@
    void CalcMightSee (leaf_t *leaf,
  */
 
-int CountBits( byte *bits, int numbits ){
-	int i;
-	int c;
-
-	c = 0;
-	for ( i = 0 ; i < numbits ; i++ )
-		if ( bits[i >> 3] & ( 1 << ( i & 7 ) ) ) {
+int CountBits( const byte *bits, int numbits ){
+	int c = 0;
+	for ( int i = 0; i < numbits; ++i )
+		if ( bit_is_enabled( bits, i ) ) {
 			c++;
 		}
 
@@ -67,16 +65,14 @@ int CountBits( byte *bits, int numbits ){
 }
 
 
-void CheckStack( leaf_t *leaf, threaddata_t *thread ){
-	pstack_t    *p, *p2;
-
-	for ( p = thread->pstack_head.next ; p ; p = p->next )
+static void CheckStack( leaf_t *leaf, threaddata_t *thread ){
+	for ( pstack_t *p = thread->pstack_head.next; p; p = p->next )
 	{
 //		Sys_Printf ("=");
 		if ( p->leaf == leaf ) {
 			Error( "CheckStack: leaf recursion" );
 		}
-		for ( p2 = thread->pstack_head.next ; p2 != p ; p2 = p2->next )
+		for ( pstack_t *p2 = thread->pstack_head.next; p2 != p; p2 = p2->next )
 			if ( p2->leaf == p->leaf ) {
 				Error( "CheckStack: late leaf recursion" );
 			}
@@ -85,10 +81,8 @@ void CheckStack( leaf_t *leaf, threaddata_t *thread ){
 }
 
 
-fixedWinding_t *AllocStackWinding( pstack_t *stack ){
-	int i;
-
-	for ( i = 0 ; i < 3 ; i++ )
+static fixedWinding_t *AllocStackWinding( pstack_t *stack ){
+	for ( int i = 0; i < 3; ++i )
 	{
 		if ( stack->freewindings[i] ) {
 			stack->freewindings[i] = 0;
@@ -101,7 +95,7 @@ fixedWinding_t *AllocStackWinding( pstack_t *stack ){
 	return NULL;
 }
 
-void FreeStackWinding( fixedWinding_t *w, pstack_t *stack ){
+static void FreeStackWinding( fixedWinding_t *w, pstack_t *stack ){
 	const int i = w - stack->windings;
 
 	if ( i < 0 || i > 2 ) {
@@ -120,7 +114,7 @@ void FreeStackWinding( fixedWinding_t *w, pstack_t *stack ){
 
    ==============
  */
-fixedWinding_t  *VisChopWinding( fixedWinding_t *in, pstack_t *stack, const visPlane_t& split ){
+static fixedWinding_t  *VisChopWinding( fixedWinding_t *in, pstack_t *stack, const visPlane_t& split ){
 	float dists[128];
 	EPlaneSide sides[128];
 	int counts[3];
@@ -132,7 +126,7 @@ fixedWinding_t  *VisChopWinding( fixedWinding_t *in, pstack_t *stack, const visP
 	counts[0] = counts[1] = counts[2] = 0;
 
 	// determine sides for each point
-	for ( i = 0 ; i < in->numpoints ; i++ )
+	for ( i = 0; i < in->numpoints; ++i )
 	{
 		dists[i] = plane3_distance_to_point( split, in->points[i] );
 		if ( dists[i] > ON_EPSILON ) {
@@ -164,7 +158,7 @@ fixedWinding_t  *VisChopWinding( fixedWinding_t *in, pstack_t *stack, const visP
 
 	neww->numpoints = 0;
 
-	for ( i = 0 ; i < in->numpoints ; i++ )
+	for ( i = 0; i < in->numpoints; ++i )
 	{
 		const Vector3& p1 = in->points[i];
 
@@ -197,7 +191,7 @@ fixedWinding_t  *VisChopWinding( fixedWinding_t *in, pstack_t *stack, const visP
 		const Vector3& p2 = in->points[( i + 1 ) % in->numpoints];
 
 		dot = dists[i] / ( dists[i] - dists[i + 1] );
-		for ( j = 0 ; j < 3 ; j++ )
+		for ( j = 0; j < 3; ++j )
 		{	// avoid round off error when possible
 			if ( split.normal()[j] == 1 ) {
 				mid[j] = split.dist();
@@ -236,21 +230,21 @@ fixedWinding_t  *VisChopWinding( fixedWinding_t *in, pstack_t *stack, const visP
    flipclip should be set.
    ==============
  */
-fixedWinding_t  *ClipToSeperators( fixedWinding_t *source, fixedWinding_t *pass, fixedWinding_t *target, bool flipclip, pstack_t *stack ){
+static fixedWinding_t  *ClipToSeperators( fixedWinding_t *source, fixedWinding_t *pass, fixedWinding_t *target, bool flipclip, pstack_t *stack ){
 	int i, j, k, l;
 	float d;
 	int counts[3];
 	bool fliptest;
 
 	// check all combinations
-	for ( i = 0 ; i < source->numpoints ; i++ )
+	for ( i = 0; i < source->numpoints; ++i )
 	{
 		l = ( i + 1 ) % source->numpoints;
 
 		// find a vertex of pass that makes a plane that puts all of the
 		// vertexes of pass on the front side and all of the vertexes of
 		// source on the back side
-		for ( j = 0 ; j < pass->numpoints ; j++ )
+		for ( j = 0; j < pass->numpoints; ++j )
 		{
 			visPlane_t plane;
 			// if points don't make a valid plane, skip it
@@ -264,7 +258,7 @@ fixedWinding_t  *ClipToSeperators( fixedWinding_t *source, fixedWinding_t *pass,
 			//
 #if 1
 			fliptest = false;
-			for ( k = 0 ; k < source->numpoints ; k++ )
+			for ( k = 0; k < source->numpoints; ++k )
 			{
 				if ( k == i || k == l ) {
 					continue;
@@ -299,7 +293,7 @@ fixedWinding_t  *ClipToSeperators( fixedWinding_t *source, fixedWinding_t *pass,
 			// this is the separating plane
 			//
 			counts[0] = counts[1] = counts[2] = 0;
-			for ( k = 0 ; k < pass->numpoints ; k++ )
+			for ( k = 0; k < pass->numpoints; ++k )
 			{
 				if ( k == j ) {
 					continue;
@@ -381,14 +375,12 @@ fixedWinding_t  *ClipToSeperators( fixedWinding_t *source, fixedWinding_t *pass,
    If src_portal is NULL, this is the originating leaf
    ==================
  */
-void RecursiveLeafFlow( int leafnum, threaddata_t *thread, pstack_t *prevstack ){
+static void RecursiveLeafFlow( int leafnum, threaddata_t *thread, pstack_t *prevstack ){
 	pstack_t stack;
-	vportal_t   *p;
 	visPlane_t backplane;
 	leaf_t      *leaf;
-	int i, j, n;
+	int j, n;
 	long        *test, *might, *prevmight, *vis, more;
-	int pnum;
 
 	thread->c_chains++;
 
@@ -411,13 +403,12 @@ void RecursiveLeafFlow( int leafnum, threaddata_t *thread, pstack_t *prevstack )
 	vis = (long *)thread->base->portalvis;
 
 	// check all portals for flowing into other leafs
-	for ( i = 0; i < leaf->numportals; i++ )
+	for ( vportal_t *p : Span( leaf->portals, leaf->numportals ) )
 	{
-		p = leaf->portals[i];
 		if ( p->removed ) {
 			continue;
 		}
-		pnum = p - portals;
+		const int pnum = p - portals;
 
 		/* MrE: portal trace debug code
 		   {
@@ -438,7 +429,7 @@ void RecursiveLeafFlow( int leafnum, threaddata_t *thread, pstack_t *prevstack )
 		   }
 		 */
 
-		if ( !( prevstack->mightsee[pnum >> 3] & ( 1 << ( pnum & 7 ) ) ) ) {
+		if ( !bit_is_enabled( prevstack->mightsee, pnum ) ) {
 			continue;   // can't possibly see it
 		}
 
@@ -453,14 +444,14 @@ void RecursiveLeafFlow( int leafnum, threaddata_t *thread, pstack_t *prevstack )
 
 		more = 0;
 		prevmight = (long *)prevstack->mightsee;
-		for ( j = 0 ; j < portallongs ; j++ )
+		for ( j = 0; j < portallongs; ++j )
 		{
 			might[j] = prevmight[j] & test[j];
 			more |= ( might[j] & ~vis[j] );
 		}
 
 		if ( !more &&
-		     ( thread->base->portalvis[pnum >> 3] & ( 1 << ( pnum & 7 ) ) ) ) { // can't see anything new
+		     bit_is_enabled( thread->base->portalvis, pnum ) ) { // can't see anything new
 			continue;
 		}
 
@@ -531,7 +522,7 @@ void RecursiveLeafFlow( int leafnum, threaddata_t *thread, pstack_t *prevstack )
 		if ( !prevstack->pass ) { // the second leaf can only be blocked if coplanar
 
 			// mark the portal as visible
-			thread->base->portalvis[pnum >> 3] |= ( 1 << ( pnum & 7 ) );
+			bit_enable( thread->base->portalvis, pnum );
 
 			RecursiveLeafFlow( p->leaf, thread, &stack );
 			continue;
@@ -583,7 +574,7 @@ void RecursiveLeafFlow( int leafnum, threaddata_t *thread, pstack_t *prevstack )
 		}
 
 		// mark the portal as visible
-		thread->base->portalvis[pnum >> 3] |= ( 1 << ( pnum & 7 ) );
+		bit_enable( thread->base->portalvis, pnum );
 
 		// flow through it for real
 		RecursiveLeafFlow( p->leaf, thread, &stack );
@@ -601,7 +592,6 @@ void RecursiveLeafFlow( int leafnum, threaddata_t *thread, pstack_t *prevstack )
  */
 void PortalFlow( int portalnum ){
 	threaddata_t data;
-	int i;
 	vportal_t       *p;
 	int c_might, c_can;
 
@@ -627,8 +617,7 @@ void PortalFlow( int portalnum ){
 	data.pstack_head.source = p->winding;
 	data.pstack_head.portalplane = p->plane;
 	data.pstack_head.depth = 0;
-	for ( i = 0 ; i < portallongs ; i++ )
-		( (long *)data.pstack_head.mightsee )[i] = ( (long *)p->portalflood )[i];
+	memcpy( data.pstack_head.mightsee, p->portalflood, portalbytes );
 
 	RecursiveLeafFlow( p->leaf, &data, &data.pstack_head );
 
@@ -645,14 +634,13 @@ void PortalFlow( int portalnum ){
    RecursivePassageFlow
    ==================
  */
-void RecursivePassageFlow( vportal_t *portal, threaddata_t *thread, pstack_t *prevstack ){
+static void RecursivePassageFlow( vportal_t *portal, threaddata_t *thread, pstack_t *prevstack ){
 	pstack_t stack;
 	vportal_t   *p;
 	leaf_t      *leaf;
 	passage_t   *passage, *nextpassage;
 	int i, j;
 	long        *might, *vis, *prevmight, *cansee, *portalvis, more;
-	int pnum;
 
 	leaf = &leafs[portal->leaf];
 
@@ -673,14 +661,14 @@ void RecursivePassageFlow( vportal_t *portal, threaddata_t *thread, pstack_t *pr
 			continue;
 		}
 		nextpassage = passage->next;
-		pnum = p - portals;
+		const int pnum = p - portals;
 
-		if ( !( prevstack->mightsee[pnum >> 3] & ( 1 << ( pnum & 7 ) ) ) ) {
+		if ( !bit_is_enabled( prevstack->mightsee, pnum ) ) {
 			continue;   // can't possibly see it
 		}
 
 		// mark the portal as visible
-		thread->base->portalvis[pnum >> 3] |= ( 1 << ( pnum & 7 ) );
+		bit_enable( thread->base->portalvis, pnum );
 
 		prevmight = (long *)prevstack->mightsee;
 		cansee = (long *)passage->cansee;
@@ -696,14 +684,11 @@ void RecursivePassageFlow( vportal_t *portal, threaddata_t *thread, pstack_t *pr
 		for ( j = 0; j < portallongs; j++ )
 		{
 			if ( *might ) {
-				*might &= *cansee++ & *portalvis++;
+				*might &= *cansee & *portalvis;
 				more |= ( *might & ~vis[j] );
 			}
-			else
-			{
-				cansee++;
-				portalvis++;
-			}
+			cansee++;
+			portalvis++;
 			might++;
 		}
 
@@ -726,7 +711,6 @@ void RecursivePassageFlow( vportal_t *portal, threaddata_t *thread, pstack_t *pr
  */
 void PassageFlow( int portalnum ){
 	threaddata_t data;
-	int i;
 	vportal_t       *p;
 //	int				c_might, c_can;
 
@@ -752,8 +736,7 @@ void PassageFlow( int portalnum ){
 	data.pstack_head.source = p->winding;
 	data.pstack_head.portalplane = p->plane;
 	data.pstack_head.depth = 0;
-	for ( i = 0 ; i < portallongs ; i++ )
-		( (long *)data.pstack_head.mightsee )[i] = ( (long *)p->portalflood )[i];
+	memcpy( data.pstack_head.mightsee, p->portalflood, portalbytes );
 
 	RecursivePassageFlow( p, &data, &data.pstack_head );
 
@@ -772,7 +755,7 @@ void PassageFlow( int portalnum ){
    RecursivePassagePortalFlow
    ==================
  */
-void RecursivePassagePortalFlow( vportal_t *portal, threaddata_t *thread, pstack_t *prevstack ){
+static void RecursivePassagePortalFlow( vportal_t *portal, threaddata_t *thread, pstack_t *prevstack ){
 	pstack_t stack;
 	vportal_t   *p;
 	leaf_t      *leaf;
@@ -780,7 +763,6 @@ void RecursivePassagePortalFlow( vportal_t *portal, threaddata_t *thread, pstack
 	passage_t   *passage, *nextpassage;
 	int i, j, n;
 	long        *might, *vis, *prevmight, *cansee, *portalvis, more;
-	int pnum;
 
 //	thread->c_chains++;
 
@@ -811,9 +793,9 @@ void RecursivePassagePortalFlow( vportal_t *portal, threaddata_t *thread, pstack
 			continue;
 		}
 		nextpassage = passage->next;
-		pnum = p - portals;
+		const int pnum = p - portals;
 
-		if ( !( prevstack->mightsee[pnum >> 3] & ( 1 << ( pnum & 7 ) ) ) ) {
+		if ( !bit_is_enabled( prevstack->mightsee, pnum ) ) {
 			continue;   // can't possibly see it
 
 		}
@@ -831,18 +813,15 @@ void RecursivePassagePortalFlow( vportal_t *portal, threaddata_t *thread, pstack
 		for ( j = 0; j < portallongs; j++ )
 		{
 			if ( *might ) {
-				*might &= *cansee++ & *portalvis++;
+				*might &= *cansee & *portalvis;
 				more |= ( *might & ~vis[j] );
 			}
-			else
-			{
-				cansee++;
-				portalvis++;
-			}
+			cansee++;
+			portalvis++;
 			might++;
 		}
 
-		if ( !more && ( thread->base->portalvis[pnum >> 3] & ( 1 << ( pnum & 7 ) ) ) ) { // can't see anything new
+		if ( !more && bit_is_enabled( thread->base->portalvis, pnum ) ) { // can't see anything new
 			continue;
 		}
 
@@ -913,7 +892,7 @@ void RecursivePassagePortalFlow( vportal_t *portal, threaddata_t *thread, pstack
 		if ( !prevstack->pass ) { // the second leaf can only be blocked if coplanar
 
 			// mark the portal as visible
-			thread->base->portalvis[pnum >> 3] |= ( 1 << ( pnum & 7 ) );
+			bit_enable( thread->base->portalvis, pnum );
 
 			RecursivePassagePortalFlow( p, thread, &stack );
 			continue;
@@ -965,7 +944,7 @@ void RecursivePassagePortalFlow( vportal_t *portal, threaddata_t *thread, pstack
 		}
 
 		// mark the portal as visible
-		thread->base->portalvis[pnum >> 3] |= ( 1 << ( pnum & 7 ) );
+		bit_enable( thread->base->portalvis, pnum );
 
 		// flow through it for real
 		RecursivePassagePortalFlow( p, thread, &stack );
@@ -981,7 +960,6 @@ void RecursivePassagePortalFlow( vportal_t *portal, threaddata_t *thread, pstack
  */
 void PassagePortalFlow( int portalnum ){
 	threaddata_t data;
-	int i;
 	vportal_t       *p;
 //	int				c_might, c_can;
 
@@ -1007,8 +985,7 @@ void PassagePortalFlow( int portalnum ){
 	data.pstack_head.source = p->winding;
 	data.pstack_head.portalplane = p->plane;
 	data.pstack_head.depth = 0;
-	for ( i = 0 ; i < portallongs ; i++ )
-		( (long *)data.pstack_head.mightsee )[i] = ( (long *)p->portalflood )[i];
+	memcpy( data.pstack_head.mightsee, p->portalflood, portalbytes );
 
 	RecursivePassagePortalFlow( p, &data, &data.pstack_head );
 
@@ -1022,7 +999,7 @@ void PassagePortalFlow( int portalnum ){
 	 */
 }
 
-fixedWinding_t *PassageChopWinding( fixedWinding_t *in, fixedWinding_t *out, const visPlane_t& split ){
+static fixedWinding_t *PassageChopWinding( fixedWinding_t *in, fixedWinding_t *out, const visPlane_t& split ){
 	float dists[128];
 	EPlaneSide sides[128];
 	int counts[3];
@@ -1034,7 +1011,7 @@ fixedWinding_t *PassageChopWinding( fixedWinding_t *in, fixedWinding_t *out, con
 	counts[0] = counts[1] = counts[2] = 0;
 
 	// determine sides for each point
-	for ( i = 0 ; i < in->numpoints ; i++ )
+	for ( i = 0; i < in->numpoints; ++i )
 	{
 		dists[i] = plane3_distance_to_point( split, in->points[i] );
 		if ( dists[i] > ON_EPSILON ) {
@@ -1065,7 +1042,7 @@ fixedWinding_t *PassageChopWinding( fixedWinding_t *in, fixedWinding_t *out, con
 
 	neww->numpoints = 0;
 
-	for ( i = 0 ; i < in->numpoints ; i++ )
+	for ( i = 0; i < in->numpoints; ++i )
 	{
 		const Vector3& p1 = in->points[i];
 
@@ -1096,7 +1073,7 @@ fixedWinding_t *PassageChopWinding( fixedWinding_t *in, fixedWinding_t *out, con
 		const Vector3& p2 = in->points[( i + 1 ) % in->numpoints];
 
 		dot = dists[i] / ( dists[i] - dists[i + 1] );
-		for ( j = 0 ; j < 3 ; j++ )
+		for ( j = 0; j < 3; ++j )
 		{	// avoid round off error when possible
 			if ( split.normal()[j] == 1 ) {
 				mid[j] = split.dist();
@@ -1121,21 +1098,21 @@ fixedWinding_t *PassageChopWinding( fixedWinding_t *in, fixedWinding_t *out, con
    AddSeperators
    ===============
  */
-int AddSeperators( fixedWinding_t *source, fixedWinding_t *pass, bool flipclip, visPlane_t *seperators, int maxseperators ){
+static int AddSeperators( const fixedWinding_t *source, const fixedWinding_t *pass, bool flipclip, visPlane_t *seperators, int maxseperators ){
 	int i, j, k, l;
 	int counts[3], numseperators;
 	bool fliptest;
 
 	numseperators = 0;
 	// check all combinations
-	for ( i = 0 ; i < source->numpoints ; i++ )
+	for ( i = 0; i < source->numpoints; ++i )
 	{
 		l = ( i + 1 ) % source->numpoints;
 
 		// find a vertex of pass that makes a plane that puts all of the
 		// vertexes of pass on the front side and all of the vertexes of
 		// source on the back side
-		for ( j = 0 ; j < pass->numpoints ; j++ )
+		for ( j = 0; j < pass->numpoints; ++j )
 		{
 			visPlane_t plane;
 			// if points don't make a valid plane, skip it
@@ -1149,7 +1126,7 @@ int AddSeperators( fixedWinding_t *source, fixedWinding_t *pass, bool flipclip, 
 			//
 #if 1
 			fliptest = false;
-			for ( k = 0 ; k < source->numpoints ; k++ )
+			for ( k = 0; k < source->numpoints; ++k )
 			{
 				if ( k == i || k == l ) {
 					continue;
@@ -1184,7 +1161,7 @@ int AddSeperators( fixedWinding_t *source, fixedWinding_t *pass, bool flipclip, 
 			// this is the separating plane
 			//
 			counts[0] = counts[1] = counts[2] = 0;
-			for ( k = 0 ; k < pass->numpoints ; k++ )
+			for ( k = 0; k < pass->numpoints; ++k )
 			{
 				if ( k == j ) {
 					continue;
@@ -1247,9 +1224,8 @@ int AddSeperators( fixedWinding_t *source, fixedWinding_t *pass, bool flipclip, 
    ===============
  */
 void CreatePassages( int portalnum ){
-	int i, j, k, n, numseperators, numsee;
-	vportal_t       *portal, *p, *target;
-	leaf_t          *leaf;
+	int j, k, n, numseperators, numsee;
+	vportal_t       *portal, *p;
 	passage_t       *passage, *lastpassage;
 	visPlane_t seperators[MAX_SEPERATORS * 2];
 	fixedWinding_t  *w;
@@ -1268,10 +1244,8 @@ void CreatePassages( int portalnum ){
 	}
 
 	lastpassage = NULL;
-	leaf = &leafs[portal->leaf];
-	for ( i = 0; i < leaf->numportals; i++ )
+	for ( const vportal_t *target : Span( leafs[portal->leaf].portals, leafs[portal->leaf].numportals ) )
 	{
-		target = leaf->portals[i];
 		if ( target->removed ) {
 			continue;
 		}
@@ -1297,10 +1271,10 @@ void CreatePassages( int portalnum ){
 			if ( p->removed ) {
 				continue;
 			}
-			if ( !( target->portalflood[j >> 3] & ( 1 << ( j & 7 ) ) ) ) {
+			if ( !bit_is_enabled( target->portalflood, j ) ) {
 				continue;
 			}
-			if ( !( portal->portalflood[j >> 3] & ( 1 << ( j & 7 ) ) ) ) {
+			if ( !bit_is_enabled( portal->portalflood, j ) ) {
 				continue;
 			}
 			for ( k = 0; k < numseperators; k++ )
@@ -1358,29 +1332,22 @@ void CreatePassages( int portalnum ){
 			if ( k < numseperators ) {
 				continue;
 			}
-			passage->cansee[j >> 3] |= ( 1 << ( j & 7 ) );
+			bit_enable( passage->cansee, j );
 			numsee++;
 		}
 	}
 }
 
-void PassageMemory( void ){
-	int i, j, totalmem, totalportals;
-	vportal_t *portal, *target;
-	leaf_t *leaf;
+void PassageMemory(){
+	int totalmem = 0, totalportals = 0;
 
-	totalmem = 0;
-	totalportals = 0;
-	for ( i = 0; i < numportals; i++ )
+	for ( const vportal_t *portal : Span( sorted_portals, numportals ) )
 	{
-		portal = sorted_portals[i];
 		if ( portal->removed ) {
 			continue;
 		}
-		leaf = &leafs[portal->leaf];
-		for ( j = 0; j < leaf->numportals; j++ )
+		for ( const vportal_t *target : Span( leafs[portal->leaf].portals, leafs[portal->leaf].numportals ) )
 		{
-			target = leaf->portals[j];
 			if ( target->removed ) {
 				continue;
 			}
@@ -1442,30 +1409,22 @@ void PassageMemory( void ){
 
    ==================
  */
-void SimpleFlood( vportal_t *srcportal, int leafnum ){
-	int i;
-	leaf_t  *leaf;
-	vportal_t   *p;
-	int pnum;
-
-	leaf = &leafs[leafnum];
-
-	for ( i = 0 ; i < leaf->numportals ; i++ )
+static void SimpleFlood( vportal_t *srcportal, int leafnum ){
+	for ( const vportal_t *p : Span( leafs[leafnum].portals, leafs[leafnum].numportals ) )
 	{
-		p = leaf->portals[i];
 		if ( p->removed ) {
 			continue;
 		}
-		pnum = p - portals;
-		if ( !( srcportal->portalfront[pnum >> 3] & ( 1 << ( pnum & 7 ) ) ) ) {
+		const int pnum = p - portals;
+		if ( !bit_is_enabled( srcportal->portalfront, pnum ) ) {
 			continue;
 		}
 
-		if ( srcportal->portalflood[pnum >> 3] & ( 1 << ( pnum & 7 ) ) ) {
+		if ( bit_is_enabled( srcportal->portalflood, pnum ) ) {
 			continue;
 		}
 
-		srcportal->portalflood[pnum >> 3] |= ( 1 << ( pnum & 7 ) );
+		bit_enable( srcportal->portalflood, pnum );
 
 		SimpleFlood( srcportal, p->leaf );
 	}
@@ -1492,7 +1451,7 @@ void BasePortalVis( int portalnum ){
 	p->portalflood = safe_calloc( portalbytes );
 	p->portalvis = safe_calloc( portalbytes );
 
-	for ( j = 0, tp = portals ; j < numportals * 2 ; j++, tp++ )
+	for ( j = 0, tp = portals; j < numportals * 2; ++j, ++tp )
 	{
 		if ( j == portalnum ) {
 			continue;
@@ -1534,7 +1493,7 @@ void BasePortalVis( int portalnum ){
 
 
 		w = tp->winding;
-		for ( k = 0 ; k < w->numpoints ; k++ )
+		for ( k = 0; k < w->numpoints; ++k )
 		{
 			if ( plane3_distance_to_point( p->plane, w->points[k] ) > ON_EPSILON ) {
 				break;
@@ -1545,7 +1504,7 @@ void BasePortalVis( int portalnum ){
 
 		}
 		w = p->winding;
-		for ( k = 0 ; k < w->numpoints ; k++ )
+		for ( k = 0; k < w->numpoints; ++k )
 		{
 			if ( plane3_distance_to_point( tp->plane, w->points[k] ) < -ON_EPSILON ) {
 				break;
@@ -1555,7 +1514,7 @@ void BasePortalVis( int portalnum ){
 			continue;   // no points on front
 
 		}
-		p->portalfront[j >> 3] |= ( 1 << ( j & 7 ) );
+		bit_enable( p->portalfront, j );
 	}
 
 	SimpleFlood( p, p->leaf );
@@ -1586,44 +1545,37 @@ void BasePortalVis( int portalnum ){
 
    ==================
  */
-void RecursiveLeafBitFlow( int leafnum, byte *mightsee, byte *cansee ){
-	vportal_t   *p;
-	leaf_t      *leaf;
-	int i, j;
-	long more;
-	int pnum;
+static void RecursiveLeafBitFlow( int leafnum, byte *mightsee, byte *cansee ){
 	byte newmight[MAX_PORTALS / 8];
 
-	leaf = &leafs[leafnum];
 
 	// check all portals for flowing into other leafs
-	for ( i = 0 ; i < leaf->numportals ; i++ )
+	for ( const vportal_t *p : Span( leafs[leafnum].portals, leafs[leafnum].numportals ) )
 	{
-		p = leaf->portals[i];
 		if ( p->removed ) {
 			continue;
 		}
-		pnum = p - portals;
+		const int pnum = p - portals;
 
 		// if some previous portal can't see it, skip
-		if ( !( mightsee[pnum >> 3] & ( 1 << ( pnum & 7 ) ) ) ) {
+		if ( !bit_is_enabled( mightsee, pnum ) ) {
 			continue;
 		}
 
 		// if this portal can see some portals we mightsee, recurse
-		more = 0;
-		for ( j = 0 ; j < portallongs ; j++ )
+		long more = 0;
+		for ( int i = 0; i < portallongs; ++i )
 		{
-			( (long *)newmight )[j] = ( (long *)mightsee )[j]
-			                          & ( (long *)p->portalflood )[j];
-			more |= ( (long *)newmight )[j] & ~( (long *)cansee )[j];
+			( (long *)newmight )[i] = ( (long *)mightsee )[i]
+			                          & ( (long *)p->portalflood )[i];
+			more |= ( (long *)newmight )[i] & ~( (long *)cansee )[i];
 		}
 
 		if ( !more ) {
 			continue;   // can't see anything new
 
 		}
-		cansee[pnum >> 3] |= ( 1 << ( pnum & 7 ) );
+		bit_enable( cansee, pnum );
 
 		RecursiveLeafBitFlow( p->leaf, newmight, cansee );
 	}

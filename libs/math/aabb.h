@@ -19,8 +19,7 @@
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#if !defined( INCLUDED_MATH_AABB_H )
-#define INCLUDED_MATH_AABB_H
+#pragma once
 
 /// \file
 /// \brief Axis-aligned bounding-box data types and related operations.
@@ -245,13 +244,7 @@ inline void aabb_planes_oriented( const AABB& aabb, const Matrix4& rotation, Pla
 	planes[5] = Plane3( -vector4_to_vector3( rotation.z() ), -( z - aabb.extents[2] ) );
 }
 
-#ifdef __GNUC__
-#define VARIABLE_IS_NOT_USED __attribute__ ((unused))
-#else
-#define VARIABLE_IS_NOT_USED
-#endif
-
-const Vector3 VARIABLE_IS_NOT_USED aabb_normals[6] = {
+const Vector3 aabb_normals[6] = {
 	Vector3( 1, 0, 0 ),
 	Vector3( 0, 1, 0 ),
 	Vector3( 0, 0, 1 ),
@@ -293,5 +286,3 @@ inline AABB aabb_for_oriented_aabb_safe( const AABB& aabb, const Matrix4& transf
 inline AABB aabb_infinite(){
 	return AABB( Vector3( 0, 0, 0 ), Vector3( c_aabb_max, c_aabb_max, c_aabb_max ) );
 }
-
-#endif

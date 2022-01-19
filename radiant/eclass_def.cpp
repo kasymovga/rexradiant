@@ -66,7 +66,7 @@ StaticRegisterModule staticRegisterEclassDef( StaticEclassDefModule::instance() 
 
 #include "string/string.h"
 
-#include <stdlib.h>
+#include <cstdlib>
 
 
 char com_token[1024];
@@ -235,7 +235,7 @@ EntityClass *Eclass_InitFromText( const char *text ){
 			return 0;
 		}
 
-		for ( int i = 0 ; i < 2 ; i++ )
+		for ( int i = 0; i < 2; i++ )
 		{
 			while ( *text != ')' )
 			{
@@ -262,7 +262,7 @@ EntityClass *Eclass_InitFromText( const char *text ){
 	{
 		// any remaining words are parm flags
 		const char* p = parms;
-		for ( std::size_t i = 0 ; i < MAX_FLAGS ; i++ )
+		for ( std::size_t i = 0; i < MAX_FLAGS; i++ )
 		{
 			p = COM_Parse( p );
 			if ( !p ) {

@@ -30,6 +30,7 @@
 
 /* dependencies */
 #include "q3map2.h"
+#include "timer.h"
 
 
 
@@ -346,8 +347,7 @@ static int MakeDecalProjector( shaderInfo_t *si, const Plane3f& projection, floa
 	}
 
 	/* return ok */
-	numProjectors++;
-	return numProjectors - 1;
+	return numProjectors++;
 }
 
 
@@ -359,8 +359,8 @@ static int MakeDecalProjector( shaderInfo_t *si, const Plane3f& projection, floa
 
 #define PLANAR_EPSILON  0.5f
 
-void ProcessDecals( void ){
-	int j, x, y, pw[ 5 ], r, iterations;
+void ProcessDecals(){
+	int x, y, pw[ 5 ], r, iterations;
 	float distance;
 	Plane3f projection, plane;
 	entity_t            *e2;
@@ -424,8 +424,8 @@ void ProcessDecals( void ){
 				FreeMesh( subdivided );
 
 				/* offset by projector origin */
-				for ( j = 0; j < ( mesh->width * mesh->height ); j++ )
-					mesh->verts[ j ].xyz += e.origin;
+				for ( bspDrawVert_t& vert : Span( mesh->verts, mesh->width * mesh->height ) )
+					vert.xyz += e.origin;
 
 				/* iterate through the mesh quads */
 				for ( y = 0; y < ( mesh->height - 1 ); y++ )
@@ -493,33 +493,29 @@ void ProcessDecals( void ){
    projects a decal onto a winding
  */
 
-static void ProjectDecalOntoWinding( decalProjector_t *dp, mapDrawSurface_t *ds, winding_t *w ){
+static void ProjectDecalOntoWinding( decalProjector_t *dp, mapDrawSurface_t *ds, winding_t& w ){
 	int i, j;
-	winding_t           *front, *back;
 	mapDrawSurface_t    *ds2;
 	bspDrawVert_t       *dv;
 	Plane3f plane;
 
 
 	/* dummy check */
-	if ( w->numpoints < 3 ) {
-		FreeWinding( w );
+	if ( w.size() < 3 ) {
 		return;
 	}
 
 	/* offset by entity origin */
-	for ( i = 0; i < w->numpoints; i++ )
-		w->p[ i ] += entityOrigin;
+	for ( Vector3& p : w )
+		p += entityOrigin;
 
 	/* make a plane from the winding */
-	if ( !PlaneFromPoints( plane, w->p[ 0 ], w->p[ 1 ], w->p[ 2 ] ) ) {
-		FreeWinding( w );
+	if ( !PlaneFromPoints( plane, w.data() ) ) {
 		return;
 	}
 
 	/* backface check */
 	if ( vector3_dot( dp->planes[ 0 ].normal(), plane.normal() ) < -0.0001f ) {
-		FreeWinding( w );
 		return;
 	}
 
@@ -527,25 +523,20 @@ static void ProjectDecalOntoWinding( decalProjector_t *dp, mapDrawSurface_t *ds,
 	for ( i = 0; i < dp->numPlanes; i++ )
 	{
 		/* chop winding by the plane */
-		ClipWindingEpsilonStrict( w, dp->planes[ i ], 0.0625f, &front, &back ); /* strict, if identical plane we don't want to keep it */
-		FreeWinding( w );
+		auto [front, back] = ClipWindingEpsilonStrict( w, dp->planes[ i ], 0.0625f ); /* strict, if identical plane we don't want to keep it */
 
 		/* lose the front fragment */
-		if ( front != NULL ) {
-			FreeWinding( front );
-		}
-
 		/* if nothing left in back, then bail */
-		if ( back == NULL ) {
+		if ( back.empty() ) {
 			return;
 		}
 
 		/* reset winding */
-		w = back;
+		w.swap( back );
 	}
 
 	/* nothing left? */
-	if ( w == NULL || w->numpoints < 3 ) {
+	if ( w.size() < 3 ) {
 		return;
 	}
 
@@ -563,7 +554,7 @@ static void ProjectDecalOntoWinding( decalProjector_t *dp, mapDrawSurface_t *ds,
 	ds2->fogNum = ds->fogNum;   /* why was this -1? */
 	ds2->lightmapScale = ds->lightmapScale;
 	ds2->shadeAngleDegrees = ds->shadeAngleDegrees;
-	ds2->numVerts = w->numpoints;
+	ds2->numVerts = w.size();
 	ds2->verts = safe_calloc( ds2->numVerts * sizeof( *ds2->verts ) );
 
 	/* set vertexes */
@@ -573,12 +564,12 @@ static void ProjectDecalOntoWinding( decalProjector_t *dp, mapDrawSurface_t *ds,
 		dv = &ds2->verts[ i ];
 
 		/* set alpha */
-		const float d = plane3_distance_to_point( dp->planes[ 0 ], w->p[ i ] );
-		const float d2 = plane3_distance_to_point( dp->planes[ 1 ], w->p[ i ] );
+		const float d = plane3_distance_to_point( dp->planes[ 0 ], w[ i ] );
+		const float d2 = plane3_distance_to_point( dp->planes[ 1 ], w[ i ] );
 		const float alpha = 255.0f * d2 / ( d + d2 );
 
 		/* set misc */
-		dv->xyz = w->p[ i ] - entityOrigin;
+		dv->xyz = w[ i ] - entityOrigin;
 		dv->normal = plane.normal();
 		dv->st[ 0 ] = vector3_dot( dv->xyz, dp->texMat[ 0 ].vec3() ) + dp->texMat[ 0 ][ 3 ];
 		dv->st[ 1 ] = vector3_dot( dv->xyz, dp->texMat[ 1 ].vec3() ) + dp->texMat[ 1 ][ 3 ];
@@ -606,15 +597,13 @@ static void ProjectDecalOntoFace( decalProjector_t *dp, mapDrawSurface_t *ds ){
 
 	/* backface check */
 	if ( ds->planar ) {
-		Plane3f plane = mapplanes[ ds->planeNum ].plane;
-		plane.dist() += vector3_dot( plane.normal(), entityOrigin );
-		if ( vector3_dot( dp->planes[ 0 ].normal(), plane.normal() ) < -0.0001f ) {
+		if ( vector3_dot( dp->planes[ 0 ].normal(), mapplanes[ ds->planeNum ].normal() ) < -0.0001f ) {
 			return;
 		}
 	}
 
 	/* generate decal */
-	winding_t *w = WindingFromDrawSurf( ds );
+	winding_t w = WindingFromDrawSurf( ds );
 	ProjectDecalOntoWinding( dp, ds, w );
 }
 
@@ -628,14 +617,11 @@ static void ProjectDecalOntoFace( decalProjector_t *dp, mapDrawSurface_t *ds ){
 static void ProjectDecalOntoPatch( decalProjector_t *dp, mapDrawSurface_t *ds ){
 	int x, y, pw[ 5 ], r, iterations;
 	mesh_t src, *mesh, *subdivided;
-	winding_t   *w;
 
 
 	/* backface check */
 	if ( ds->planar ) {
-		Plane3f plane = mapplanes[ ds->planeNum ].plane;
-		plane.dist() += vector3_dot( plane.normal(), entityOrigin );
-		if ( vector3_dot( dp->planes[ 0 ].normal(), plane.normal() ) < -0.0001f ) {
+		if ( vector3_dot( dp->planes[ 0 ].normal(), mapplanes[ ds->planeNum ].normal() ) < -0.0001f ) {
 			return;
 		}
 	}
@@ -668,20 +654,18 @@ static void ProjectDecalOntoPatch( decalProjector_t *dp, mapDrawSurface_t *ds ){
 			r = ( x + y ) & 1;
 
 			/* generate decal for first triangle */
-			w = AllocWinding( 3 );
-			w->numpoints = 3;
-			w->p[ 0 ] = mesh->verts[ pw[ r + 0 ] ].xyz;
-			w->p[ 1 ] = mesh->verts[ pw[ r + 1 ] ].xyz;
-			w->p[ 2 ] = mesh->verts[ pw[ r + 2 ] ].xyz;
+			winding_t w{
+				mesh->verts[ pw[ r + 0 ] ].xyz,
+				mesh->verts[ pw[ r + 1 ] ].xyz,
+				mesh->verts[ pw[ r + 2 ] ].xyz };
 			ProjectDecalOntoWinding( dp, ds, w );
 
 			/* generate decal for second triangle */
-			w = AllocWinding( 3 );
-			w->numpoints = 3;
-			w->p[ 0 ] = mesh->verts[ pw[ r + 0 ] ].xyz;
-			w->p[ 1 ] = mesh->verts[ pw[ r + 2 ] ].xyz;
-			w->p[ 2 ] = mesh->verts[ pw[ r + 3 ] ].xyz;
-			ProjectDecalOntoWinding( dp, ds, w );
+			winding_t w2{
+				mesh->verts[ pw[ r + 0 ] ].xyz,
+				mesh->verts[ pw[ r + 2 ] ].xyz,
+				mesh->verts[ pw[ r + 3 ] ].xyz };
+			ProjectDecalOntoWinding( dp, ds, w2 );
 		}
 	}
 
@@ -705,9 +689,7 @@ static void ProjectDecalOntoTriangles( decalProjector_t *dp, mapDrawSurface_t *d
 
 	/* backface check */
 	if ( ds->planar ) {
-		Plane3f plane = mapplanes[ ds->planeNum ].plane;
-		plane.dist() += vector3_dot( plane.normal(), entityOrigin );
-		if ( vector3_dot( dp->planes[ 0 ].normal(), plane.normal() ) < -0.0001f ) {
+		if ( vector3_dot( dp->planes[ 0 ].normal(), mapplanes[ ds->planeNum ].normal() ) < -0.0001f ) {
 			return;
 		}
 	}
@@ -716,11 +698,10 @@ static void ProjectDecalOntoTriangles( decalProjector_t *dp, mapDrawSurface_t *d
 	for ( int i = 0; i < ds->numIndexes; i += 3 )
 	{
 		/* generate decal */
-		winding_t *w = AllocWinding( 3 );
-		w->numpoints = 3;
-		w->p[ 0 ] = ds->verts[ ds->indexes[ i ] ].xyz;
-		w->p[ 1 ] = ds->verts[ ds->indexes[ i + 1 ] ].xyz;
-		w->p[ 2 ] = ds->verts[ ds->indexes[ i + 2 ] ].xyz;
+		winding_t w{
+			ds->verts[ ds->indexes[ i + 0 ] ].xyz,
+			ds->verts[ ds->indexes[ i + 1 ] ].xyz,
+			ds->verts[ ds->indexes[ i + 2 ] ].xyz };
 		ProjectDecalOntoWinding( dp, ds, w );
 	}
 }
@@ -732,8 +713,8 @@ static void ProjectDecalOntoTriangles( decalProjector_t *dp, mapDrawSurface_t *d
    projects decals onto world surfaces
  */
 
-void MakeEntityDecals( entity_t *e ){
-	int i, j, f, fOld, start;
+void MakeEntityDecals( const entity_t& e ){
+	int i, j, fOld;
 	decalProjector_t dp;
 	mapDrawSurface_t    *ds;
 
@@ -746,23 +727,22 @@ void MakeEntityDecals( entity_t *e ){
 
 	/* init pacifier */
 	fOld = -1;
-	start = I_FloatTime();
+	Timer timer;
 
 	/* walk the list of decal projectors */
 	for ( i = 0; i < numProjectors; i++ )
 	{
 		/* print pacifier */
-		f = 10 * i / numProjectors;
-		if ( f != fOld ) {
+		if ( const int f = 10 * i / numProjectors; f != fOld ) {
 			fOld = f;
 			Sys_FPrintf( SYS_VRB, "%d...", f );
 		}
 
 		/* get projector */
-		TransformDecalProjector( &projectors[ i ], g_vector3_axes, e->origin, &dp );
+		TransformDecalProjector( &projectors[ i ], g_vector3_axes, e.origin, &dp );
 
 		/* walk the list of surfaces in the entity */
-		for ( j = e->firstDrawSurf; j < numMapDrawSurfs; j++ )
+		for ( j = e.firstDrawSurf; j < numMapDrawSurfs; ++j )
 		{
 			/* get surface */
 			ds = &mapDrawSurfs[ j ];
@@ -804,7 +784,7 @@ void MakeEntityDecals( entity_t *e ){
 	}
 
 	/* print time */
-	Sys_FPrintf( SYS_VRB, " (%d)\n", (int) ( I_FloatTime() - start ) );
+	Sys_FPrintf( SYS_VRB, " (%d)\n", int( timer.elapsed_sec() ) );
 
 	/* emit some stats */
 	Sys_FPrintf( SYS_VRB, "%9d decal surfaces\n", numDecalSurfaces );

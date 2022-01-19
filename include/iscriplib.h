@@ -19,8 +19,7 @@
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#if !defined( INCLUDED_ISCRIPLIB_H )
-#define INCLUDED_ISCRIPLIB_H
+#pragma once
 
 /// \file iscriplib.h
 /// \brief Token input/output stream module.
@@ -39,7 +38,7 @@ public:
 	virtual void ungetToken() = 0;
 	virtual std::size_t getLine() const = 0;
 	virtual std::size_t getColumn() const = 0;
-	virtual bool bufferContains( const char* str ) = 0;
+	virtual bool bufferContains( const char* str ) const = 0;
 };
 
 class TextInputStream;
@@ -81,5 +80,3 @@ typedef GlobalModuleRef<_QERScripLibTable> GlobalScripLibModuleRef;
 inline _QERScripLibTable& GlobalScriptLibrary(){
 	return GlobalScripLibModule::getTable();
 }
-
-#endif

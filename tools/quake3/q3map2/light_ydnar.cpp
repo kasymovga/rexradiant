@@ -30,6 +30,7 @@
 
 /* dependencies */
 #include "q3map2.h"
+#include "timer.h"
 
 
 // http://www.graficaobscura.com/matrix/index.html
@@ -156,11 +157,12 @@ Vector3b ColorToBytes( const Vector3& color, float scale ){
 #define THETA_EPSILON           0.000001
 #define EQUAL_NORMAL_EPSILON    0.01f
 
-void SmoothNormals( void ){
-	int i, j, k, f, fOld, start;
+void SmoothNormals(){
+	int fOld;
 	float shadeAngle, defaultShadeAngle, maxShadeAngle;
 	int indexes[ MAX_SAMPLES ];
 	Vector3 votes[ MAX_SAMPLES ];
+	const int numBSPDrawVerts = bspDrawVerts.size();
 
 
 	/* allocate shade angle table */
@@ -175,7 +177,7 @@ void SmoothNormals( void ){
 
 	/* run through every surface and flag verts belonging to non-lightmapped surfaces
 	   and set per-vertex smoothing angle */
-	for ( i = 0; i < numBSPDrawSurfaces; i++ )
+	for ( size_t i = 0; i < bspDrawSurfaces.size(); ++i )
 	{
 		/* get drawsurf */
 		bspDrawSurface_t& ds = bspDrawSurfaces[ i ];
@@ -191,9 +193,9 @@ void SmoothNormals( void ){
 		value_maximize( maxShadeAngle, shadeAngle );
 
 		/* flag its verts */
-		for ( j = 0; j < ds.numVerts; j++ )
+		for ( int j = 0; j < ds.numVerts; j++ )
 		{
-			f = ds.firstVert + j;
+			const int f = ds.firstVert + j;
 			shadeAngles[ f ] = shadeAngle;
 			if ( ds.surfaceType == MST_TRIANGLE_SOUP ) {
 				smoothed[ f ] = true;
@@ -214,14 +216,13 @@ void SmoothNormals( void ){
 
 	/* init pacifier */
 	fOld = -1;
-	start = I_FloatTime();
+	Timer timer;
 
 	/* go through the list of vertexes */
-	for ( i = 0; i < numBSPDrawVerts; i++ )
+	for ( int i = 0; i < numBSPDrawVerts; i++ )
 	{
 		/* print pacifier */
-		f = 10 * i / numBSPDrawVerts;
-		if ( f != fOld ) {
+		if ( const int f = 10 * i / numBSPDrawVerts; f != fOld ) {
 			fOld = f;
 			Sys_Printf( "%i...", f );
 		}
@@ -237,7 +238,7 @@ void SmoothNormals( void ){
 		int numVotes = 0;
 
 		/* build a table of coincident vertexes */
-		for ( j = i; j < numBSPDrawVerts && numVerts < MAX_SAMPLES; j++ )
+		for ( int j = i; j < numBSPDrawVerts && numVerts < MAX_SAMPLES; j++ )
 		{
 			/* already smoothed? */
 			if ( smoothed[ j ] ) {
@@ -267,6 +268,7 @@ void SmoothNormals( void ){
 			smoothed[ j ] = true;
 
 			/* see if this normal has already been voted */
+			int k;
 			for ( k = 0; k < numVotes; k++ )
 			{
 				if ( vector3_equal_epsilon( bspDrawVerts[ j ].normal, votes[ k ], EQUAL_NORMAL_EPSILON ) ) {
@@ -290,13 +292,292 @@ void SmoothNormals( void ){
 		/* average normal */
 		if ( VectorNormalize( average ) != 0 ) {
 			/* smooth */
-			for ( j = 0; j < numVerts; j++ )
+			for ( int j = 0; j < numVerts; j++ )
 				yDrawVerts[ indexes[ j ] ].normal = average;
 		}
 	}
 
 	/* print time */
-	Sys_Printf( " (%i)\n", (int) ( I_FloatTime() - start ) );
+	Sys_Printf( " (%i)\n", int( timer.elapsed_sec() ) );
+}
+
+
+
+/* ------------------------------------------------------------------------------- */
+
+/*
+   ClusterVisible()
+   determines if two clusters are visible to each other using the PVS
+ */
+
+bool ClusterVisible( int a, int b ){
+	/* dummy check */
+	if ( a < 0 || b < 0 ) {
+		return false;
+	}
+
+	/* early out */
+	if ( a == b ) {
+		return true;
+	}
+
+	/* not vised? */
+	if ( bspVisBytes.size() <= 8 ) {
+		return true;
+	}
+
+	/* get pvs data */
+	/* portalClusters = ((int *) bspVisBytes)[ 0 ]; */
+	const int leafBytes = ( (int*) bspVisBytes.data() )[ 1 ];
+	const byte *pvs = bspVisBytes.data() + VIS_HEADER_SIZE + ( a * leafBytes );
+
+	/* check */
+	return bit_is_enabled( pvs, b );
+}
+
+
+
+/*
+   PointInLeafNum_r()
+   borrowed from vlight.c
+ */
+
+static int PointInLeafNum_r( const Vector3& point, int nodenum ){
+	int leafnum;
+
+	while ( nodenum >= 0 )
+	{
+		const bspNode_t& node = bspNodes[ nodenum ];
+		const bspPlane_t& plane = bspPlanes[ node.planeNum ];
+		const double dist = plane3_distance_to_point( plane, point );
+		if ( dist > 0.1 ) {
+			nodenum = node.children[ 0 ];
+		}
+		else if ( dist < -0.1 ) {
+			nodenum = node.children[ 1 ];
+		}
+		else
+		{
+			leafnum = PointInLeafNum_r( point, node.children[ 0 ] );
+			if ( bspLeafs[ leafnum ].cluster != -1 ) {
+				return leafnum;
+			}
+			nodenum = node.children[ 1 ];
+		}
+	}
+
+	leafnum = -nodenum - 1;
+	return leafnum;
+}
+
+
+
+/*
+   PointInLeafnum()
+   borrowed from vlight.c
+ */
+
+static int PointInLeafNum( const Vector3& point ){
+	return PointInLeafNum_r( point, 0 );
+}
+
+
+
+/*
+   ClusterForPoint() - ydnar
+   returns the pvs cluster for point
+ */
+
+static int ClusterForPoint( const Vector3& point ){
+	int leafNum;
+
+
+	/* get leafNum for point */
+	leafNum = PointInLeafNum( point );
+	if ( leafNum < 0 ) {
+		return -1;
+	}
+
+	/* return the cluster */
+	return bspLeafs[ leafNum ].cluster;
+}
+
+
+
+/*
+   ClusterVisibleToPoint() - ydnar
+   returns true if point can "see" cluster
+ */
+
+static bool ClusterVisibleToPoint( const Vector3& point, int cluster ){
+	int pointCluster;
+
+
+	/* get leafNum for point */
+	pointCluster = ClusterForPoint( point );
+	if ( pointCluster < 0 ) {
+		return false;
+	}
+
+	/* check pvs */
+	return ClusterVisible( pointCluster, cluster );
+}
+
+
+
+/*
+   ClusterForPointExt() - ydnar
+   also takes brushes into account for occlusion testing
+ */
+
+int ClusterForPointExt( const Vector3& point, float epsilon ){
+	/* get leaf for point */
+	const int leafNum = PointInLeafNum( point );
+	if ( leafNum < 0 ) {
+		return -1;
+	}
+	const bspLeaf_t& leaf = bspLeafs[ leafNum ];
+
+	/* get the cluster */
+	const int cluster = leaf.cluster;
+	if ( cluster < 0 ) {
+		return -1;
+	}
+
+	/* transparent leaf, so check point against all brushes in the leaf */
+	const int *brushes = &bspLeafBrushes[ leaf.firstBSPLeafBrush ];
+	const int numBSPBrushes = leaf.numBSPLeafBrushes;
+	for ( int i = 0; i < numBSPBrushes; i++ )
+	{
+		/* get parts */
+		const int b = brushes[ i ];
+		if ( b > maxOpaqueBrush ) {
+			continue;
+		}
+		if ( !opaqueBrushes[ b ] ) {
+			continue;
+		}
+
+		const bspBrush_t& brush = bspBrushes[ b ];
+		/* check point against all planes */
+		bool inside = true;
+		for ( int j = 0; j < brush.numSides && inside; j++ )
+		{
+			const bspPlane_t& plane = bspPlanes[ bspBrushSides[ brush.firstSide + j ].planeNum ];
+			if ( plane3_distance_to_point( plane, point ) > epsilon ) {
+				inside = false;
+			}
+		}
+
+		/* if inside, return bogus cluster */
+		if ( inside ) {
+			return -1 - b;
+		}
+	}
+
+	/* if the point made it this far, it's not inside any opaque brushes */
+	return cluster;
+}
+
+
+
+/*
+   ClusterForPointExtFilter() - ydnar
+   adds cluster checking against a list of known valid clusters
+ */
+
+static int ClusterForPointExtFilter( const Vector3& point, float epsilon, int numClusters, int *clusters ){
+	int i, cluster;
+
+
+	/* get cluster for point */
+	cluster = ClusterForPointExt( point, epsilon );
+
+	/* check if filtering is necessary */
+	if ( cluster < 0 || numClusters <= 0 || clusters == NULL ) {
+		return cluster;
+	}
+
+	/* filter */
+	for ( i = 0; i < numClusters; i++ )
+	{
+		if ( cluster == clusters[ i ] || ClusterVisible( cluster, clusters[ i ] ) ) {
+			return cluster;
+		}
+	}
+
+	/* failed */
+	return -1;
+}
+
+
+
+/*
+   ShaderForPointInLeaf() - ydnar
+   checks a point against all brushes in a leaf, returning the shader of the brush
+   also sets the cumulative surface and content flags for the brush hit
+ */
+
+static int ShaderForPointInLeaf( const Vector3& point, int leafNum, float epsilon, int wantContentFlags, int wantSurfaceFlags, int *contentFlags, int *surfaceFlags ){
+	int allSurfaceFlags, allContentFlags;
+
+
+	/* clear things out first */
+	*surfaceFlags = 0;
+	*contentFlags = 0;
+
+	/* get leaf */
+	if ( leafNum < 0 ) {
+		return -1;
+	}
+	const bspLeaf_t& leaf = bspLeafs[ leafNum ];
+
+	/* transparent leaf, so check point against all brushes in the leaf */
+	const int *brushes = &bspLeafBrushes[ leaf.firstBSPLeafBrush ];
+	const int numBSPBrushes = leaf.numBSPLeafBrushes;
+	for ( int i = 0; i < numBSPBrushes; i++ )
+	{
+		/* get parts */
+		const bspBrush_t& brush = bspBrushes[ brushes[ i ] ];
+
+		/* check point against all planes */
+		bool inside = true;
+		allSurfaceFlags = 0;
+		allContentFlags = 0;
+		for ( int j = 0; j < brush.numSides && inside; j++ )
+		{
+			const bspBrushSide_t& side = bspBrushSides[ brush.firstSide + j ];
+			const bspPlane_t& plane = bspPlanes[ side.planeNum ];
+			if ( plane3_distance_to_point( plane, point ) > epsilon ) {
+				inside = false;
+			}
+			else
+			{
+				const bspShader_t& shader = bspShaders[ side.shaderNum ];
+				allSurfaceFlags |= shader.surfaceFlags;
+				allContentFlags |= shader.contentFlags;
+			}
+		}
+
+		/* handle if inside */
+		if ( inside ) {
+			/* if there are desired flags, check for same and continue if they aren't matched */
+			if ( wantContentFlags && !( wantContentFlags & allContentFlags ) ) {
+				continue;
+			}
+			if ( wantSurfaceFlags && !( wantSurfaceFlags & allSurfaceFlags ) ) {
+				continue;
+			}
+
+			/* store the cumulative flags and return the brush shader (which is mostly useless) */
+			*surfaceFlags = allSurfaceFlags;
+			*contentFlags = allContentFlags;
+			return brush.shaderNum;
+		}
+	}
+
+	/* if the point made it this far, it's not inside any brushes */
+	return -1;
 }
 
 
@@ -374,7 +655,7 @@ static bool CalcTangentVectors( int numVerts, bspDrawVert_t **dv, Vector3 *stv, 
    perterbs the normal by the shader's normalmap in tangent space
  */
 
-static void PerturbNormal( bspDrawVert_t *dv, shaderInfo_t *si, Vector3& pNormal, const Vector3 stv[ 3 ], const Vector3 ttv[ 3 ] ){
+static void PerturbNormal( bspDrawVert_t *dv, const shaderInfo_t *si, Vector3& pNormal, const Vector3 stv[ 3 ], const Vector3 ttv[ 3 ] ){
 	/* passthrough */
 	pNormal = dv->normal;
 
@@ -407,7 +688,7 @@ static void PerturbNormal( bspDrawVert_t *dv, shaderInfo_t *si, Vector3& pNormal
 static int MapSingleLuxel( rawLightmap_t *lm, surfaceInfo_t *info, bspDrawVert_t *dv, const Plane3f* plane, float pass, const Vector3 stv[ 3 ], const Vector3 ttv[ 3 ], const Vector3 worldverts[ 3 ] ){
 	int i, numClusters, *clusters, pointCluster;
 	float           lightmapSampleOffset;
-	shaderInfo_t    *si;
+	const shaderInfo_t    *si;
 	Vector3 pNormal;
 	Vector3 vecs[ 3 ];
 	Vector3 nudged;
@@ -973,7 +1254,7 @@ void MapRawLightmap( int rawLightmapNum ){
 		{
 		case MST_PLANAR:
 			/* get verts */
-			verts = yDrawVerts + ds->firstVert;
+			verts = &yDrawVerts[ ds->firstVert ];
 
 			/* map the triangles */
 			for ( mapNonAxial = 0; mapNonAxial < 2; mapNonAxial++ )
@@ -1151,7 +1432,7 @@ void MapRawLightmap( int rawLightmapNum ){
 				/* divine a normal and origin from neighboring luxels */
 				fake.xyz.set( 0 );
 				fake.normal.set( 0 );
-				fake.lightmap[ 0 ] = { x, y };    //% 0.0001 + x; //% 0.0001 + y;
+				fake.lightmap[ 0 ] = Vector2( x, y );    //% 0.0001 + x; //% 0.0001 + y;
 				samples = 0.0f;
 				for ( sy = ( y - 1 ); sy <= ( y + 1 ); sy++ )
 				{
@@ -1283,7 +1564,7 @@ void MapRawLightmap( int rawLightmapNum ){
 static Vector3 dirtVectors[ DIRT_NUM_VECTORS ];
 static int numDirtVectors = 0;
 
-void SetupDirt( void ){
+void SetupDirt(){
 	int i, j;
 	float angle, elevation, angleStep, elevationStep;
 
@@ -1319,7 +1600,7 @@ void SetupDirt( void ){
    calculates dirt value for a given sample
  */
 
-float DirtForSample( trace_t *trace ){
+static float DirtForSample( trace_t *trace ){
 	int i;
 	float gatherDirt, outDirt, angle, elevation, ooDepth;
 	Vector3 myUp, myRt;
@@ -1825,9 +2106,156 @@ static void RandomSubsampleRawLuxel( rawLightmap_t *lm, trace_t *trace, const Ve
 
 
 /*
+   CreateTraceLightsForBounds()
+   creates a list of lights that affect the given bounding box and pvs clusters (bsp leaves)
+ */
+
+static void CreateTraceLightsForBounds( const MinMax& minmax, const Vector3 *normal, int numClusters, int *clusters, LightFlags flags, trace_t *trace ){
+	int i;
+	float length;
+
+
+	/* debug code */
+	//% Sys_Printf( "CTWLFB: (%4.1f %4.1f %4.1f) (%4.1f %4.1f %4.1f)\n", minmax.mins[ 0 ], minmax.mins[ 1 ], minmax.mins[ 2 ], minmax.maxs[ 0 ], minmax.maxs[ 1 ], minmax.maxs[ 2 ] );
+
+	/* allocate the light list */
+	trace->lights = safe_malloc( sizeof( light_t* ) * ( lights.size() + 1 ) );
+	trace->numLights = 0;
+
+	/* calculate spherical bounds */
+	const Vector3 origin = minmax.origin();
+	const float radius = vector3_length( minmax.maxs - origin );
+
+	/* get length of normal vector */
+	if ( normal != NULL ) {
+		length = vector3_length( *normal );
+	}
+	else
+	{
+		normal = &g_vector3_identity;
+		length = 0;
+	}
+
+	/* test each light and see if it reaches the sphere */
+	/* note: the attenuation code MUST match LightingAtSample() */
+	for ( const light_t& light : lights )
+	{
+		/* check zero sized envelope */
+		if ( light.envelope <= 0 ) {
+			lightsEnvelopeCulled++;
+			continue;
+		}
+
+		/* check flags */
+		if ( !( light.flags & flags ) ) {
+			continue;
+		}
+
+		/* sunlight skips all this nonsense */
+		if ( light.type != ELightType::Sun ) {
+			/* sun only? */
+			if ( sunOnly ) {
+				continue;
+			}
+
+			/* check against pvs cluster */
+			if ( numClusters > 0 && clusters != NULL ) {
+				for ( i = 0; i < numClusters; i++ )
+				{
+					if ( ClusterVisible( light.cluster, clusters[ i ] ) ) {
+						break;
+					}
+				}
+
+				/* fixme! */
+				if ( i == numClusters ) {
+					lightsClusterCulled++;
+					continue;
+				}
+			}
+
+			/* if the light's bounding sphere intersects with the bounding sphere then this light needs to be tested */
+			if ( vector3_length( light.origin - origin ) - light.envelope - radius > 0 ) {
+				lightsEnvelopeCulled++;
+				continue;
+			}
+
+			/* check bounding box against light's pvs envelope (note: this code never eliminated any lights, so disabling it) */
+			#if 0
+			if( !minmax.test( light.minmax ) ){
+				lightsBoundsCulled++;
+				continue;
+			}
+			#endif
+		}
+
+		/* planar surfaces (except twosided surfaces) have a couple more checks */
+		if ( length > 0.0f && !trace->twoSided ) {
+			/* lights coplanar with a surface won't light it */
+			if ( !( light.flags & LightFlags::Twosided ) && vector3_dot( light.normal, *normal ) > 0.999f ) {
+				lightsPlaneCulled++;
+				continue;
+			}
+
+			/* check to see if light is behind the plane */
+			if ( vector3_dot( light.origin, *normal ) - vector3_dot( origin, *normal ) < -1.0f ) {
+				lightsPlaneCulled++;
+				continue;
+			}
+		}
+
+		/* add this light */
+		trace->lights[ trace->numLights++ ] = &light;
+	}
+
+	/* make last night null */
+	trace->lights[ trace->numLights ] = NULL;
+}
+
+
+
+/*
+   CreateTraceLightsForSurface()
+   creates a list of lights that can potentially affect a drawsurface
+ */
+
+static void CreateTraceLightsForSurface( int num, trace_t *trace ){
+	/* dummy check */
+	if ( num < 0 ) {
+		return;
+	}
+
+	/* get drawsurface and info */
+	const bspDrawSurface_t& ds = bspDrawSurfaces[ num ];
+	const surfaceInfo_t& info = surfaceInfos[ num ];
+
+	/* get the mins/maxs for the dsurf */
+	MinMax minmax;
+	Vector3 normal = bspDrawVerts[ ds.firstVert ].normal;
+	for ( int i = 0; i < ds.numVerts; i++ )
+	{
+		const bspDrawVert_t& dv = yDrawVerts[ ds.firstVert + i ];
+		minmax.extend( dv.xyz );
+		if ( !VectorCompare( dv.normal, normal ) ) {
+			normal.set( 0 );
+		}
+	}
+
+	/* create the lights for the bounding box */
+	CreateTraceLightsForBounds( minmax, &normal, info.numSurfaceClusters, &surfaceClusters[ info.firstSurfaceCluster ], LightFlags::Surfaces, trace );
+}
+
+inline void FreeTraceLights( trace_t *trace ){
+	free( trace->lights );
+}
+
+
+
+/*
    IlluminateRawLightmap()
    illuminates the luxels
  */
+static void FloodlightIlluminateLightmap( rawLightmap_t *lm );
 
 void IlluminateRawLightmap( int rawLightmapNum ){
 	int i, t, x, y, sx, sy, size, luxelFilterRadius, lightmapNum;
@@ -2563,7 +2991,7 @@ void IlluminateVertexes( int num ){
 	int i, x, y, z, x1, y1, z1, sx, sy, radius, maxRadius;
 	int lightmapNum, numAvg;
 	float samples, dirt;
-	Vector3 origin, colors[ MAX_LIGHTMAPS ], avgColors[ MAX_LIGHTMAPS ];
+	Vector3 colors[ MAX_LIGHTMAPS ], avgColors[ MAX_LIGHTMAPS ];
 	bspDrawSurface_t    *ds;
 	surfaceInfo_t       *info;
 	rawLightmap_t       *lm;
@@ -2599,7 +3027,7 @@ void IlluminateVertexes( int num ){
 		CreateTraceLightsForSurface( num, &trace );
 
 		/* setup */
-		verts = yDrawVerts + ds->firstVert;
+		verts = &yDrawVerts[ ds->firstVert ];
 		numAvg = 0;
 		memset( avgColors, 0, sizeof( avgColors ) );
 
@@ -2617,7 +3045,7 @@ void IlluminateVertexes( int num ){
 			/* color the luxel with luxel origin? */
 			else if ( debugOrigin ) {
 				const Vector3 temp = ( info->minmax.maxs - info->minmax.mins ) * ( 1.0f / 255.0f );
-				const Vector3 temp2 = origin - lm->minmax.mins;
+				const Vector3 temp2 = verts[ i ].xyz - info->minmax.mins;
 				radVertLuxel = info->minmax.mins + ( temp * temp2 );
 			}
 
@@ -2704,7 +3132,7 @@ void IlluminateVertexes( int num ){
 								trace.origin = verts[ i ].xyz + Vector3( x1, y1, z1 ) * VERTEX_NUDGE;
 
 								/* try at nudged origin */
-								trace.cluster = ClusterForPointExtFilter( origin, VERTEX_EPSILON, info->numSurfaceClusters, &surfaceClusters[ info->firstSurfaceCluster ] );
+								trace.cluster = ClusterForPointExtFilter( trace.origin, VERTEX_EPSILON, info->numSurfaceClusters, &surfaceClusters[ info->firstSurfaceCluster ] );
 								if ( trace.cluster < 0 ) {
 									continue;
 								}
@@ -2824,7 +3252,7 @@ void IlluminateVertexes( int num ){
 	maxRadius = std::max( lm->sw, lm->sh );
 
 	/* walk the surface verts */
-	verts = yDrawVerts + ds->firstVert;
+	verts = &yDrawVerts[ ds->firstVert ];
 	for ( i = 0; i < ds->numVerts; i++ )
 	{
 		/* do each lightmap */
@@ -2938,44 +3366,33 @@ void IlluminateVertexes( int num ){
  */
 
 void SetupBrushesFlags( int mask_any, int test_any, int mask_all, int test_all ){
-	int i, j, b;
 	int compileFlags, allCompileFlags;
-	bspBrush_t      *brush;
-	bspBrushSide_t  *side;
-	bspShader_t     *shader;
-	shaderInfo_t    *si;
 
 
 	/* note it */
 	Sys_FPrintf( SYS_VRB, "--- SetupBrushes ---\n" );
 
-	/* allocate */
-	if ( opaqueBrushes == NULL ) {
-		opaqueBrushes = safe_malloc( numBSPBrushes / 8 + 1 );
-	}
-
 	/* clear */
-	memset( opaqueBrushes, 0, numBSPBrushes / 8 + 1 );
-	numOpaqueBrushes = 0;
+	opaqueBrushes = decltype( opaqueBrushes )( bspBrushes.size(), false );
+	int numOpaqueBrushes = 0;
 
 	/* walk the list of worldspawn brushes */
-	for ( i = 0; i < bspModels[ 0 ].numBSPBrushes; i++ )
+	for ( int i = 0; i < bspModels[ 0 ].numBSPBrushes; i++ )
 	{
 		/* get brush */
-		b = bspModels[ 0 ].firstBSPBrush + i;
-		brush = &bspBrushes[ b ];
+		const int b = bspModels[ 0 ].firstBSPBrush + i;
+		const bspBrush_t& brush = bspBrushes[ b ];
 
 		/* check all sides */
 		compileFlags = 0;
 		allCompileFlags = ~( 0 );
-		for ( j = 0; j < brush->numSides; j++ )
+		for ( int j = 0; j < brush.numSides; j++ )
 		{
 			/* do bsp shader calculations */
-			side = &bspBrushSides[ brush->firstSide + j ];
-			shader = &bspShaders[ side->shaderNum ];
+			const bspBrushSide_t& side = bspBrushSides[ brush.firstSide + j ];
 
 			/* get shader info */
-			si = ShaderInfoForShaderNull( shader->shader );
+			const shaderInfo_t *si = ShaderInfoForShaderNull( bspShaders[ side.shaderNum ].shader );
 			if ( si == NULL ) {
 				continue;
 			}
@@ -2987,7 +3404,7 @@ void SetupBrushesFlags( int mask_any, int test_any, int mask_all, int test_all )
 
 		/* determine if this brush is opaque to light */
 		if ( ( compileFlags & mask_any ) == test_any && ( allCompileFlags & mask_all ) == test_all ) {
-			opaqueBrushes[ b >> 3 ] |= ( 1 << ( b & 7 ) );
+			opaqueBrushes[ b ] = true;
 			numOpaqueBrushes++;
 			maxOpaqueBrush = i;
 		}
@@ -2996,306 +3413,8 @@ void SetupBrushesFlags( int mask_any, int test_any, int mask_all, int test_all )
 	/* emit some statistics */
 	Sys_FPrintf( SYS_VRB, "%9d opaque brushes\n", numOpaqueBrushes );
 }
-void SetupBrushes( void ){
+void SetupBrushes(){
 	SetupBrushesFlags( C_TRANSLUCENT, 0, 0, 0 );
-}
-
-
-
-/*
-   ClusterVisible()
-   determines if two clusters are visible to each other using the PVS
- */
-
-bool ClusterVisible( int a, int b ){
-	int leafBytes;
-	byte        *pvs;
-
-
-	/* dummy check */
-	if ( a < 0 || b < 0 ) {
-		return false;
-	}
-
-	/* early out */
-	if ( a == b ) {
-		return true;
-	}
-
-	/* not vised? */
-	if ( numBSPVisBytes <= 8 ) {
-		return true;
-	}
-
-	/* get pvs data */
-	/* portalClusters = ((int *) bspVisBytes)[ 0 ]; */
-	leafBytes = ( (int*) bspVisBytes )[ 1 ];
-	pvs = bspVisBytes + VIS_HEADER_SIZE + ( a * leafBytes );
-
-	/* check */
-	if ( ( pvs[ b >> 3 ] & ( 1 << ( b & 7 ) ) ) ) {
-		return true;
-	}
-	return false;
-}
-
-
-
-/*
-   PointInLeafNum_r()
-   borrowed from vlight.c
- */
-
-int PointInLeafNum_r( const Vector3& point, int nodenum ){
-	int leafnum;
-
-	while ( nodenum >= 0 )
-	{
-		const bspNode_t& node = bspNodes[ nodenum ];
-		const bspPlane_t& plane = bspPlanes[ node.planeNum ];
-		const double dist = plane3_distance_to_point( plane, point );
-		if ( dist > 0.1 ) {
-			nodenum = node.children[ 0 ];
-		}
-		else if ( dist < -0.1 ) {
-			nodenum = node.children[ 1 ];
-		}
-		else
-		{
-			leafnum = PointInLeafNum_r( point, node.children[ 0 ] );
-			if ( bspLeafs[ leafnum ].cluster != -1 ) {
-				return leafnum;
-			}
-			nodenum = node.children[ 1 ];
-		}
-	}
-
-	leafnum = -nodenum - 1;
-	return leafnum;
-}
-
-
-
-/*
-   PointInLeafnum()
-   borrowed from vlight.c
- */
-
-int PointInLeafNum( const Vector3& point ){
-	return PointInLeafNum_r( point, 0 );
-}
-
-
-
-/*
-   ClusterVisibleToPoint() - ydnar
-   returns true if point can "see" cluster
- */
-
-bool ClusterVisibleToPoint( const Vector3& point, int cluster ){
-	int pointCluster;
-
-
-	/* get leafNum for point */
-	pointCluster = ClusterForPoint( point );
-	if ( pointCluster < 0 ) {
-		return false;
-	}
-
-	/* check pvs */
-	return ClusterVisible( pointCluster, cluster );
-}
-
-
-
-/*
-   ClusterForPoint() - ydnar
-   returns the pvs cluster for point
- */
-
-int ClusterForPoint( const Vector3& point ){
-	int leafNum;
-
-
-	/* get leafNum for point */
-	leafNum = PointInLeafNum( point );
-	if ( leafNum < 0 ) {
-		return -1;
-	}
-
-	/* return the cluster */
-	return bspLeafs[ leafNum ].cluster;
-}
-
-
-
-/*
-   ClusterForPointExt() - ydnar
-   also takes brushes into account for occlusion testing
- */
-
-int ClusterForPointExt( const Vector3& point, float epsilon ){
-	int i, j, b, leafNum, cluster;
-	bool inside;
-	int             *brushes, numBSPBrushes;
-	bspLeaf_t       *leaf;
-	bspBrush_t      *brush;
-
-
-	/* get leaf for point */
-	leafNum = PointInLeafNum( point );
-	if ( leafNum < 0 ) {
-		return -1;
-	}
-	leaf = &bspLeafs[ leafNum ];
-
-	/* get the cluster */
-	cluster = leaf->cluster;
-	if ( cluster < 0 ) {
-		return -1;
-	}
-
-	/* transparent leaf, so check point against all brushes in the leaf */
-	brushes = &bspLeafBrushes[ leaf->firstBSPLeafBrush ];
-	numBSPBrushes = leaf->numBSPLeafBrushes;
-	for ( i = 0; i < numBSPBrushes; i++ )
-	{
-		/* get parts */
-		b = brushes[ i ];
-		if ( b > maxOpaqueBrush ) {
-			continue;
-		}
-		brush = &bspBrushes[ b ];
-		if ( !( opaqueBrushes[ b >> 3 ] & ( 1 << ( b & 7 ) ) ) ) {
-			continue;
-		}
-
-		/* check point against all planes */
-		inside = true;
-		for ( j = 0; j < brush->numSides && inside; j++ )
-		{
-			const bspPlane_t& plane = bspPlanes[ bspBrushSides[ brush->firstSide + j ].planeNum ];
-			if ( plane3_distance_to_point( plane, point ) > epsilon ) {
-				inside = false;
-			}
-		}
-
-		/* if inside, return bogus cluster */
-		if ( inside ) {
-			return -1 - b;
-		}
-	}
-
-	/* if the point made it this far, it's not inside any opaque brushes */
-	return cluster;
-}
-
-
-
-/*
-   ClusterForPointExtFilter() - ydnar
-   adds cluster checking against a list of known valid clusters
- */
-
-int ClusterForPointExtFilter( const Vector3& point, float epsilon, int numClusters, int *clusters ){
-	int i, cluster;
-
-
-	/* get cluster for point */
-	cluster = ClusterForPointExt( point, epsilon );
-
-	/* check if filtering is necessary */
-	if ( cluster < 0 || numClusters <= 0 || clusters == NULL ) {
-		return cluster;
-	}
-
-	/* filter */
-	for ( i = 0; i < numClusters; i++ )
-	{
-		if ( cluster == clusters[ i ] || ClusterVisible( cluster, clusters[ i ] ) ) {
-			return cluster;
-		}
-	}
-
-	/* failed */
-	return -1;
-}
-
-
-
-/*
-   ShaderForPointInLeaf() - ydnar
-   checks a point against all brushes in a leaf, returning the shader of the brush
-   also sets the cumulative surface and content flags for the brush hit
- */
-
-int ShaderForPointInLeaf( const Vector3& point, int leafNum, float epsilon, int wantContentFlags, int wantSurfaceFlags, int *contentFlags, int *surfaceFlags ){
-	int i, j;
-	bool inside;
-	int             *brushes, numBSPBrushes;
-	bspLeaf_t           *leaf;
-	bspBrush_t      *brush;
-	bspBrushSide_t  *side;
-	bspShader_t     *shader;
-	int allSurfaceFlags, allContentFlags;
-
-
-	/* clear things out first */
-	*surfaceFlags = 0;
-	*contentFlags = 0;
-
-	/* get leaf */
-	if ( leafNum < 0 ) {
-		return -1;
-	}
-	leaf = &bspLeafs[ leafNum ];
-
-	/* transparent leaf, so check point against all brushes in the leaf */
-	brushes = &bspLeafBrushes[ leaf->firstBSPLeafBrush ];
-	numBSPBrushes = leaf->numBSPLeafBrushes;
-	for ( i = 0; i < numBSPBrushes; i++ )
-	{
-		/* get parts */
-		brush = &bspBrushes[ brushes[ i ] ];
-
-		/* check point against all planes */
-		inside = true;
-		allSurfaceFlags = 0;
-		allContentFlags = 0;
-		for ( j = 0; j < brush->numSides && inside; j++ )
-		{
-			side = &bspBrushSides[ brush->firstSide + j ];
-			const bspPlane_t& plane = bspPlanes[ side->planeNum ];
-			if ( plane3_distance_to_point( plane, point ) > epsilon ) {
-				inside = false;
-			}
-			else
-			{
-				shader = &bspShaders[ side->shaderNum ];
-				allSurfaceFlags |= shader->surfaceFlags;
-				allContentFlags |= shader->contentFlags;
-			}
-		}
-
-		/* handle if inside */
-		if ( inside ) {
-			/* if there are desired flags, check for same and continue if they aren't matched */
-			if ( wantContentFlags && !( wantContentFlags & allContentFlags ) ) {
-				continue;
-			}
-			if ( wantSurfaceFlags && !( wantSurfaceFlags & allSurfaceFlags ) ) {
-				continue;
-			}
-
-			/* store the cumulative flags and return the brush shader (which is mostly useless) */
-			*surfaceFlags = allSurfaceFlags;
-			*contentFlags = allContentFlags;
-			return brush->shaderNum;
-		}
-	}
-
-	/* if the point made it this far, it's not inside any brushes */
-	return -1;
 }
 
 
@@ -3308,7 +3427,7 @@ int ShaderForPointInLeaf( const Vector3& point, int leafNum, float epsilon, int 
    this is not exactly the fastest way to do this...
  */
 
-bool ChopBounds( MinMax& minmax, const Vector3& origin, const Vector3& normal ){
+inline bool ChopBounds( MinMax& minmax, const Vector3& origin, const Vector3& normal ){
 	/* FIXME: rewrite this so it doesn't use bloody brushes */
 	return true;
 }
@@ -3325,15 +3444,11 @@ bool ChopBounds( MinMax& minmax, const Vector3& origin, const Vector3& normal ){
 #define LIGHT_NUDGE     2.0f
 
 void SetupEnvelopes( bool forGrid, bool fastFlag ){
-	int i, x, y, z, x1, y1, z1;
-	light_t     *light, *light2, **owner;
-	bspLeaf_t   *leaf;
 	float radius, intensity;
-	light_t     *buckets[ 256 ];
 
 
 	/* early out for weird cases where there are no lights */
-	if ( lights == NULL ) {
+	if ( lights.empty() ) {
 		return;
 	}
 
@@ -3341,14 +3456,9 @@ void SetupEnvelopes( bool forGrid, bool fastFlag ){
 	Sys_FPrintf( SYS_VRB, "--- SetupEnvelopes%s ---\n", fastFlag ? " (fast)" : "" );
 
 	/* count lights */
-	numLights = 0;
-	numCulledLights = 0;
-	owner = &lights;
-	while ( *owner != NULL )
+	int numCulledLights = 0;
+	for( auto light = lights.begin(); light != lights.end(); )
 	{
-		/* get light */
-		light = *owner;
-
 		/* handle negative lights */
 		if ( light->photons < 0.0f || light->add < 0.0f ) {
 			light->photons *= -1.0f;
@@ -3374,18 +3484,18 @@ void SetupEnvelopes( bool forGrid, bool fastFlag ){
 			/* invalid cluster? */
 			if ( light->cluster < 0 ) {
 				/* nudge the sample point around a bit */
-				for ( x = 0; x < 4; x++ )
+				for ( int x = 0; x < 4; x++ )
 				{
 					/* two's complement 0, 1, -1, 2, -2, etc */
-					x1 = ( ( x >> 1 ) ^ ( x & 1 ? -1 : 0 ) ) + ( x & 1 );
+					const int x1 = ( ( x >> 1 ) ^ ( x & 1 ? -1 : 0 ) ) + ( x & 1 );
 
-					for ( y = 0; y < 4; y++ )
+					for ( int y = 0; y < 4; y++ )
 					{
-						y1 = ( ( y >> 1 ) ^ ( y & 1 ? -1 : 0 ) ) + ( y & 1 );
+						const int y1 = ( ( y >> 1 ) ^ ( y & 1 ? -1 : 0 ) ) + ( y & 1 );
 
-						for ( z = 0; z < 4; z++ )
+						for ( int z = 0; z < 4; z++ )
 						{
-							z1 = ( ( z >> 1 ) ^ ( z & 1 ? -1 : 0 ) ) + ( z & 1 );
+							const int z1 = ( ( z >> 1 ) ^ ( z & 1 ? -1 : 0 ) ) + ( z & 1 );
 
 							/* nudge origin */
 							const Vector3 origin = light->origin + Vector3( x1, y1, z1 ) * LIGHT_NUDGE;
@@ -3423,7 +3533,7 @@ void SetupEnvelopes( bool forGrid, bool fastFlag ){
 				light->envelope = 0;
 
 				/* handle area lights */
-				if ( exactPointToPolygon && light->type == ELightType::Area && light->w != NULL ) {
+				if ( exactPointToPolygon && light->type == ELightType::Area && !light->w.empty() ) {
 					light->envelope = MAX_WORLD_COORD * 8.0f;
 
 					/* check for fast mode */
@@ -3502,21 +3612,18 @@ void SetupEnvelopes( bool forGrid, bool fastFlag ){
 					MinMax minmax;
 
 					/* check all leaves */
-					for ( i = 0; i < numBSPLeafs; i++ )
+					for ( const bspLeaf_t& leaf : bspLeafs )
 					{
-						/* get test leaf */
-						leaf = &bspLeafs[ i ];
-
 						/* in pvs? */
-						if ( leaf->cluster < 0 ) {
+						if ( leaf.cluster < 0 ) {
 							continue;
 						}
-						if ( !ClusterVisible( light->cluster, leaf->cluster ) ) { /* ydnar: thanks Arnout for exposing my stupid error (this never failed before) */
+						if ( !ClusterVisible( light->cluster, leaf.cluster ) ) { /* ydnar: thanks Arnout for exposing my stupid error (this never failed before) */
 							continue;
 						}
 
 						/* add this leafs bbox to the bounds */
-						minmax.extend( leaf->minmax );
+						minmax.extend( leaf.minmax );
 					}
 
 					/* test to see if bounds encompass light */
@@ -3572,9 +3679,7 @@ void SetupEnvelopes( bool forGrid, bool fastFlag ){
 
 				/* delete the light */
 				numCulledLights++;
-				*owner = light->next;
-				free( light->w );
-				free( light );
+				light = lights.erase( light );
 				continue;
 			}
 		}
@@ -3582,208 +3687,23 @@ void SetupEnvelopes( bool forGrid, bool fastFlag ){
 		/* square envelope */
 		light->envelope2 = ( light->envelope * light->envelope );
 
-		/* increment light count */
-		numLights++;
-
 		/* set next light */
-		owner = &( ( **owner ).next );
+		++light;
 	}
 
-	/* bucket sort lights by style */
-	memset( buckets, 0, sizeof( buckets ) );
-	light2 = NULL;
-	for ( light = lights; light != NULL; light = light2 )
-	{
-		/* get next light */
-		light2 = light->next;
-
-		/* filter into correct bucket */
-		light->next = buckets[ light->style ];
-		buckets[ light->style ] = light;
-
-		/* if any styled light is present, automatically set nocollapse */
-		if ( light->style != LS_NORMAL ) {
-			noCollapse = true;
-		}
-	}
-
-	/* filter back into light list */
-	lights = NULL;
-	for ( i = 255; i >= 0; i-- )
-	{
-		light2 = NULL;
-		for ( light = buckets[ i ]; light != NULL; light = light2 )
-		{
-			light2 = light->next;
-			light->next = lights;
-			lights = light;
-		}
+	/* sort lights by style */
+	lights.sort( []( const light_t& a, const light_t& b ){ return a.style < b.style; } );
+	/* if any styled light is present, automatically set nocollapse */
+	if ( !lights.empty() && lights.back().style != LS_NORMAL ) {
+		noCollapse = true;
 	}
 
 	/* emit some statistics */
-	Sys_Printf( "%9d total lights\n", numLights );
+	Sys_Printf( "%9zu total lights\n", lights.size() );
 	Sys_Printf( "%9d culled lights\n", numCulledLights );
 }
 
 
-
-/*
-   CreateTraceLightsForBounds()
-   creates a list of lights that affect the given bounding box and pvs clusters (bsp leaves)
- */
-
-void CreateTraceLightsForBounds( const MinMax& minmax, const Vector3 *normal, int numClusters, int *clusters, LightFlags flags, trace_t *trace ){
-	int i;
-	light_t     *light;
-	float length;
-
-
-	/* potential pre-setup  */
-	if ( numLights == 0 ) {
-		SetupEnvelopes( false, fast );
-	}
-
-	/* debug code */
-	//% Sys_Printf( "CTWLFB: (%4.1f %4.1f %4.1f) (%4.1f %4.1f %4.1f)\n", minmax.mins[ 0 ], minmax.mins[ 1 ], minmax.mins[ 2 ], minmax.maxs[ 0 ], minmax.maxs[ 1 ], minmax.maxs[ 2 ] );
-
-	/* allocate the light list */
-	trace->lights = safe_malloc( sizeof( light_t* ) * ( numLights + 1 ) );
-	trace->numLights = 0;
-
-	/* calculate spherical bounds */
-	const Vector3 origin = minmax.origin();
-	const float radius = vector3_length( minmax.maxs - origin );
-
-	/* get length of normal vector */
-	if ( normal != NULL ) {
-		length = vector3_length( *normal );
-	}
-	else
-	{
-		normal = &g_vector3_identity;
-		length = 0;
-	}
-
-	/* test each light and see if it reaches the sphere */
-	/* note: the attenuation code MUST match LightingAtSample() */
-	for ( light = lights; light; light = light->next )
-	{
-		/* check zero sized envelope */
-		if ( light->envelope <= 0 ) {
-			lightsEnvelopeCulled++;
-			continue;
-		}
-
-		/* check flags */
-		if ( !( light->flags & flags ) ) {
-			continue;
-		}
-
-		/* sunlight skips all this nonsense */
-		if ( light->type != ELightType::Sun ) {
-			/* sun only? */
-			if ( sunOnly ) {
-				continue;
-			}
-
-			/* check against pvs cluster */
-			if ( numClusters > 0 && clusters != NULL ) {
-				for ( i = 0; i < numClusters; i++ )
-				{
-					if ( ClusterVisible( light->cluster, clusters[ i ] ) ) {
-						break;
-					}
-				}
-
-				/* fixme! */
-				if ( i == numClusters ) {
-					lightsClusterCulled++;
-					continue;
-				}
-			}
-
-			/* if the light's bounding sphere intersects with the bounding sphere then this light needs to be tested */
-			if ( vector3_length( light->origin - origin ) - light->envelope - radius > 0 ) {
-				lightsEnvelopeCulled++;
-				continue;
-			}
-
-			/* check bounding box against light's pvs envelope (note: this code never eliminated any lights, so disabling it) */
-			#if 0
-			if( !minmax.test( light->minmax ) ){
-				lightsBoundsCulled++;
-				continue;
-			}
-			#endif
-		}
-
-		/* planar surfaces (except twosided surfaces) have a couple more checks */
-		if ( length > 0.0f && !trace->twoSided ) {
-			/* lights coplanar with a surface won't light it */
-			if ( !( light->flags & LightFlags::Twosided ) && vector3_dot( light->normal, *normal ) > 0.999f ) {
-				lightsPlaneCulled++;
-				continue;
-			}
-
-			/* check to see if light is behind the plane */
-			if ( vector3_dot( light->origin, *normal ) - vector3_dot( origin, *normal ) < -1.0f ) {
-				lightsPlaneCulled++;
-				continue;
-			}
-		}
-
-		/* add this light */
-		trace->lights[ trace->numLights++ ] = light;
-	}
-
-	/* make last night null */
-	trace->lights[ trace->numLights ] = NULL;
-}
-
-
-
-void FreeTraceLights( trace_t *trace ){
-	free( trace->lights );
-}
-
-
-
-/*
-   CreateTraceLightsForSurface()
-   creates a list of lights that can potentially affect a drawsurface
- */
-
-void CreateTraceLightsForSurface( int num, trace_t *trace ){
-	int i;
-	bspDrawVert_t       *dv;
-	bspDrawSurface_t    *ds;
-	surfaceInfo_t       *info;
-
-
-	/* dummy check */
-	if ( num < 0 ) {
-		return;
-	}
-
-	/* get drawsurface and info */
-	ds = &bspDrawSurfaces[ num ];
-	info = &surfaceInfos[ num ];
-
-	/* get the mins/maxs for the dsurf */
-	MinMax minmax;
-	Vector3 normal = bspDrawVerts[ ds->firstVert ].normal;
-	for ( i = 0; i < ds->numVerts; i++ )
-	{
-		dv = &yDrawVerts[ ds->firstVert + i ];
-		minmax.extend( dv->xyz );
-		if ( !VectorCompare( dv->normal, normal ) ) {
-			normal.set( 0 );
-		}
-	}
-
-	/* create the lights for the bounding box */
-	CreateTraceLightsForBounds( minmax, &normal, info->numSurfaceClusters, &surfaceClusters[ info->firstSurfaceCluster ], LightFlags::Surfaces, trace );
-}
 
 /////////////////////////////////////////////////////////////
 
@@ -3795,7 +3715,7 @@ void CreateTraceLightsForSurface( int num, trace_t *trace ){
 static Vector3 floodVectors[ FLOODLIGHT_NUM_VECTORS ];
 static int numFloodVectors = 0;
 
-void SetupFloodLight( void ){
+void SetupFloodLight(){
 	int i, j;
 	float angle, elevation, angleStep, elevationStep;
 
@@ -3834,7 +3754,7 @@ void SetupFloodLight( void ){
 
 		sscanf( value, "%lf %lf %lf %lf %lf %lf", &v1, &v2, &v3, &v4, &v5, &v6 );
 
-		floodlightRGB = { v1, v2, v3 };
+		floodlightRGB = Vector3( v1, v2, v3 );
 
 		if ( vector3_length( floodlightRGB ) == 0 ) {
 			floodlightRGB = { 0.94, 0.94, 1.0 };
@@ -3980,7 +3900,7 @@ float FloodLightForSample( trace_t *trace, float floodLightDistance, bool floodL
  */
 
 // floodlight pass on a lightmap
-void FloodLightRawLightmapPass( rawLightmap_t *lm, Vector3& lmFloodLightRGB, float lmFloodLightIntensity, float lmFloodLightDistance, bool lmFloodLightLowQuality, float floodlightDirectionScale ){
+static void FloodLightRawLightmapPass( rawLightmap_t *lm, Vector3& lmFloodLightRGB, float lmFloodLightIntensity, float lmFloodLightDistance, bool lmFloodLightLowQuality, float floodlightDirectionScale ){
 	int i, x, y;
 	surfaceInfo_t       *info;
 	trace_t trace;
@@ -4102,7 +4022,9 @@ void FloodLightRawLightmapPass( rawLightmap_t *lm, Vector3& lmFloodLightRGB, flo
 #endif
 }
 
-void FloodLightRawLightmap( int rawLightmapNum ){
+static int numSurfacesFloodlighten;
+
+static void FloodLightRawLightmap( int rawLightmapNum ){
 	rawLightmap_t       *lm;
 
 	/* bail if this number exceeds the number of raw lightmaps */
@@ -4136,7 +4058,7 @@ void FloodlightRawLightmaps(){
    illuminate floodlight into lightmap luxels
  */
 
-void FloodlightIlluminateLightmap( rawLightmap_t *lm ){
+static void FloodlightIlluminateLightmap( rawLightmap_t *lm ){
 	int x, y, lightmapNum;
 
 	/* walk lightmaps */

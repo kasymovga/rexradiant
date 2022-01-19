@@ -71,7 +71,7 @@
 
 #include <gtk/gtk.h>
 
-#include "cmdlib.h"
+#include "commandlib.h"
 #include "os/file.h"
 #include "os/path.h"
 #include "stream/stringstream.h"
@@ -89,10 +89,6 @@
 #include "referencecache.h"
 #include "stacktrace.h"
 #include "error.h"
-
-#ifdef WIN32
-#include <windows.h>
-#endif
 
 void show_splash();
 void hide_splash();
@@ -354,7 +350,7 @@ void paths_init(){
 	// (for now I had to create symlinks)
 	{
 		StringOutputStream path( 256 );
-		path << g_strAppPath.c_str() << "bitmaps/";
+		path << g_strAppPath << "bitmaps/";
 		BitmapsPath_set( path.c_str() );
 	}
 
@@ -486,7 +482,7 @@ void remove_global_pid(){
  */
 void create_local_pid(){
 	StringOutputStream g_pidGameFile( 256 ); ///< the game-specific .pid file
-	g_pidGameFile << SettingsPath_get() << g_pGameDescription->mGameFile.c_str() << "/radiant-game.pid";
+	g_pidGameFile << SettingsPath_get() << g_pGameDescription->mGameFile << "/radiant-game.pid";
 
 	FILE *pid = fopen( g_pidGameFile.c_str(), "r" );
 	if ( pid != 0 ) {
@@ -535,7 +531,7 @@ void create_local_pid(){
  */
 void remove_local_pid(){
 	StringOutputStream g_pidGameFile( 256 );
-	g_pidGameFile << SettingsPath_get() << g_pGameDescription->mGameFile.c_str() << "/radiant-game.pid";
+	g_pidGameFile << SettingsPath_get() << g_pGameDescription->mGameFile << "/radiant-game.pid";
 	remove( g_pidGameFile.c_str() );
 }
 
@@ -584,27 +580,6 @@ int main( int argc, char* argv[] ){
 	streams_init();
 
 #ifdef WIN32
-	{
-		bool aero = true;
-		for ( int i = 1; i < argc; ++i ){
-			if ( !stricmp( argv[i], "-aero" ) ){
-				aero = false;
-				break;
-			}
-		}
-		if( !aero ){
-			HMODULE lib;
-			lib = LoadLibrary( "dwmapi.dll" );
-			if ( lib != 0 ) {
-				void ( WINAPI *qDwmEnableComposition )( bool bEnable ) = ( void (WINAPI *) ( bool bEnable ) )GetProcAddress( lib, "DwmEnableComposition" );
-				if ( qDwmEnableComposition ) {
-					// disable Aero
-					qDwmEnableComposition( FALSE );
-				}
-				FreeLibrary( lib );
-			}
-		}
-	}
 	_setmaxstdio(2048);
 #endif
 

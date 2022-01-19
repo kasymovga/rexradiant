@@ -37,7 +37,7 @@
 #include "stream/stringstream.h"
 #include "os/path.h"
 #include "os/file.h"
-#include "cmdlib.h"
+#include "commandlib.h"
 
 #include "map.h"
 #include "qe3.h"
@@ -55,11 +55,7 @@ void Pointfile_Parse( CPointfile& pointfile );
 
 class CPointfile : public ISAXHandler, public Renderable, public OpenGLRenderable
 {
-	enum
-	{
-		MAX_POINTFILE = 8192,
-	};
-	Vector3 s_pointvecs[MAX_POINTFILE];
+	Vector3 s_pointvecs[8192];
 	std::size_t s_num_points;
 	int m_displaylist;
 	static Shader* m_renderstate;
@@ -149,7 +145,7 @@ void CPointfile::Init(){
 }
 
 void CPointfile::PushPoint( const Vector3& v ){
-	if ( s_num_points < MAX_POINTFILE ) {
+	if ( s_num_points < std::size( s_pointvecs ) ) {
 		s_pointvecs[s_num_points] = v;
 		++s_num_points;
 	}
@@ -172,7 +168,7 @@ void CPointfile::GenerateDisplayList(){
 
 // old (but still relevant) pointfile code -------------------------------------
 
-void Pointfile_Delete( void ){
+void Pointfile_Delete(){
 	const char* mapname = Map_Name( g_map );
 	file_remove( StringOutputStream( 256 )( PathExtensionless( mapname ), ".lin" ).c_str() );
 }
@@ -194,7 +190,7 @@ void Pointfile_UpdateViews( CPointfile::const_iterator i ){
 }
 
 // advance camera to next point
-void Pointfile_Next( void ){
+void Pointfile_Next(){
 	if ( !s_pointfile.shown() ) {
 		return;
 	}
@@ -208,7 +204,7 @@ void Pointfile_Next( void ){
 }
 
 // advance camera to previous point
-void Pointfile_Prev( void ){
+void Pointfile_Prev(){
 	if ( !s_pointfile.shown() ) {
 		return;
 	}

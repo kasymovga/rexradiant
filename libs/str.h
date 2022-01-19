@@ -28,19 +28,18 @@
    SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __STR__
-#define __STR__
+#pragma once
 
 //
 // class Str
 // loose replacement for CString from MFC
 //
 
-#include <string.h>
-#include <ctype.h>
+#include <cstring>
+#include <cctype>
 
-#include <stdio.h>
-#include <stdarg.h>
+#include <cstdio>
+#include <cstdarg>
 
 #include <cstdio>
 
@@ -500,7 +499,3 @@ inline bool ExtractPath_and_Filename( const char* pPath, Str& strPath, Str& strF
 	}
 	return true;
 }
-
-
-
-#endif

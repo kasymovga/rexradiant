@@ -33,8 +33,8 @@
 
 
 
-static void AAS_DData( unsigned char *data, int size ){
-	for ( int i = 0; i < size; i++ )
+inline void AAS_DData( unsigned char *data, int size ){
+	for ( int i = 0; i < size; ++i )
 		data[i] ^= (unsigned char) i * 119;
 }
 
@@ -43,29 +43,15 @@ static void AAS_DData( unsigned char *data, int size ){
    resets an aas checksum to match the given BSP
  */
 
-int FixAAS( int argc, char **argv ){
-	int length, checksum;
-	void        *buffer;
-	FILE        *file;
-	char aas[ 1024 ];
-	const char **ext;
-	const char  *exts[] =
-	{
-		".aas",
-		"_b0.aas",
-		"_b1.aas",
-		NULL
-	};
-
-
+int FixAAS( Args& args ){
 	/* arg checking */
-	if ( argc < 2 ) {
+	if ( args.empty() ) {
 		Sys_Printf( "Usage: q3map2 -fixaas [-v] <mapname>\n" );
 		return 0;
 	}
 
 	/* do some path mangling */
-	strcpy( source, ExpandArg( argv[ argc - 1 ] ) );
+	strcpy( source, ExpandArg( args.takeBack() ) );
 	path_set_extension( source, ".bsp" );
 
 	/* note it */
@@ -73,25 +59,24 @@ int FixAAS( int argc, char **argv ){
 
 	/* load the bsp */
 	Sys_Printf( "Loading %s\n", source );
-	length = LoadFile( source, &buffer );
+	MemBuffer buffer = LoadFile( source );
 
 	/* create bsp checksum */
 	Sys_Printf( "Creating checksum...\n" );
-	checksum = LittleLong( (int)Com_BlockChecksum( buffer, length ) ); // md4 checksum for a block of data
+	int checksum = LittleLong( (int)Com_BlockChecksum( buffer.data(), buffer.size() ) ); // md4 checksum for a block of data
 	AAS_DData( (unsigned char *) &checksum, 4 );
 
 	/* write checksum to aas */
-	ext = exts;
-	while ( *ext )
+	for( auto&& ext : { ".aas", "_b0.aas", "_b1.aas" } )
 	{
 		/* mangle name */
+		char aas[ 1024 ];
 		strcpy( aas, source );
-		path_set_extension( aas, *ext );
+		path_set_extension( aas, ext );
 		Sys_Printf( "Trying %s\n", aas );
-		ext++;
 
 		/* fix it */
-		file = fopen( aas, "r+b" );
+		FILE *file = fopen( aas, "r+b" );
 		if ( !file ) {
 			continue;
 		}
@@ -126,9 +111,9 @@ struct abspLumpTest_t
 	const char     *name;
 };
 
-int AnalyzeBSP( int argc, char **argv ){
+int AnalyzeBSP( Args& args ){
 	abspHeader_t            *header;
-	int size, i, version, offset, length, lumpInt, count;
+	int i, version, offset, length, lumpInt, count;
 	char ident[ 5 ];
 	void                    *lump;
 	float lumpFloat;
@@ -155,31 +140,24 @@ int AnalyzeBSP( int argc, char **argv ){
 
 
 	/* arg checking */
-	if ( argc < 2 ) {
+	if ( args.empty() ) {
 		Sys_Printf( "Usage: q3map2 -analyze [-lumpswap] [-v] <mapname>\n" );
 		return 0;
 	}
 
 	/* process arguments */
-	for ( i = 1; i < ( argc - 1 ); i++ )
-	{
-		/* -format map|ase|... */
-		if ( striEqual( argv[ i ], "-lumpswap" ) ) {
-			Sys_Printf( "Swapped lump structs enabled\n" );
-			lumpSwap = true;
-		}
+	while ( args.takeArg( "-lumpswap" ) ) {
+		Sys_Printf( "Swapped lump structs enabled\n" );
+		lumpSwap = true;
 	}
 
 	/* clean up map name */
-	strcpy( source, ExpandArg( argv[ i ] ) );
+	strcpy( source, ExpandArg( args.takeBack() ) );
 	Sys_Printf( "Loading %s\n", source );
 
 	/* load the file */
-	size = LoadFile( source, (void**) &header );
-	if ( size == 0 || header == NULL ) {
-		Sys_Printf( "Unable to load %s.\n", source );
-		return -1;
-	}
+	MemBuffer file = LoadFile( source );
+	header = file.data();
 
 	/* analyze ident/version */
 	memcpy( ident, header->ident, 4 );
@@ -253,14 +231,14 @@ int AnalyzeBSP( int argc, char **argv ){
 		Sys_Printf( "---------------------------------------\n" );
 
 		/* end of file */
-		if ( offset + length >= size ) {
+		if ( offset + length >= int( file.size() ) ) {
 			break;
 		}
 	}
 
 	/* last stats */
 	Sys_Printf( "Lump count:    %d\n", i + 1 );
-	Sys_Printf( "File size:     %d bytes\n", size );
+	Sys_Printf( "File size:     %zu bytes\n", file.size() );
 
 	/* return to caller */
 	return 0;
@@ -273,34 +251,29 @@ int AnalyzeBSP( int argc, char **argv ){
    emits statistics about the bsp file
  */
 
-int BSPInfo( int count, char **fileNames ){
-	int i;
+int BSPInfo( Args& args ){
 	char source[ 1024 ];
-	int size;
-	FILE        *f;
 
 
 	/* dummy check */
-	if ( count < 1 ) {
+	if ( args.empty() ) {
 		Sys_Printf( "No files to dump info for.\n" );
 		return -1;
 	}
 
 	/* walk file list */
-	for ( i = 0; i < count; i++ )
+	while ( !args.empty() )
 	{
 		Sys_Printf( "---------------------------------\n" );
 
 		/* mangle filename and get size */
-		strcpy( source, fileNames[ i ] );
+		const char *fileName = args.takeFront();
+		strcpy( source, fileName );
 		path_set_extension( source, ".bsp" );
-		f = fopen( source, "rb" );
-		if ( f ) {
+		int size = 0;
+		if ( FILE *f = fopen( source, "rb" ); f != nullptr ) {
 			size = Q_filelength( f );
 			fclose( f );
-		}
-		else{
-			size = 0;
 		}
 
 		/* load the bsp file and print lump sizes */
@@ -317,21 +290,18 @@ int BSPInfo( int count, char **fileNames ){
 		Sys_Printf( "---------------------------------\n" );
 	}
 
-	/* return count */
-	return i;
+	return 0;
 }
 
 
-static void ExtrapolateTexcoords( const float *axyz, const float *ast,
-                                  const float *bxyz, const float *bst,
-                                  const float *cxyz, const float *cst,
-                                  const Vector3& axyz_new, Vector2& ast_out,
-                                  const Vector3& bxyz_new, Vector2& bst_out,
-                                  const Vector3& cxyz_new, Vector2& cst_out ){
-	Vector4 scoeffs, tcoeffs;
-	Matrix4 solvematrix;
+static void ExtrapolateTexcoords( const bspDrawVert_t& a,
+                                  const bspDrawVert_t& b,
+								  const bspDrawVert_t& c,
+								  bspDrawVert_t& anew,
+								  bspDrawVert_t& bnew,
+								  bspDrawVert_t& cnew ){
 
-	const Vector3 norm = vector3_cross( vector3_from_array( bxyz ) - vector3_from_array( axyz ), vector3_from_array( cxyz ) - vector3_from_array( axyz ) );
+	const Vector3 norm = vector3_cross( b.xyz - a.xyz, c.xyz - a.xyz );
 
 	// assume:
 	//   s = f(x, y, z)
@@ -345,22 +315,12 @@ static void ExtrapolateTexcoords( const float *axyz, const float *ast,
 	//   scoeffs * (cxyz, 1) == cst[0]
 	//   scoeffs * (norm, 0) == 0
 	// scoeffs * [axyz, 1 | bxyz, 1 | cxyz, 1 | norm, 0] = [ast[0], bst[0], cst[0], 0]
-	solvematrix[0] = axyz[0];
-	solvematrix[4] = axyz[1];
-	solvematrix[8] = axyz[2];
-	solvematrix[12] = 1;
-	solvematrix[1] = bxyz[0];
-	solvematrix[5] = bxyz[1];
-	solvematrix[9] = bxyz[2];
-	solvematrix[13] = 1;
-	solvematrix[2] = cxyz[0];
-	solvematrix[6] = cxyz[1];
-	solvematrix[10] = cxyz[2];
-	solvematrix[14] = 1;
-	solvematrix[3] = norm[0];
-	solvematrix[7] = norm[1];
-	solvematrix[11] = norm[2];
-	solvematrix[15] = 0;
+	Matrix4 solvematrix;
+	solvematrix.x() = { a.xyz, 1 };
+	solvematrix.y() = { b.xyz, 1 };
+	solvematrix.z() = { c.xyz, 1 };
+	solvematrix.t() = { norm, 0 };
+	matrix4_transpose( solvematrix );
 
 	const double md = matrix4_determinant( solvematrix );
 	if ( md * md < 1e-10 ) {
@@ -370,23 +330,14 @@ static void ExtrapolateTexcoords( const float *axyz, const float *ast,
 
 	matrix4_full_invert( solvematrix );
 
-	scoeffs[0] = ast[0];
-	scoeffs[1] = bst[0];
-	scoeffs[2] = cst[0];
-	scoeffs[3] = 0;
-	matrix4_transform_vector4( solvematrix, scoeffs );
-	tcoeffs[0] = ast[1];
-	tcoeffs[1] = bst[1];
-	tcoeffs[2] = cst[1];
-	tcoeffs[3] = 0;
-	matrix4_transform_vector4( solvematrix, tcoeffs );
-
-	ast_out[0] = scoeffs[0] * axyz_new[0] + scoeffs[1] * axyz_new[1] + scoeffs[2] * axyz_new[2] + scoeffs[3];
-	ast_out[1] = tcoeffs[0] * axyz_new[0] + tcoeffs[1] * axyz_new[1] + tcoeffs[2] * axyz_new[2] + tcoeffs[3];
-	bst_out[0] = scoeffs[0] * bxyz_new[0] + scoeffs[1] * bxyz_new[1] + scoeffs[2] * bxyz_new[2] + scoeffs[3];
-	bst_out[1] = tcoeffs[0] * bxyz_new[0] + tcoeffs[1] * bxyz_new[1] + tcoeffs[2] * bxyz_new[2] + tcoeffs[3];
-	cst_out[0] = scoeffs[0] * cxyz_new[0] + scoeffs[1] * cxyz_new[1] + scoeffs[2] * cxyz_new[2] + scoeffs[3];
-	cst_out[1] = tcoeffs[0] * cxyz_new[0] + tcoeffs[1] * cxyz_new[1] + tcoeffs[2] * cxyz_new[2] + tcoeffs[3];
+	Matrix4 stcoeffs( g_matrix4_identity );
+	stcoeffs.x() = { a.st[0], b.st[0], c.st[0], 0 };
+	stcoeffs.y() = { a.st[1], b.st[1], c.st[1], 0 };
+	matrix4_premultiply_by_matrix4( stcoeffs, solvematrix );
+	matrix4_transpose( stcoeffs );
+	anew.st = matrix4_transformed_point( stcoeffs, anew.xyz ).vec2();
+	bnew.st = matrix4_transformed_point( stcoeffs, bnew.xyz ).vec2();
+	cnew.st = matrix4_transformed_point( stcoeffs, cnew.xyz ).vec2();
 }
 
 /*
@@ -394,47 +345,42 @@ static void ExtrapolateTexcoords( const float *axyz, const float *ast,
    amaze and confuse your enemies with weird scaled maps!
  */
 
-int ScaleBSPMain( int argc, char **argv ){
-	int i, j;
+int ScaleBSPMain( Args& args ){
 	float f, a;
 	Vector3 scale;
 	Vector3 vec;
 	char str[ 1024 ];
 	int uniform, axis;
 	bool texscale;
-	float *old_xyzst = NULL;
+	std::vector<bspDrawVert_t> old_xyzst;
 	float spawn_ref = 0;
 
 
 	/* arg checking */
-	if ( argc < 3 ) {
+	if ( args.size() < 2 ) {
 		Sys_Printf( "Usage: q3map2 [-v] -scale [-tex] [-spawn_ref <value>] <value> <mapname>\n" );
 		return 0;
 	}
 
 	texscale = false;
-	for ( i = 1; i < argc - 2; ++i )
+	const char *fileName = args.takeBack();
+	const auto argsToInject = args.getVector();
 	{
-		if ( striEqual( argv[i], "-tex" ) ) {
+		if ( args.takeArg( "-tex" ) ) {
 			texscale = true;
 		}
-		else if ( striEqual( argv[i], "-spawn_ref" ) ) {
-			spawn_ref = atof( argv[i + 1] );
-			++i;
-		}
-		else{
-			break;
+		if ( args.takeArg( "-spawn_ref" ) ) {
+			spawn_ref = atof( args.takeNext() );
 		}
 	}
 
 	/* get scale */
-	// if(argc-2 >= i) // always true
-	scale[2] = scale[1] = scale[0] = atof( argv[ argc - 2 ] );
-	if ( argc - 3 >= i ) {
-		scale[1] = scale[0] = atof( argv[ argc - 3 ] );
+	scale[2] = scale[1] = scale[0] = atof( args.takeBack() );
+	if ( !args.empty() ) {
+		scale[1] = scale[0] = atof( args.takeBack() );
 	}
-	if ( argc - 4 >= i ) {
-		scale[0] = atof( argv[ argc - 4 ] );
+	if ( !args.empty() ) {
+		scale[0] = atof( args.takeBack() );
 	}
 
 	uniform = ( ( scale[0] == scale[1] ) && ( scale[1] == scale[2] ) );
@@ -446,7 +392,7 @@ int ScaleBSPMain( int argc, char **argv ){
 	}
 
 	/* do some path mangling */
-	strcpy( source, ExpandArg( argv[ argc - 1 ] ) );
+	strcpy( source, ExpandArg( fileName ) );
 	path_set_extension( source, ".bsp" );
 
 	/* load the bsp */
@@ -463,11 +409,11 @@ int ScaleBSPMain( int argc, char **argv ){
 	{
 		/* scale origin */
 		if ( e.read_keyvalue( vec, "origin" ) ) {
-			if ( entities[i].classname_prefixed( "info_player_" ) ) {
+			if ( e.classname_prefixed( "info_player_" ) ) {
 				vec[2] += spawn_ref;
 			}
 			vec *= scale;
-			if ( entities[i].classname_prefixed( "info_player_" ) ) {
+			if ( e.classname_prefixed( "info_player_" ) ) {
 				vec[2] -= spawn_ref;
 			}
 			sprintf( str, "%f %f %f", vec[ 0 ], vec[ 1 ], vec[ 2 ] );
@@ -503,72 +449,64 @@ int ScaleBSPMain( int argc, char **argv ){
 	}
 
 	/* scale models */
-	for ( i = 0; i < numBSPModels; i++ )
+	for ( auto& model : bspModels )
 	{
-		bspModels[ i ].minmax.mins *= scale;
-		bspModels[ i ].minmax.maxs *= scale;
+		model.minmax.mins *= scale;
+		model.minmax.maxs *= scale;
 	}
 
 	/* scale nodes */
-	for ( i = 0; i < numBSPNodes; i++ )
+	for ( bspNode_t& node : bspNodes )
 	{
-		bspNodes[ i ].minmax.mins *= scale;
-		bspNodes[ i ].minmax.maxs *= scale;
+		node.minmax.mins *= scale;
+		node.minmax.maxs *= scale;
 	}
 
 	/* scale leafs */
-	for ( i = 0; i < numBSPLeafs; i++ )
+	for ( bspLeaf_t& leaf : bspLeafs )
 	{
-		bspLeafs[ i ].minmax.mins *= scale;
-		bspLeafs[ i ].minmax.maxs *= scale;
+		leaf.minmax.mins *= scale;
+		leaf.minmax.maxs *= scale;
 	}
 
 	if ( texscale ) {
 		Sys_Printf( "Using texture unlocking (and probably breaking texture alignment a lot)\n" );
-		old_xyzst = safe_malloc( sizeof( *old_xyzst ) * numBSPDrawVerts * 5 );
-		for ( i = 0; i < numBSPDrawVerts; i++ )
-		{
-			old_xyzst[5 * i + 0] = bspDrawVerts[i].xyz[0];
-			old_xyzst[5 * i + 1] = bspDrawVerts[i].xyz[1];
-			old_xyzst[5 * i + 2] = bspDrawVerts[i].xyz[2];
-			old_xyzst[5 * i + 3] = bspDrawVerts[i].st[0];
-			old_xyzst[5 * i + 4] = bspDrawVerts[i].st[1];
-		}
+		old_xyzst = bspDrawVerts;
 	}
 
 	/* scale drawverts */
-	for ( i = 0; i < numBSPDrawVerts; i++ )
+	for ( bspDrawVert_t& vert : bspDrawVerts )
 	{
-		bspDrawVerts[i].xyz *= scale;
-		bspDrawVerts[i].normal /= scale;
-		VectorNormalize( bspDrawVerts[i].normal );
+		vert.xyz *= scale;
+		vert.normal /= scale;
+		VectorNormalize( vert.normal );
 	}
 
 	if ( texscale ) {
-		for ( i = 0; i < numBSPDrawSurfaces; i++ )
+		for ( const bspDrawSurface_t& surf : bspDrawSurfaces )
 		{
-			switch ( bspDrawSurfaces[i].surfaceType )
+			switch ( surf.surfaceType )
 			{
 			case MST_PLANAR:
-				if ( bspDrawSurfaces[i].numIndexes % 3 ) {
+				if ( surf.numIndexes % 3 ) {
 					Error( "Not a triangulation!" );
 				}
-				for ( j = bspDrawSurfaces[i].firstIndex; j < bspDrawSurfaces[i].firstIndex + bspDrawSurfaces[i].numIndexes; j += 3 )
+				for ( int j = surf.firstIndex; j < surf.firstIndex + surf.numIndexes; j += 3 )
 				{
-					int ia = bspDrawIndexes[j] + bspDrawSurfaces[i].firstVert, ib = bspDrawIndexes[j + 1] + bspDrawSurfaces[i].firstVert, ic = bspDrawIndexes[j + 2] + bspDrawSurfaces[i].firstVert;
-					bspDrawVert_t *a = &bspDrawVerts[ia], *b = &bspDrawVerts[ib], *c = &bspDrawVerts[ic];
-					float *oa = &old_xyzst[ia * 5], *ob = &old_xyzst[ib * 5], *oc = &old_xyzst[ic * 5];
+					const int ia = bspDrawIndexes[j + 0] + surf.firstVert,
+					          ib = bspDrawIndexes[j + 1] + surf.firstVert,
+							  ic = bspDrawIndexes[j + 2] + surf.firstVert;
 					// extrapolate:
 					//   a->xyz -> oa
 					//   b->xyz -> ob
 					//   c->xyz -> oc
 					ExtrapolateTexcoords(
-					    &oa[0], &oa[3],
-					    &ob[0], &ob[3],
-					    &oc[0], &oc[3],
-					    a->xyz, a->st,
-					    b->xyz, b->st,
-					    c->xyz, c->st );
+					    old_xyzst[ia],
+					    old_xyzst[ib],
+					    old_xyzst[ic],
+					    bspDrawVerts[ia],
+					    bspDrawVerts[ib],
+					    bspDrawVerts[ic] );
 				}
 				break;
 			}
@@ -577,19 +515,19 @@ int ScaleBSPMain( int argc, char **argv ){
 
 	/* scale planes */
 	if ( uniform ) {
-		for ( i = 0; i < numBSPPlanes; i++ )
+		for ( bspPlane_t& plane : bspPlanes )
 		{
-			bspPlanes[ i ].dist() *= scale[0];
+			plane.dist() *= scale[0];
 		}
 	}
 	else
 	{
-		for ( i = 0; i < numBSPPlanes; i++ )
+		for ( bspPlane_t& plane : bspPlanes )
 		{
-			bspPlanes[i].normal() /= scale;
-			const double len = vector3_length( bspPlanes[i].normal() );
-			bspPlanes[i].normal() /= len;
-			bspPlanes[i].dist() /= len;
+			plane.normal() /= scale;
+			const double len = vector3_length( plane.normal() );
+			plane.normal() /= len;
+			plane.dist() /= len;
 		}
 	}
 
@@ -602,7 +540,7 @@ int ScaleBSPMain( int argc, char **argv ){
 	entities[ 0 ].setKeyValue( "gridsize", str );
 
 	/* inject command line parameters */
-	InjectCommandLine( argv, 0, argc - 1 );
+	InjectCommandLine( "-scale", argsToInject );
 
 	/* write the bsp */
 	UnparseEntities();
@@ -620,31 +558,33 @@ int ScaleBSPMain( int argc, char **argv ){
    shifts a map: for testing physics with huge coordinates
  */
 
-int ShiftBSPMain( int argc, char **argv ){
-	int i;
+int ShiftBSPMain( Args& args ){
 	Vector3 shift;
 	Vector3 vec;
 	char str[ 1024 ];
 
 
 	/* arg checking */
-	if ( argc < 3 ) {
+	if ( args.size() < 2 ) {
 		Sys_Printf( "Usage: q3map2 [-v] -shift <value> <mapname>\n" );
 		return 0;
 	}
 
+	const char *fileName = args.takeBack();
+	const auto argsToInject = args.getVector();
+
 	/* get shift */
-	shift[2] = shift[1] = shift[0] = atof( argv[ argc - 2 ] );
-	if ( argc - 3 >= 1 ) {
-		shift[1] = shift[0] = atof( argv[ argc - 3 ] );
+	shift[2] = shift[1] = shift[0] = atof( args.takeBack() );
+	if ( !args.empty() ) {
+		shift[1] = shift[0] = atof( args.takeBack() );
 	}
-	if ( argc - 4 >= 1 ) {
-		shift[0] = atof( argv[ argc - 4 ] );
+	if ( !args.empty() ) {
+		shift[0] = atof( args.takeBack() );
 	}
 
 
 	/* do some path mangling */
-	strcpy( source, ExpandArg( argv[ argc - 1 ] ) );
+	strcpy( source, ExpandArg( fileName ) );
 	path_set_extension( source, ".bsp" );
 
 	/* load the bsp */
@@ -669,42 +609,42 @@ int ShiftBSPMain( int argc, char **argv ){
 	}
 
 	/* shift models */
-	for ( i = 0; i < numBSPModels; i++ )
+	for ( auto& model : bspModels )
 	{
-		bspModels[ i ].minmax.mins += shift;
-		bspModels[ i ].minmax.maxs += shift;
+		model.minmax.mins += shift;
+		model.minmax.maxs += shift;
 	}
 
 	/* shift nodes */
-	for ( i = 0; i < numBSPNodes; i++ )
+	for ( bspNode_t& node : bspNodes )
 	{
-		bspNodes[ i ].minmax.mins += shift;
-		bspNodes[ i ].minmax.maxs += shift;
+		node.minmax.mins += shift;
+		node.minmax.maxs += shift;
 	}
 
 	/* shift leafs */
-	for ( i = 0; i < numBSPLeafs; i++ )
+	for ( bspLeaf_t& leaf : bspLeafs )
 	{
-		bspLeafs[ i ].minmax.mins += shift;
-		bspLeafs[ i ].minmax.maxs += shift;
+		leaf.minmax.mins += shift;
+		leaf.minmax.maxs += shift;
 	}
 
 	/* shift drawverts */
-	for ( i = 0; i < numBSPDrawVerts; i++ )
+	for ( bspDrawVert_t& vert : bspDrawVerts )
 	{
-		bspDrawVerts[i].xyz += shift;
+		vert.xyz += shift;
 	}
 
 	/* shift planes */
-	for ( i = 0; i < numBSPPlanes; i++ )
+	for ( bspPlane_t& plane : bspPlanes )
 	{
-		bspPlanes[i].dist() = vector3_dot( bspPlanes[i].normal(), bspPlanes[i].normal() * bspPlanes[i].dist() + shift );
+		plane.dist() = vector3_dot( plane.normal(), plane.normal() * plane.dist() + shift );
 	}
 
 	// fixme: engine says 'light grid mismatch', unless translation is multiple of grid size
 
 	/* inject command line parameters */
-	InjectCommandLine( argv, 0, argc - 1 );
+	InjectCommandLine( "-shift", argsToInject );
 
 	/* write the bsp */
 	UnparseEntities();
@@ -718,77 +658,351 @@ int ShiftBSPMain( int argc, char **argv ){
 
 
 /*
+   MergeBSPMain()
+   merges two bsps
+ */
+
+int MergeBSPMain( Args& args ){
+	/* arg checking */
+	if ( args.size() < 2 ) {
+		Sys_Printf( "Usage: q3map2 [-v] -mergebsp [-fixnames] [-world] <mainBsp> <bspToinject>\n" );
+		return 0;
+	}
+
+	const char *fileName2 = args.takeBack();
+	const char *fileName1 = args.takeBack();
+	const auto argsToInject = args.getVector();
+
+	const bool fixnames = args.takeArg( "-fixnames" );
+	const bool addworld = args.takeArg( "-world" );
+
+	/* do some path mangling */
+	strcpy( source, ExpandArg( fileName2 ) );
+	path_set_extension( source, ".bsp" );
+
+	/* load the bsp */
+	Sys_Printf( "Loading %s\n", source );
+	LoadBSPFile( source );
+	ParseEntities();
+
+	struct bsp
+	{
+		std::vector<entity_t> entities;
+		std::vector<bspModel_t> bspModels;
+		std::vector<bspShader_t> bspShaders;
+		std::vector<bspLeaf_t> bspLeafs;
+		std::vector<bspPlane_t> bspPlanes;
+		std::vector<bspNode_t> bspNodes;
+		std::vector<int> bspLeafSurfaces;
+		std::vector<int> bspLeafBrushes;
+		std::vector<bspBrush_t> bspBrushes;
+		std::vector<bspBrushSide_t> bspBrushSides;
+		std::vector<byte> bspLightBytes;
+		std::vector<bspGridPoint_t> bspGridPoints;
+		std::vector<byte> bspVisBytes;
+		std::vector<bspDrawVert_t> bspDrawVerts;
+		std::vector<int> bspDrawIndexes;
+		std::vector<bspDrawSurface_t> bspDrawSurfaces;
+		std::vector<bspFog_t> bspFogs;
+	} bsp;
+
+	bsp.entities = std::move( entities );
+	bsp.bspModels = std::move( bspModels );
+	bsp.bspShaders = std::move( bspShaders );
+	bsp.bspLeafs = std::move( bspLeafs );
+	bsp.bspPlanes = std::move( bspPlanes );
+	bsp.bspNodes = std::move( bspNodes );
+	bsp.bspLeafSurfaces = std::move( bspLeafSurfaces );
+	bsp.bspLeafBrushes = std::move( bspLeafBrushes );
+	bsp.bspBrushes = std::move( bspBrushes );
+	bsp.bspBrushSides = std::move( bspBrushSides );
+	bsp.bspLightBytes = std::move( bspLightBytes );
+	bsp.bspGridPoints = std::move( bspGridPoints );
+	bsp.bspVisBytes = std::move( bspVisBytes );
+	bsp.bspDrawVerts = std::move( bspDrawVerts );
+	bsp.bspDrawIndexes = std::move( bspDrawIndexes );
+	bsp.bspDrawSurfaces = std::move( bspDrawSurfaces );
+	bsp.bspFogs = std::move( bspFogs );
+
+	/* do some path mangling */
+	strcpy( source, ExpandArg( fileName1 ) );
+	path_set_extension( source, ".bsp" );
+
+	/* load the bsp */
+	Sys_Printf( "Loading %s\n", source );
+	LoadBSPFile( source );
+	ParseEntities();
+
+
+	/* reindex */
+	{
+		for( auto&& model : bsp.bspModels )
+		{
+			model.firstBSPSurface += bspDrawSurfaces.size();
+			model.firstBSPBrush += bspBrushes.size();
+		}
+
+		for( auto&& side : bsp.bspBrushSides ){
+			side.planeNum += bspPlanes.size();
+			side.shaderNum += bspShaders.size();
+			side.surfaceNum += bspDrawSurfaces.size();
+		}
+
+		for( auto&& brush : bsp.bspBrushes )
+		{
+			brush.shaderNum += bspShaders.size();
+			brush.firstSide += bspBrushSides.size();
+		}
+
+		for( auto&& fog : bsp.bspFogs )
+			fog.brushNum += bspBrushes.size();
+
+		/* deduce max lm index, using bspLightBytes is insufficient for native external lightmaps */
+		int maxLmIndex = -3;
+		for( const auto& surf : bspDrawSurfaces )
+			for( auto index : surf.lightmapNum )
+				value_maximize( maxLmIndex, index );
+		for( auto&& surf : bsp.bspDrawSurfaces )
+		{
+			surf.shaderNum += bspShaders.size();
+			surf.fogNum += bspFogs.size();
+			surf.firstVert += bspDrawVerts.size();
+			surf.firstIndex += bspDrawIndexes.size();
+			for( auto&& index : surf.lightmapNum )
+				if( index >= 0 && maxLmIndex >= 0 )
+					index += maxLmIndex + 1;
+		}
+
+		ENSURE( bsp.entities[0].classname_is( "worldspawn" ) );
+		for( auto&& e : bsp.entities )
+		{
+			const char *model = e.valueForKey( "model" );
+			if( model[0] == '*' ){
+				e.setKeyValue( "model", StringOutputStream( 8 )( '*', atoi( model + 1 ) + bspModels.size() - 1 ) ); // -1 : minus world
+			}
+		}
+		/* make target/targetname names unique */
+		if( fixnames ){
+			const auto is_name = []( const epair_t& ep ){ return striEqual( ep.key.c_str(), "target" ) || striEqual( ep.key.c_str(), "targetname" ); };
+			const auto has_name = [is_name]( const std::vector<entity_t>& entities, const char *name ){
+				for( auto&& e : entities )
+					for( auto&& ep : e.epairs )
+						if( is_name( ep ) && striEqual( name, ep.value.c_str() ) )
+							return true;
+				return false;
+			};
+			for( auto&& e : bsp.entities )
+			{
+				for( const char *key : { "target", "targetname" } )
+				{
+					if( const char *name; e.read_keyvalue( name, key ) ){
+						if( has_name( entities, name ) ){
+							StringOutputStream newName;
+							int id = 0;
+							do{
+								newName( name, '_', id++ );
+							} while( has_name( entities, newName )
+							      || has_name( bsp.entities, newName ) );
+
+							const CopiedString oldName = name; // backup it, original will change
+							for( auto&& e : bsp.entities )
+								for( auto&& ep : e.epairs )
+									if( is_name( ep ) && striEqual( ep.value.c_str(), oldName.c_str() ) )
+										ep.value = newName;
+						}
+					}
+				}
+			}
+		}
+	}
+
+	{
+		entities.insert( entities.cend(), bsp.entities.cbegin() + 1, bsp.entities.cend() ); // minus world
+		numBSPEntities = entities.size();
+		bspModels.insert( bspModels.cend(), bsp.bspModels.cbegin() + 1, bsp.bspModels.cend() ); // minus world
+		bspShaders.insert( bspShaders.cend(), bsp.bspShaders.cbegin(), bsp.bspShaders.cend() );
+		// bspLeafs
+		bspPlanes.insert( bspPlanes.cend(), bsp.bspPlanes.cbegin(), bsp.bspPlanes.cend() );
+		// bspNodes
+		// bspLeafSurfaces
+		// bspLeafBrushes
+		bspBrushes.insert( bspBrushes.cend(), bsp.bspBrushes.cbegin(), bsp.bspBrushes.cend() );
+		bspBrushSides.insert( bspBrushSides.cend(), bsp.bspBrushSides.cbegin(), bsp.bspBrushSides.cend() );
+		bspLightBytes.insert( bspLightBytes.cend(), bsp.bspLightBytes.cbegin(), bsp.bspLightBytes.cend() );
+		// bspGridPoints
+		// bspVisBytes
+		bspDrawVerts.insert( bspDrawVerts.cend(), bsp.bspDrawVerts.cbegin(), bsp.bspDrawVerts.cend() );
+		bspDrawIndexes.insert( bspDrawIndexes.cend(), bsp.bspDrawIndexes.cbegin(), bsp.bspDrawIndexes.cend() );
+		bspDrawSurfaces.insert( bspDrawSurfaces.cend(), bsp.bspDrawSurfaces.cbegin(), bsp.bspDrawSurfaces.cend() );
+		bspFogs.insert( bspFogs.cend(), bsp.bspFogs.cbegin(), bsp.bspFogs.cend() );
+	}
+
+	if( addworld ){
+		/* insert new world surfaces */
+		const std::vector<bspDrawSurface_t> surfs( bspDrawSurfaces.cbegin() + bsp.bspModels[0].firstBSPSurface,
+		                                           bspDrawSurfaces.cbegin() + bsp.bspModels[0].firstBSPSurface + bsp.bspModels[0].numBSPSurfaces );
+		bspDrawSurfaces.insert( bspDrawSurfaces.cbegin() + bspModels[0].firstBSPSurface + bspModels[0].numBSPSurfaces,
+		                        surfs.cbegin(), surfs.cend() );
+		// reindex
+		for( auto&& index : bspLeafSurfaces )
+			if( index >= bspModels[0].firstBSPSurface + bspModels[0].numBSPSurfaces )
+				index += surfs.size();
+		for( auto&& side : bspBrushSides )
+			if( side.surfaceNum >= bspModels[0].firstBSPSurface + bspModels[0].numBSPSurfaces )
+				side.surfaceNum += surfs.size();
+		for( auto&& model : bspModels )
+			if( model.firstBSPSurface >= bspModels[0].firstBSPSurface + bspModels[0].numBSPSurfaces )
+				model.firstBSPSurface += surfs.size();
+		bspModels[0].numBSPSurfaces += surfs.size();
+		/* insert new world brushes */
+		const std::vector<bspBrush_t> brushes( bspBrushes.cbegin() + bsp.bspModels[0].firstBSPBrush,
+		                                       bspBrushes.cbegin() + bsp.bspModels[0].firstBSPBrush + bsp.bspModels[0].numBSPBrushes );
+		bspBrushes.insert( bspBrushes.cbegin() + bspModels[0].firstBSPBrush + bspModels[0].numBSPBrushes,
+		                   brushes.cbegin(), brushes.cend() );
+		// reindex
+		for( auto&& index : bspLeafBrushes )
+			if( index >= bspModels[0].firstBSPBrush + bspModels[0].numBSPBrushes )
+				index += brushes.size();
+		for( auto&& fog : bspFogs )
+			if( fog.brushNum >= bspModels[0].firstBSPBrush + bspModels[0].numBSPBrushes )
+				fog.brushNum += brushes.size();
+		for( auto&& model : bspModels )
+			if( model.firstBSPBrush >= bspModels[0].firstBSPBrush + bspModels[0].numBSPBrushes )
+				model.firstBSPBrush += brushes.size();
+		bspModels[0].numBSPBrushes += brushes.size();
+		/* reference surfaces */
+		for( auto end = bspDrawSurfaces.cbegin() + bspModels[0].firstBSPSurface + bspModels[0].numBSPSurfaces,
+		          surf = end - surfs.size(); surf != end; ++surf ){
+			MinMax minmax; // cheap minmax test
+			if( surf->surfaceType == MST_BAD ){
+				continue;
+			}
+			else if( surf->surfaceType == MST_PATCH ){
+				minmax = { surf->lightmapVecs[0], surf->lightmapVecs[1] };
+			}
+			else{
+				for( int i = 0; i < surf->numIndexes; ++i )
+					minmax.extend( bspDrawVerts[surf->firstVert + bspDrawIndexes[surf->firstIndex + i]].xyz );
+			}
+
+			for( auto&& leaf : bspLeafs ){
+				if( leaf.minmax.test( minmax ) ){
+					for( auto&& l : bspLeafs )
+						if( &l != &leaf && l.firstBSPLeafSurface >= leaf.firstBSPLeafSurface )
+							++l.firstBSPLeafSurface;
+
+					bspLeafSurfaces.insert( bspLeafSurfaces.cbegin() + leaf.firstBSPLeafSurface, int( std::distance( bspDrawSurfaces.cbegin(), surf ) ) );
+					++leaf.numBSPLeafSurfaces;
+				}
+			}
+		}
+		/* reference brushes */
+		/* convert bsp planes to map planes */
+		mapplanes.resize( bspPlanes.size() );
+		for ( size_t i = 0; i < bspPlanes.size(); ++i )
+		{
+			mapplanes[i].plane = bspPlanes[i];
+		}
+
+		for( auto end = bspBrushes.cbegin() + bspModels[0].firstBSPBrush + bspModels[0].numBSPBrushes,
+		          brush = end - brushes.size(); brush != end; ++brush ){
+			buildBrush.sides.clear();
+			for( auto side = bspBrushSides.cbegin() + brush->firstSide, end = side + brush->numSides; side != end; ++side ){
+				auto& s = buildBrush.sides.emplace_back();
+				s.planenum = side->planeNum;
+			}
+			if( CreateBrushWindings( buildBrush ) ){
+				// cheap minmax test
+				for( auto&& leaf : bspLeafs ){
+					if( leaf.minmax.test( buildBrush.minmax ) ){
+						for( auto&& l : bspLeafs )
+							if( &l != &leaf && l.firstBSPLeafBrush >= leaf.firstBSPLeafBrush )
+								++l.firstBSPLeafBrush;
+
+						bspLeafBrushes.insert( bspLeafBrushes.cbegin() + leaf.firstBSPLeafBrush, int( std::distance( bspBrushes.cbegin(), brush ) ) );
+						++leaf.numBSPLeafBrushes;
+					}
+				}
+			}
+		}
+	}
+
+
+	/* inject command line parameters */
+	InjectCommandLine( "-mergebsp", argsToInject );
+
+	/* write the bsp */
+	UnparseEntities();
+	path_set_extension( source, "_merged.bsp" );
+	Sys_Printf( "Writing %s\n", source );
+	WriteBSPFile( source );
+
+	/* return to sender */
+	return 0;
+}
+
+
+/*
    PseudoCompileBSP()
    a stripped down ProcessModels
  */
-void PseudoCompileBSP( bool need_tree ){
-	int models;
+static void PseudoCompileBSP( bool need_tree ){
+	int models = 1;
 	char modelValue[16];
-	entity_t *entity;
-	face_t *faces;
-	tree_t *tree;
-	node_t *node;
-	brush_t *brush;
-	side_t *side;
+	facelist_t faces;
+	tree_t tree{};
 
-	SetDrawSurfacesBuffer();
 	mapDrawSurfs = safe_calloc( sizeof( mapDrawSurface_t ) * MAX_MAP_DRAW_SURFS );
 	numMapDrawSurfs = 0;
 
 	BeginBSPFile();
-	models = 1;
-	for ( mapEntityNum = 0; mapEntityNum < entities.size(); mapEntityNum++ )
+	for ( size_t entityNum = 0; entityNum < entities.size(); ++entityNum )
 	{
 		/* get entity */
-		entity = &entities[ mapEntityNum ];
-		if ( entity->brushes == NULL && entity->patches == NULL ) {
+		entity_t& entity = entities[ entityNum ];
+		if ( entity.brushes.empty() && entity.patches == NULL ) {
 			continue;
 		}
 
-		if ( mapEntityNum != 0 ) {
+		if ( entityNum != 0 ) {
 			sprintf( modelValue, "*%d", models++ );
-			entity->setKeyValue( "model", modelValue );
+			entity.setKeyValue( "model", modelValue );
 		}
 
 		/* process the model */
-		Sys_FPrintf( SYS_VRB, "############### model %i ###############\n", numBSPModels );
-		BeginModel();
+		Sys_FPrintf( SYS_VRB, "############### model %zu ###############\n", bspModels.size() );
+		BeginModel( entity );
 
-		entity->firstDrawSurf = numMapDrawSurfs;
+		entity.firstDrawSurf = numMapDrawSurfs;
 
 		ClearMetaTriangles();
 		PatchMapDrawSurfs( entity );
 
-		if ( mapEntityNum == 0 && need_tree ) {
+		if ( entityNum == 0 && need_tree ) {
 			faces = MakeStructuralBSPFaceList( entities[0].brushes );
 			tree = FaceBSP( faces );
-			node = tree->headnode;
 		}
 		else
 		{
-			node = AllocNode();
-			node->planenum = PLANENUM_LEAF;
-			tree = AllocTree();
-			tree->headnode = node;
+			tree.headnode = AllocNode();
+			tree.headnode->planenum = PLANENUM_LEAF;
 		}
 
 		/* a minimized ClipSidesIntoTree */
-		for ( brush = entity->brushes; brush; brush = brush->next )
+		for ( const brush_t& brush : entity.brushes )
 		{
 			/* walk the brush sides */
-			for ( int j = 0; j < brush->numsides; j++ )
+			for ( const side_t& side : brush.sides )
 			{
-				/* get side */
-				side = &brush->sides[ j ];
-				if ( side->winding == NULL ) {
+				if ( side.winding.empty() ) {
 					continue;
 				}
 				/* shader? */
-				if ( side->shaderInfo == NULL ) {
+				if ( side.shaderInfo == NULL ) {
 					continue;
 				}
 				/* save this winding as a visible surface */
-				DrawSurfaceForSide( entity, brush, side, side->winding );
+				DrawSurfaceForSide( entity, brush, side, side.winding );
 			}
 		}
 
@@ -804,8 +1018,8 @@ void PseudoCompileBSP( bool need_tree ){
 		FilterStructuralBrushesIntoTree( entity, tree );
 		FilterDetailBrushesIntoTree( entity, tree );
 
-		EmitBrushes( entity->brushes, &entity->firstBrush, &entity->numBrushes );
-		EndModel( entity, node );
+		EmitBrushes( entity.brushes, &entity.firstBrush, &entity.numBrushes );
+		EndModel( entity, tree.headnode );
 	}
 	EndBSPFile( false );
 }
@@ -815,10 +1029,9 @@ void PseudoCompileBSP( bool need_tree ){
    main argument processing function for bsp conversion
  */
 
-int ConvertBSPMain( int argc, char **argv ){
-	int i;
+int ConvertBSPMain( Args& args ){
 	int ( *convertFunc )( char * );
-	game_t  *convertGame;
+	const game_t  *convertGame;
 	bool map_allowed, force_bsp, force_map;
 
 
@@ -830,76 +1043,74 @@ int ConvertBSPMain( int argc, char **argv ){
 	force_map = false;
 
 	/* arg checking */
-	if ( argc < 2 ) {
-		Sys_Printf( "Usage: q3map2 -convert [-format <ase|obj|map_bp|map>] [-shadersasbitmap|-lightmapsastexcoord|-deluxemapsastexcoord] [-readbsp|-readmap [-meta|-patchmeta]] [-v] <mapname>\n" );
+	if ( args.empty() ) {
+		Sys_Printf( "Usage: q3map2 -convert [-format <ase|obj|map_bp|map|game name>] [-shadersasbitmap|-lightmapsastexcoord|-deluxemapsastexcoord] [-readbsp|-readmap [-meta|-patchmeta]] [-v] <mapname>\n" );
 		return 0;
 	}
 
 	/* process arguments */
-	for ( i = 1; i < ( argc - 1 ); i++ )
+	const char *fileName = args.takeBack();
 	{
 		/* -format map|ase|... */
-		if ( striEqual( argv[ i ], "-format" ) ) {
-			i++;
-			if ( striEqual( argv[ i ], "ase" ) ) {
+		while ( args.takeArg( "-format" ) ) {
+			const char *fmt = args.takeNext();
+			if ( striEqual( fmt, "ase" ) ) {
 				convertFunc = ConvertBSPToASE;
 				map_allowed = false;
 			}
-			else if ( striEqual( argv[ i ], "obj" ) ) {
+			else if ( striEqual( fmt, "obj" ) ) {
 				convertFunc = ConvertBSPToOBJ;
 				map_allowed = false;
 			}
-			else if ( striEqual( argv[ i ], "map_bp" ) ) {
+			else if ( striEqual( fmt, "map_bp" ) ) {
 				convertFunc = ConvertBSPToMap_BP;
 				map_allowed = true;
 			}
-			else if ( striEqual( argv[ i ], "map" ) ) {
+			else if ( striEqual( fmt, "map" ) ) {
 				convertFunc = ConvertBSPToMap;
 				map_allowed = true;
 			}
 			else
 			{
-				convertGame = GetGame( argv[ i ] );
+				convertGame = GetGame( fmt );
 				map_allowed = false;
 				if ( convertGame == NULL ) {
-					Sys_Printf( "Unknown conversion format \"%s\". Defaulting to ASE.\n", argv[ i ] );
+					Sys_Printf( "Unknown conversion format \"%s\". Defaulting to ASE.\n", fmt );
 				}
 			}
 		}
-		else if ( striEqual( argv[ i ], "-ne" ) ) {
-			normalEpsilon = atof( argv[ i + 1 ] );
-			i++;
+		while ( args.takeArg( "-ne" ) ) {
+			normalEpsilon = atof( args.takeNext() );
 			Sys_Printf( "Normal epsilon set to %lf\n", normalEpsilon );
 		}
-		else if ( striEqual( argv[ i ], "-de" ) ) {
-			distanceEpsilon = atof( argv[ i + 1 ] );
-			i++;
+		while ( args.takeArg( "-de" ) ) {
+			distanceEpsilon = atof( args.takeNext() );
 			Sys_Printf( "Distance epsilon set to %lf\n", distanceEpsilon );
 		}
-		else if ( striEqual( argv[ i ], "-shaderasbitmap" ) || striEqual( argv[ i ], "-shadersasbitmap" ) ) {
+		while ( args.takeArg( "-shaderasbitmap", "-shadersasbitmap" ) ) {
 			shadersAsBitmap = true;
 		}
-		else if ( striEqual( argv[ i ], "-lightmapastexcoord" ) || striEqual( argv[ i ], "-lightmapsastexcoord" ) ) {
+		while ( args.takeArg( "-lightmapastexcoord", "-lightmapsastexcoord" ) ) {
 			lightmapsAsTexcoord = true;
 		}
-		else if ( striEqual( argv[ i ], "-deluxemapastexcoord" ) || striEqual( argv[ i ], "-deluxemapsastexcoord" ) ) {
+		while ( args.takeArg( "-deluxemapastexcoord", "-deluxemapsastexcoord" ) ) {
 			lightmapsAsTexcoord = true;
 			deluxemap = true;
 		}
-		else if ( striEqual( argv[ i ], "-readbsp" ) ) {
+		while ( args.takeArg( "-readbsp" ) ) {
 			force_bsp = true;
 		}
-		else if ( striEqual( argv[ i ], "-readmap" ) ) {
+		while ( args.takeArg( "-readmap" ) ) {
 			force_map = true;
 		}
-		else if ( striEqual( argv[ i ], "-meta" ) ) {
+		while ( args.takeArg( "-meta" ) ) {
 			meta = true;
 		}
-		else if ( striEqual( argv[ i ], "-patchmeta" ) ) {
+		while ( args.takeArg( "-patchmeta" ) ) {
 			meta = true;
 			patchMeta = true;
 		}
-		else if ( striEqual( argv[ i ], "-fast" ) ) {
+		while ( args.takeArg( "-fast" ) ) {
 			fast = true;
 		}
 	}
@@ -907,13 +1118,13 @@ int ConvertBSPMain( int argc, char **argv ){
 	LoadShaderInfo();
 
 	/* clean up map name */
-	strcpy( source, ExpandArg( argv[i] ) );
+	strcpy( source, ExpandArg( fileName ) );
 
 	if ( !map_allowed && !force_map ) {
 		force_bsp = true;
 	}
 
-	if ( force_map || ( !force_bsp && striEqual( path_get_extension( source ), "map" ) && map_allowed ) ) {
+	if ( force_map || ( !force_bsp && path_extension_is( source, "map" ) && map_allowed ) ) {
 		if ( !map_allowed ) {
 			Sys_Warning( "the requested conversion should not be done from .map files. Compile a .bsp first.\n" );
 		}
@@ -933,7 +1144,7 @@ int ConvertBSPMain( int argc, char **argv ){
 	/* bsp format convert? */
 	if ( convertGame != NULL ) {
 		/* set global game */
-		game = convertGame;
+		g_game = convertGame;
 
 		/* write bsp */
 		path_set_extension( source, "_c.bsp" );

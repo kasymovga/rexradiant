@@ -19,11 +19,10 @@
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#if !defined ( INCLUDED_ECLASSLIB_H )
-#define INCLUDED_ECLASSLIB_H
+#pragma once
 
-#include <stdio.h>
-#include <stdlib.h>
+#include <cstdio>
+#include <cstdlib>
 #include <list>
 #include <map>
 #include <vector>
@@ -87,14 +86,14 @@ typedef std::list<EntityClassAttributePair> EntityClassAttributes;
 typedef std::list<CopiedString> StringList;
 
 inline const char* EntityClassAttributePair_getName( const EntityClassAttributePair& attributePair ){
-	if ( !string_empty( attributePair.second.m_name.c_str() ) ) {
+	if ( !attributePair.second.m_name.empty() ) {
 		return attributePair.second.m_name.c_str();
 	}
 	return attributePair.first.c_str();
 }
 
 inline const char* EntityClassAttributePair_getDescription( const EntityClassAttributePair& attributePair ){
-	if ( !string_empty( attributePair.second.m_description.c_str() ) ) {
+	if ( !attributePair.second.m_description.empty() ) {
 		return attributePair.second.m_description.c_str();
 	}
 	return EntityClassAttributePair_getName( attributePair );
@@ -339,5 +338,3 @@ inline EntityClass *EntityClass_Create_Default( const char *name, bool has_brush
 		return EClass_Create_FixedSize( name, Vector3( 0.0f, 0.5f, 0.0f ), smallbox[0], smallbox[1], "Not found in source." );
 	}
 }
-
-#endif
