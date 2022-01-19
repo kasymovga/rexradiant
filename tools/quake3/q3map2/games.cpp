@@ -240,6 +240,29 @@ struct game_nexuiz : game_default
 	}
 };
 
+struct game_rexuiz : game_default
+{
+	game_rexuiz(){
+		arg = "rexuiz";
+		gamePath = "data";
+		homeBasePath = ".rexuiz";
+		magic = "rexuiz";
+		maxLMSurfaceVerts = 1048575;
+		maxSurfaceVerts = 1048575;
+		maxSurfaceIndexes = 1048575;
+		lightmapsRGB = true;
+		texturesRGB = true;
+		colorsRGB = true;
+		noStyles = true;
+		keepLights = false;
+		patchSubdivisions = 4;
+		patchShadows = true;
+		deluxeMap = true;
+		miniMapBorder = 1.0f / 66.0f;
+		miniMapNameFormat = "../gfx/%s_mini.tga";
+	}
+};
+
 struct game_xonotic : game_default
 {
 	game_xonotic(){
