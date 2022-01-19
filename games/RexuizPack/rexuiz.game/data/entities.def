@@ -1822,3 +1822,31 @@ FLOATING: the item will float in air, instead of aligning to the floor by fallin
 -------- MODEL FOR RADIANT ONLY - DO NOT SET THIS AS A KEY --------
 model="models/weapons/g_tuba.md3"
 */
+
+/*QUAKED trigger_race_checkpoint (.5 .5 .5) ? NOTOUCH USE_TARGETS KILL FINISH
+Trigger for race checkpoint
+-------- KEYS --------
+cnt: checkpoint number, 0 - start
+targetname: The name other entities can use to target this entity
+target: The entity/entities to be triggered once this checkpoint passed (with USE_TARGETS flag)
+-------- SPAWNFLAGS --------
+NOTOUCH: trigger activated by targetname
+USE_TARGETS: activate targeted entities
+KILL: checkpoint will kill players if it was triggered in wrong order
+FINISH: final checkpoint
+*/
+
+/*QUAKED trigger_race_penalty (.5 .5 .5) ? NOTOUCH
+Trigger for race penalty
+-------- KEYS --------
+race_penalty: penalty time
+race_penalty_reason: penalty reason
+-------- SPAWNFLAGS --------
+NOTOUCH: trigger activated by targetname
+*/
+
+/*QUAKED info_player_race (1 0.5 0) (-16 -16 -24) (16 16 45) 
+Spawn location for race player
+-------- KEYS --------
+race_place: player position
+*/
