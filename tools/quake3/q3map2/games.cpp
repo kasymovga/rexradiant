@@ -946,6 +946,7 @@ struct game_ja : game_sof2
 const std::vector<game_t> g_games = { game_quake3(),
                                       game_quakelive(),
 									  game_nexuiz(),
+									  game_rexuiz(),
 									  game_xonotic(),
 									  game_tremulous(),
 									  game_unvanquished(),
