@@ -1850,3 +1850,23 @@ Spawn location for race player
 -------- KEYS --------
 race_place: player position
 */
+
+/*QUAKED conquest_cp (0.5 0.5 0.5) (-66 -66 6) (66 66 43) 
+Conquest control point
+-------- KEYS --------
+team: initial team (5 - Red, 14 - Blue)
+target: linked objects
+*/
+
+/*QUAKED monster_turret_spawn (1 1 0) (-60 -60 5) (60 60 100) AUTORESPAWN FREEHUNT
+Mobile turret
+-------- KEYS --------
+cnt: monster count
+targetname: target name
+target: monster target
+respawntime: monster respawntime
+weaponname: turret type
+-------- SPAWNFLAGS --------
+AUTORESPAWN: Auto respawn
+FREEHUNT: Free hunt
+*/
