@@ -1870,3 +1870,15 @@ weaponname: turret type
 AUTORESPAWN: Auto respawn
 FREEHUNT: Free hunt
 */
+
+/*QUAKED waypoint (0.75 0.75 1) (-8 -8 -8) (8 8 8) 
+Waypoint for bot and monster navigation
+-------- KEYS --------
+*/
+
+/*QUAKED func_moveentity (1 1 0.5) (-8 -8 -8) (8 8 8) 
+Move target entity to this position
+-------- KEYS --------
+speed: move speed
+target: entity to move
+*/
