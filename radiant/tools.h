@@ -1,6 +1,6 @@
 /*
-   Copyright (C) 2001-2006, William Joseph.
-   All Rights Reserved.
+   Copyright (C) 1999-2006 Id Software, Inc. and contributors.
+   For a list of contributors, see the accompanying CONTRIBUTORS file.
 
    This file is part of GtkRadiant.
 
@@ -21,6 +21,8 @@
 
 #pragma once
 
-typedef struct _GtkWidget GtkWidget;
-typedef struct _GtkFrame GtkFrame;
-GtkFrame* create_framed_widget( GtkWidget* widget );
+
+void Tools_registerCommands();
+
+void SelectionSystem_DefaultMode();
+void ComponentModeChanged();

@@ -1,6 +1,6 @@
 /*
-   Copyright (C) 2001-2006, William Joseph.
-   All Rights Reserved.
+   Copyright (C) 1999-2006 Id Software, Inc. and contributors.
+   For a list of contributors, see the accompanying CONTRIBUTORS file.
 
    This file is part of GtkRadiant.
 
@@ -21,27 +21,9 @@
 
 #pragma once
 
-struct WindowPosition;
+template<typename Element> class BasicVector3;
+typedef BasicVector3<float> Vector3;
 
-void PositionWindowOnPrimaryScreen( WindowPosition& position );
-
-struct multimon_globals_t
-{
-	bool m_bStartOnPrimMon;
-
-	multimon_globals_t() :
-		m_bStartOnPrimMon( false ){
-	}
-};
-
-extern multimon_globals_t g_multimon_globals;
-
-#if defined( WIN32 )
-void MultiMon_Construct();
-void MultiMon_Destroy();
-#else
-inline void MultiMon_Construct(){
-}
-inline void MultiMon_Destroy(){
-}
-#endif
+void SetWorldspawnColour( const Vector3& colour );
+void Colors_registerCommands();
+void create_colours_menu( class QMenu *menu );

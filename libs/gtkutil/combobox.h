@@ -19,4 +19,23 @@
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#include "closure.h"
+#pragma once
+
+#include <QComboBox>
+#include <QKeyEvent>
+
+/// @brief Subclassed QComboBox not comsuming Enter key (why does it do it? works as expected for editable ComboBox)
+/// purpose is to have working confirmation by Enter in dialogs
+/// fixme unsolved crude problem here is triggering arrows, page, home, end global shortcuts when pressed in popup; even if modal dialog 😱
+class ComboBox : public QComboBox
+{
+protected:
+	void keyPressEvent( QKeyEvent *event ) override {
+		if( event->key() == Qt::Key_Enter
+		 || event->key() == Qt::Key_Return ){
+			event->ignore();
+			return;
+		}
+		QComboBox::keyPressEvent( event );
+	}
+};

@@ -21,7 +21,24 @@
 
 #pragma once
 
-#if _MSC_VER > 1000 && defined( WIN32 )
-#pragma warning(disable:4355) // 'this' : used in base member initializer list
-#pragma warning(disable:4503) // '[symbol]' : decorated name length exceeded, name was truncated
-#endif
+#include <vector>
+#include <QList>
+
+/// @brief Controls default/save/restore gui settings.
+/// Path strings must be unique and presumably string literals, since they aren't stored.
+/// Widget pointers must stay valid till save().
+/// QCoreApplication::organizationName(), QCoreApplication::applicationName() must be set before first use.
+/// \todo  //. ?use QPointer for sanity
+class GuiSettings
+{
+	std::vector<const class GuiSetting*> m_settings;
+public:
+	~GuiSettings();
+	void save();
+	// zeros are meant to use defaults
+	void addWindow( class QWidget *window, const char *path, int w = 0, int h = 0, int x = 0, int y = 0 );
+	void addMainWindow( class QMainWindow *window, const char *path );
+	void addSplitter( class QSplitter *splitter, const char *path, const QList<int> &sizes );
+};
+
+inline GuiSettings g_guiSettings;
