@@ -319,6 +319,16 @@ void EnginePath_Unrealise(){
 	}
 }
 
+static CopiedString g_installedDevFilesPath; // track last engine path, where dev files installation occured, to prompt again when changed
+
+static void installDevFiles(){
+	if( !path_equal( g_strEnginePath.c_str(), g_installedDevFilesPath.c_str() ) ){
+		ASSERT_MESSAGE( g_enginepath_unrealised != 0, "installDevFiles: engine path realised" );
+		DoInstallDevFilesDlg( g_strEnginePath.c_str() );
+		g_installedDevFilesPath = g_strEnginePath;
+	}
+}
+
 void setEnginePath( CopiedString& self, const char* value ){
 	const auto buffer = StringOutputStream( 256 )( DirectoryCleaned( value ) );
 	if ( !path_equal( buffer.c_str(), self.c_str() ) ) {
@@ -342,6 +352,8 @@ void setEnginePath( CopiedString& self, const char* value ){
 
 		self = buffer.c_str();
 
+		installDevFiles();
+
 		EnginePath_Realise();
 	}
 }
@@ -350,10 +362,10 @@ typedef ReferenceCaller1<CopiedString, const char*, setEnginePath> EnginePathImp
 
 // Extra Resource Path
 
-CopiedString g_strExtraResourcePath;
+std::array<CopiedString, 5> g_strExtraResourcePaths;
 
-const char* ExtraResourcePath_get(){
-	return g_strExtraResourcePath.c_str();
+const std::array<CopiedString, 5>& ExtraResourcePaths_get(){
+	return g_strExtraResourcePaths;
 }
 
 
@@ -409,10 +421,11 @@ void Paths_constructPreferences( PreferencesPage& page ){
 void Paths_constructPage( PreferenceGroup& group ){
 	PreferencesPage page( group.createPage( "Paths", "Path Settings" ) );
 	Paths_constructPreferences( page );
-	page.appendPathEntry( "Extra Resource Path", true,
-	                      StringImportCallback( EnginePathImportCaller( g_strExtraResourcePath ) ),
-	                      StringExportCallback( StringExportCaller( g_strExtraResourcePath ) )
-	                    );
+	for( auto& extraPath : g_strExtraResourcePaths )
+		page.appendPathEntry( "Extra Resource Path", true,
+		                      StringImportCallback( EnginePathImportCaller( extraPath ) ),
+		                      StringExportCallback( StringExportCaller( extraPath ) )
+		                    );
 
 }
 void Paths_registerPreferencesPage(){
@@ -469,10 +482,12 @@ static bool g_strEnginePath_was_empty_1st_start = false;
 
 void EnginePath_verify(){
 	if ( !file_exists( g_strEnginePath.c_str() ) || g_strEnginePath_was_empty_1st_start ) {
+		g_installedDevFilesPath = ""; // trigger install for non existing engine path case
 		g_PathsDialog.Create( nullptr );
 		g_PathsDialog.DoModal();
 		g_PathsDialog.Destroy();
 	}
+	installDevFiles(); // try this anytime, as engine path may be set via command line or -gamedetect
 }
 
 namespace
@@ -2082,8 +2097,12 @@ void MainFrame_Construct(){
 	GlobalPreferenceSystem().registerPreference( "OpenGLFont", CopiedStringImportStringCaller( g_OpenGLFont ), CopiedStringExportStringCaller( g_OpenGLFont ) );
 	GlobalPreferenceSystem().registerPreference( "OpenGLFontSize", IntImportStringCaller( g_OpenGLFontSize ), IntExportStringCaller( g_OpenGLFontSize ) );
 
-	GlobalPreferenceSystem().registerPreference( "ExtraResoucePath", CopiedStringImportStringCaller( g_strExtraResourcePath ), CopiedStringExportStringCaller( g_strExtraResourcePath ) );
+	for( size_t i = 0; i < g_strExtraResourcePaths.size(); ++i )
+		GlobalPreferenceSystem().registerPreference( StringOutputStream( 32 )( "ExtraResourcePath", i ),
+			CopiedStringImportStringCaller( g_strExtraResourcePaths[i] ), CopiedStringExportStringCaller( g_strExtraResourcePaths[i] ) );
+
 	GlobalPreferenceSystem().registerPreference( "EnginePath", CopiedStringImportStringCaller( g_strEnginePath ), CopiedStringExportStringCaller( g_strEnginePath ) );
+	GlobalPreferenceSystem().registerPreference( "InstalledDevFilesPath", CopiedStringImportStringCaller( g_installedDevFilesPath ), CopiedStringExportStringCaller( g_installedDevFilesPath ) );
 	if ( g_strEnginePath.empty() )
 	{
 		g_strEnginePath_was_empty_1st_start = true;

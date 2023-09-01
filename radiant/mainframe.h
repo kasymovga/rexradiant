@@ -177,13 +177,10 @@ void Radiant_detachEnginePathObserver( ModuleObserver& observer );
 void Radiant_attachGameToolsPathObserver( ModuleObserver& observer );
 void Radiant_detachGameToolsPathObserver( ModuleObserver& observer );
 
-extern CopiedString g_strEnginePath;
 void EnginePath_verify();
 const char* EnginePath_get();
-const char* QERApp_GetGamePath();
 
-extern CopiedString g_strExtraResourcePath;
-const char* ExtraResourcePath_get();
+const std::array<CopiedString, 5>& ExtraResourcePaths_get();
 
 extern CopiedString g_strAppPath;
 const char* AppPath_get();

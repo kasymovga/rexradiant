@@ -187,6 +187,8 @@ enum class EBrushType
 #define LS_UNUSED               0xFE
 #define LS_NONE                 0xFF
 
+inline bool style_is_valid( int style ){ return LS_NORMAL <= style && style < LS_NONE; }
+
 #define MAX_LIGHTMAP_SHADERS    256
 
 /* ok to increase these at the expense of more memory */
@@ -1492,6 +1494,7 @@ void                        WritePortalFile( const tree_t& tree );
 /* writebsp.c */
 void                        SetModelNumbers();
 void                        SetLightStyles();
+void                        UnSetLightStyles();
 
 int                         EmitShader( const char *shader, const int *contentFlags, const int *surfaceFlags );
 
@@ -1646,7 +1649,7 @@ int                         ImportLightmapsMain( Args& args );
 
 void                        SetupSurfaceLightmaps();
 void                        StitchSurfaceLightmaps();
-void                        StoreSurfaceLightmaps( bool fastAllocate );
+void                        StoreSurfaceLightmaps( bool fastAllocate, bool storeForReal );
 
 
 /* exportents.c */
@@ -1771,6 +1774,7 @@ inline int metaGoodScore = -1;
 inline bool g_noob;
 inline String64 globalCelShader;
 inline bool keepLights;
+inline bool keepModels;
 
 #if Q3MAP2_EXPERIMENTAL_SNAP_NORMAL_FIX
 // Increasing the normalEpsilon to compensate for new logic in SnapNormal(), where

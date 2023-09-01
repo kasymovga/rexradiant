@@ -30,6 +30,7 @@
 
 /* dependencies */
 #include "q3map2.h"
+#include "bspfile_rbsp.h"
 
 
 
@@ -236,13 +237,13 @@ void SetLightStyles(){
 
 	/* -keeplights option: force lights to be kept and ignore what the map file says */
 	if ( keepLights ) {
-		entities[0].setKeyValue( "_keepLights", "1" );
+		entities[0].setKeyValue( "_keepLights", "1" ); // -keeplights is -bsp option; save key in worldspawn to pass it to the next stages
 	}
 
 	/* ydnar: determine if we keep lights in the bsp */
 	entities[ 0 ].read_keyvalue( keepLights, "_keepLights" );
 
-	/* any light that is controlled (has a targetname) must have a unique style number generated for it */
+	/* any light that is controlled (has a targetname) must have a unique style number generated for it in RBSP */
 	numStyles = 0;
 	for ( std::size_t i = 1; i < entities.size(); ++i )
 	{
@@ -252,7 +253,7 @@ void SetLightStyles(){
 			continue;
 		}
 		const char *t;
-		if ( !e.read_keyvalue( t, "targetname" ) ) {
+		if ( !( e.read_keyvalue( t, "targetname" ) && g_game->load == LoadRBSPFile ) ) { // only RBSP has switchable light styles
 			/* ydnar: strip the light from the BSP file */
 			if ( !keepLights ) {
 				e.epairs.clear();
@@ -265,7 +266,7 @@ void SetLightStyles(){
 
 		/* get existing style */
 		const int style = e.intForKey( "style" );
-		if ( style < LS_NORMAL || style > LS_NONE ) {
+		if ( !style_is_valid( style ) ) {
 			Error( "Invalid lightstyle (%d) on entity %zu", style, i );
 		}
 
@@ -286,7 +287,7 @@ void SetLightStyles(){
 		}
 
 		/* set explicit style */
-		sprintf( value, "%d", 32 + j );
+		sprintf( value, "%d", MAX_SWITCHED_LIGHTS + j );
 		e.setKeyValue( "style", value );
 
 		/* set old style */
@@ -298,6 +299,17 @@ void SetLightStyles(){
 
 	/* emit some statistics */
 	Sys_FPrintf( SYS_VRB, "%9d light entities stripped\n", numStrippedLights );
+}
+
+// reverts SetLightStyles() effect for decompilation purposes
+void UnSetLightStyles(){
+	for ( entity_t& e : entities ){
+		if ( e.classname_prefixed( "light" ) && !strEmpty( e.valueForKey( "targetname" ) ) && !strEmpty( e.valueForKey( "style" ) ) ) {
+			char value[ 10 ];
+			sprintf( value, "%d", e.intForKey( "switch_style" ) ); // value or 0, latter is fine too
+			e.setKeyValue( "style", value );
+		}
+	}
 }
 
 
@@ -461,7 +473,7 @@ void EmitFogs(){
 	}
 
 	/* warn about overflow */
-	if( strEqual( g_game->bspIdent, "RBSP" ) ){
+	if( g_game->load == LoadRBSPFile ){
 		if( mapFogs.size() > MAX_RBSP_FOGS )
 			Sys_Warning( "MAX_RBSP_FOGS (%i) exceeded (%zu). Visual inconsistencies are expected.\n", MAX_RBSP_FOGS, mapFogs.size() );
 	}
