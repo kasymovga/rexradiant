@@ -1792,7 +1792,7 @@ FLOATING: the item will float in air, instead of aligning to the floor by fallin
 model="models/items/g_strength.md3"
 */
 
-/*QUAKED item_sped (.3 .3 1) (-30 -30 0) (30 30 48) FLOATING
+/*QUAKED item_speed (.3 .3 1) (-30 -30 0) (30 30 48) FLOATING
 Speed powerup
 -------- KEYS --------
 respawntime: time till it respawns (default: 120)
