@@ -1871,6 +1871,20 @@ AUTORESPAWN: Auto respawn
 FREEHUNT: Free hunt
 */
 
+/*QUAKED monster_turret_compact_spawn (1 1 0) (-45 -45 3.75) (45 45 75) AUTORESPAWN FREEHUNT
+Mobile turret
+-------- KEYS --------
+cnt: monster count
+targetname: target name
+target: monster target
+respawntime: monster respawntime
+weaponname: turret type
+-------- SPAWNFLAGS --------
+AUTORESPAWN: Auto respawn
+FREEHUNT: Free hunt
+*/
+
+
 /*QUAKED waypoint (0.75 0.75 1) (-8 -8 -8) (8 8 8) 
 Waypoint for bot and monster navigation
 -------- KEYS --------
