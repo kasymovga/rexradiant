@@ -730,7 +730,7 @@ It loops the sound file as an ambient noise.
 noise: path/name of .wav/.ogg file to play
 */
 
-/*QUAKED trigger_counter (.5 .5 .5) ? NOMESSAGE
+/*QUAKED trigger_counter (.5 .5 .5) (-8 -8 -8) (8 8 8) NOMESSAGE
 Acts as an intermediary for an action that takes multiple inputs.
 After the counter has been triggered "count" times, it will fire all of its targets and remove itself.
 -------- KEYS --------
