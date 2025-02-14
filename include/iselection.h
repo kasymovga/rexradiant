@@ -23,8 +23,9 @@
 
 #include <cstddef>
 #include "generic/constant.h"
-#include "generic/callbackfwd.h"
+#include "generic/callback.h"
 #include "signal/signalfwd.h"
+#include "math/vectorfwd.h"
 
 class Renderer;
 class View;
@@ -49,15 +50,11 @@ public:
 	virtual void onSelectedChanged( scene::Instance& instance ) = 0;
 };
 
-template<typename Element> class BasicVector3;
-typedef BasicVector3<float> Vector3;
-template<typename Element> class BasicVector4;
-typedef BasicVector4<float> Vector4;
 typedef Vector4 Quaternion;
 
 class AABB;
 
-typedef Callback1<const Selectable&> SelectionChangeCallback;
+typedef Callback<void(const Selectable&)> SelectionChangeCallback;
 typedef SignalHandler1<const Selectable&> SelectionChangeHandler;
 
 class SelectionSystem
@@ -127,7 +124,8 @@ public:
 	virtual void translateSelected( const Vector3& translation ) = 0;
 	virtual void rotateSelected( const Quaternion& rotation, bool snapOrigin = false ) = 0;
 	virtual void scaleSelected( const Vector3& scaling, bool snapOrigin = false ) = 0;
-	virtual void repeatTransforms( const Callback& clone ) = 0;
+	virtual void repeatTransforms() = 0;
+	virtual void resetTransforms( EManipulatorMode which = eClip ) = 0;
 
 	virtual void pivotChanged() const = 0;
 	virtual void setCustomTransformOrigin( const Vector3& origin, const bool set[3] ) const = 0;

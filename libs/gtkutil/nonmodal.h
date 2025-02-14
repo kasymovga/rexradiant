@@ -31,16 +31,16 @@
 class NonModalEntry : public LineEdit
 {
 	bool m_editing{};
-	Callback m_apply;
-	Callback m_cancel;
+	Callback<void()> m_apply;
+	Callback<void()> m_cancel;
 public:
-	NonModalEntry( const Callback& apply, const Callback& cancel ) : LineEdit(), m_apply( apply ), m_cancel( cancel ){
+	NonModalEntry( const Callback<void()>& apply, const Callback<void()>& cancel ) : LineEdit(), m_apply( apply ), m_cancel( cancel ){
 		QObject::connect( this, &QLineEdit::textEdited, [this](){ m_editing = true; } );
 		// triggered on enter & focus out; need to track editing state, as nonedited triggers this too
 		QObject::connect( this, &QLineEdit::editingFinished, [this](){
 			if( m_editing ){
-				m_apply();
 				m_editing = false;
+				m_apply();
 			}
 			clearFocus();
 		} );
@@ -74,12 +74,13 @@ class NonModalSpinner : public DoubleSpinBox
 {
 	using DoubleSpinBox::DoubleSpinBox;
 	bool m_editing{};
-	Callback m_apply;
-	Callback m_cancel;
+	Callback<void()> m_apply;
+	Callback<void()> m_cancel;
 public:
-	void setCallbacks( const Callback& apply, const Callback& cancel ){
+	void setCallbacks( const Callback<void()>& apply, const Callback<void()>& cancel ){
 		m_apply = apply;
 		m_cancel = cancel;
+		QObject::connect( lineEdit(), &QLineEdit::textEdited, [this](){ m_editing = true; } );
 		// triggered on enter & focus out; need to track editing state, as nonedited triggers this too
 		QObject::connect( this, &QAbstractSpinBox::editingFinished, [this](){
 			if( m_editing ){
@@ -87,9 +88,6 @@ public:
 				m_apply();
 			}
 			clearFocus();
-		} );
-		QObject::connect( lineEdit(), &QLineEdit::textEdited, [this](){
-			m_editing = true;
 		} );
 	}
 	bool event( QEvent *event ) override {

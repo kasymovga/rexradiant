@@ -24,12 +24,13 @@
 #include "stream/textstream.h"
 #include "string/string.h"
 #include "inout.h"
+#include <type_traits>
 
 
 /// \brief A TextOutputStream which writes to a null terminated fixed length char array.
 /// Similar to std::stringstream.
 template<std::size_t SIZE>
-class StringFixedSize : public TextOutputStream
+class StringFixedSize final : public TextOutputStream
 {
 	char m_string[SIZE];
 	std::size_t m_length;
@@ -37,10 +38,10 @@ public:
 	StringFixedSize() {
 		clear();
 	}
-	template<typename ... Args, typename = std::enable_if_t<sizeof...(Args) != 1 || //prevent override of copy constructor
-	             !std::is_same_v<StringFixedSize,
-	                             std::decay_t<std::tuple_element_t<0, std::tuple<Args...>>>>>>
-	explicit StringFixedSize( Args&& ... args ){
+	template<typename ... Args>
+		// prevent override of copy constructor
+		requires ( !std::is_same_v<std::tuple<std::decay_t<Args>...>, std::tuple<StringFixedSize>> )
+	explicit StringFixedSize( Args&& ... args ) {
 		operator()( std::forward<Args>( args ) ... );
 	}
 	std::size_t write( const char* buffer, std::size_t length ) override {

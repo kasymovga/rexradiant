@@ -21,10 +21,9 @@
 
 #include "xmltextags.h"
 
-#include <string>
-
 #include "qerplugin.h"
 #include "stream/stringstream.h"
+#include <libxml/parser.h>
 
 XmlTagBuilder::XmlTagBuilder(){
 }
@@ -362,7 +361,7 @@ bool XmlTagBuilder::AddShaderTag( const char* shader, const char* content, NodeT
 	}
 }
 
-//int XmlTagBuilder::RenameShaderTag(const char* oldtag, const char* newtag)
+//int XmlTagBuilder::RenameShaderTag( const char* oldtag, const char* newtag )
 int XmlTagBuilder::RenameShaderTag( const char* oldtag, CopiedString newtag ){
 	/* Replaces tag node contents
 

@@ -242,7 +242,7 @@ void Brush_ConstructSphere( Brush& brush, const AABB& bounds, std::size_t sides,
 		for ( std::size_t j = 0; j < sides - 1; j++ )
 		{
 			double t = i * dt;
-			double p = float(j * dp - c_pi / 2);
+			double p = float( j * dp - c_pi / 2 );
 
 			planepts[0] = vector3_added( mid, vector3_scaled( vector3_for_spherical( t, p ), radius ) );
 			planepts[1] = vector3_added( mid, vector3_scaled( vector3_for_spherical( t, p + dp ), radius ) );
@@ -463,7 +463,16 @@ void Brush_ConstructPrefab( Brush& brush, EBrushPrefab type, const AABB& bounds,
 }
 
 
+CopiedString g_regionBoxShader;
+
 void ConstructRegionBrushes( scene::Node* brushes[6], const Vector3& region_mins, const Vector3& region_maxs ){
+	const char *shader = g_regionBoxShader.empty()
+	                     ? texdef_name_default()
+	                     : texdef_name_valid( g_regionBoxShader.c_str() )
+	                     ? g_regionBoxShader.c_str()
+	                     : ( globalWarningStream() << "g_regionBoxShader " << makeQuoted( g_regionBoxShader ) << " !texdef_name_valid()\n"
+	                     , texdef_name_default() );
+
 	{
 		// set mins
 		const Vector3 mins( region_mins - Vector3( 32 ) );
@@ -473,7 +482,7 @@ void ConstructRegionBrushes( scene::Node* brushes[6], const Vector3& region_mins
 		{
 			Vector3 maxs( region_maxs + Vector3( 32 ) );
 			maxs[i] = region_mins[i];
-			Brush_ConstructCuboid( *Node_getBrush( *brushes[i] ), aabb_for_minmax( mins, maxs ), texdef_name_default(), TextureProjection() );
+			Brush_ConstructCuboid( *Node_getBrush( *brushes[i] ), aabb_for_minmax( mins, maxs ), shader, TextureProjection() );
 		}
 	}
 
@@ -486,7 +495,7 @@ void ConstructRegionBrushes( scene::Node* brushes[6], const Vector3& region_mins
 		{
 			Vector3 mins( region_mins - Vector3( 32 ) );
 			mins[i] = region_maxs[i];
-			Brush_ConstructCuboid( *Node_getBrush( *brushes[i + 3] ), aabb_for_minmax( mins, maxs ), texdef_name_default(), TextureProjection() );
+			Brush_ConstructCuboid( *Node_getBrush( *brushes[i + 3] ), aabb_for_minmax( mins, maxs ), shader, TextureProjection() );
 		}
 	}
 }
@@ -880,25 +889,15 @@ void Scene_BrushSelectByShader_Component( scene::Graph& graph, const char* name 
 	Scene_ForEachSelectedBrush_ForEachFaceInstance( graph, FaceSelectByShader( name ) );
 }
 
-class FaceGetTexdef
-{
-	TextureProjection& m_projection;
-	mutable bool m_done;
-public:
-	FaceGetTexdef( TextureProjection& projection )
-		: m_projection( projection ), m_done( false ){
-	}
-	void operator()( Face& face ) const {
-		if ( !m_done ) {
-			m_done = true;
-			face.GetTexdef( m_projection );
-		}
-	}
-};
-
 
 void Scene_BrushGetTexdef_Selected( scene::Graph& graph, TextureProjection& projection ){
-	Scene_ForEachSelectedBrush_ForEachFace( graph, FaceGetTexdef( projection ) );
+	bool done = false;
+	Scene_ForEachSelectedBrush_ForEachFace( graph, [&]( Face& face ){
+		if ( !done ) {
+			done = true;
+			face.GetTexdef( projection );
+		}
+	});
 }
 
 bool Scene_BrushGetShaderTexdef_Selected( scene::Graph& graph, CopiedString& shader, TextureProjection& projection ){
@@ -929,29 +928,17 @@ void Scene_BrushGetTexdef_Component_Selected( scene::Graph& graph, TextureProjec
 }
 
 
-class FaceGetFlags
-{
-	ContentsFlagsValue& m_flags;
-	mutable bool m_done;
-public:
-	FaceGetFlags( ContentsFlagsValue& flags )
-		: m_flags( flags ), m_done( false ){
-	}
-	void operator()( Face& face ) const {
-		if ( !m_done ) {
-			m_done = true;
-			face.GetFlags( m_flags );
-		}
-	}
-};
-
-
 void Scene_BrushGetFlags_Selected( scene::Graph& graph, ContentsFlagsValue& flags ){
 #if 1
 	if ( GlobalSelectionSystem().countSelected() != 0 ) {
-		BrushInstance* brush = Instance_getBrush( GlobalSelectionSystem().ultimateSelected() );
-		if ( brush != 0 ) {
-			Brush_forEachFace( *brush, FaceGetFlags( flags ) );
+		if ( BrushInstance* brush = Instance_getBrush( GlobalSelectionSystem().ultimateSelected() ) ) {
+			bool done = false;
+			Brush_forEachFace( *brush, [&]( Face& face ){
+				if ( !done ) {
+					done = true;
+					face.GetFlags( flags );
+				}
+			});
 		}
 	}
 #else
@@ -971,28 +958,17 @@ void Scene_BrushGetFlags_Component_Selected( scene::Graph& graph, ContentsFlagsV
 }
 
 
-class FaceGetShader
-{
-	CopiedString& m_shader;
-	mutable bool m_done;
-public:
-	FaceGetShader( CopiedString& shader )
-		: m_shader( shader ), m_done( false ){
-	}
-	void operator()( Face& face ) const {
-		if ( !m_done ) {
-			m_done = true;
-			m_shader = face.GetShader();
-		}
-	}
-};
-
 void Scene_BrushGetShader_Selected( scene::Graph& graph, CopiedString& shader ){
 #if 1
 	if ( GlobalSelectionSystem().countSelected() != 0 ) {
-		BrushInstance* brush = Instance_getBrush( GlobalSelectionSystem().ultimateSelected() );
-		if ( brush != 0 ) {
-			Brush_forEachFace( *brush, FaceGetShader( shader ) );
+		if ( BrushInstance* brush = Instance_getBrush( GlobalSelectionSystem().ultimateSelected() ) ) {
+			bool done = false;
+			Brush_forEachFace( *brush, [&]( Face& face ){
+				if ( !done ) {
+					done = true;
+					shader = face.GetShader();
+				}
+			});
 		}
 	}
 #else
@@ -1059,21 +1035,6 @@ public:
 
 
 
-class FaceFilterAny
-{
-	FaceFilter* m_filter;
-	bool& m_filtered;
-public:
-	FaceFilterAny( FaceFilter* filter, bool& filtered ) : m_filter( filter ), m_filtered( filtered ){
-		m_filtered = false;
-	}
-	void operator()( Face& face ) const {
-		if ( m_filter->filter( face ) ) {
-			m_filtered = true;
-		}
-	}
-};
-
 class filter_brush_any_face : public BrushFilter
 {
 	FaceFilter* m_filter;
@@ -1081,24 +1042,13 @@ public:
 	filter_brush_any_face( FaceFilter* filter ) : m_filter( filter ){
 	}
 	bool filter( const Brush& brush ) const {
-		bool filtered;
-		Brush_forEachFace( brush, FaceFilterAny( m_filter, filtered ) );
+		bool filtered = false;
+		Brush_forEachFace( brush, [&]( Face& face ){
+			if ( m_filter->filter( face ) ) {
+				filtered = true;
+			}
+		});
 		return filtered;
-	}
-};
-
-class FaceFilterAll
-{
-	FaceFilter* m_filter;
-	bool& m_filtered;
-public:
-	FaceFilterAll( FaceFilter* filter, bool& filtered ) : m_filter( filter ), m_filtered( filtered ){
-		m_filtered = true;
-	}
-	void operator()( Face& face ) const {
-		if ( !m_filter->filter( face ) ) {
-			m_filtered = false;
-		}
 	}
 };
 
@@ -1109,8 +1059,12 @@ public:
 	filter_brush_all_faces( FaceFilter* filter ) : m_filter( filter ){
 	}
 	bool filter( const Brush& brush ) const {
-		bool filtered;
-		Brush_forEachFace( brush, FaceFilterAll( m_filter, filtered ) );
+		bool filtered = true;
+		Brush_forEachFace( brush, [&]( Face& face ){
+			if ( !m_filter->filter( face ) ) {
+				filtered = false;
+			}
+		});
 		return filtered;
 	}
 };
@@ -1460,7 +1414,7 @@ public:
 	void set(){
 		Scene_BrushConstructPrefab( GlobalSceneGraph(), EBrushPrefab::Prism, m_count, false, TextureBrowser_GetSelectedShader() );
 	}
-	typedef MemberCaller<BrushMakeSided, &BrushMakeSided::set> SetCaller;
+	typedef MemberCaller<BrushMakeSided, void(), &BrushMakeSided::set> SetCaller;
 };
 
 
@@ -1483,7 +1437,7 @@ public:
 	void set(){
 		DoSides( m_type );
 	}
-	typedef MemberCaller<BrushPrefab, &BrushPrefab::set> SetCaller;
+	typedef MemberCaller<BrushPrefab, void(), &BrushPrefab::set> SetCaller;
 };
 
 BrushPrefab g_brushprism( EBrushPrefab::Prism );
@@ -1495,7 +1449,7 @@ BrushPrefab g_brushicosahedron( EBrushPrefab::Icosahedron );
 
 
 
-Callback g_texture_lock_status_changed;
+Callback<void()> g_texture_lock_status_changed;
 ToggleItem g_texdef_movelock_item{ BoolExportCaller( g_brush_texturelock_enabled ) };
 
 void Texdef_ToggleMoveLock(){
@@ -1514,8 +1468,8 @@ void Texdef_ToggleMoveVLock(){
 
 
 void Brush_registerCommands(){
-	GlobalToggles_insert( "TogTexLock", FreeCaller<Texdef_ToggleMoveLock>(), ToggleItem::AddCallbackCaller( g_texdef_movelock_item ), QKeySequence( "Shift+T" ) );
-	GlobalToggles_insert( "TogTexVertexLock", FreeCaller<Texdef_ToggleMoveVLock>(), ToggleItem::AddCallbackCaller( g_texdef_moveVlock_item ) );
+	GlobalToggles_insert( "TogTexLock", makeCallbackF( Texdef_ToggleMoveLock ), ToggleItem::AddCallbackCaller( g_texdef_movelock_item ), QKeySequence( "Shift+T" ) );
+	GlobalToggles_insert( "TogTexVertexLock", makeCallbackF( Texdef_ToggleMoveVLock ), ToggleItem::AddCallbackCaller( g_texdef_moveVlock_item ) );
 
 	GlobalCommands_insert( "BrushPrism", BrushPrefab::SetCaller( g_brushprism ) );
 	GlobalCommands_insert( "BrushCone", BrushPrefab::SetCaller( g_brushcone ) );
@@ -1531,8 +1485,8 @@ void Brush_registerCommands(){
 	GlobalCommands_insert( "Brush8Sided", BrushMakeSided::SetCaller( g_brushmakesided8 ), QKeySequence( "Ctrl+8" ) );
 	GlobalCommands_insert( "Brush9Sided", BrushMakeSided::SetCaller( g_brushmakesided9 ), QKeySequence( "Ctrl+9" ) );
 
-	GlobalCommands_insert( "MakeDetail", FreeCaller<Select_MakeDetail>(), QKeySequence( "Alt+D" ) );
-	GlobalCommands_insert( "MakeStructural", FreeCaller<Select_MakeStructural>(), QKeySequence( "Alt+S" ) );
+	GlobalCommands_insert( "MakeDetail", makeCallbackF( Select_MakeDetail ), QKeySequence( "Alt+D" ) );
+	GlobalCommands_insert( "MakeStructural", makeCallbackF( Select_MakeStructural ), QKeySequence( "Alt+S" ) );
 }
 
 void Brush_constructMenu( QMenu* menu ){

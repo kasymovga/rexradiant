@@ -231,7 +231,7 @@ public:
 		notifyEraseAll();
 		m_observer = 0;
 	}
-/// \brief \copydoc scene::Traversable::insert()
+	/// \brief \copydoc scene::Traversable::insert()
 	void insert( scene::Node& node ){
 		ASSERT_MESSAGE( (volatile intptr_t)&node != 0, "TraversableModelNodeSet::insert: sanity check failed" );
 
@@ -243,7 +243,7 @@ public:
 			m_observer->insert( node );
 		}
 	}
-/// \brief \copydoc scene::Traversable::erase()
+	/// \brief \copydoc scene::Traversable::erase()
 	void erase( scene::Node& node ){
 		ASSERT_MESSAGE( (volatile intptr_t)&node != 0, "TraversableModelNodeSet::erase: sanity check failed" );
 
@@ -255,7 +255,7 @@ public:
 
 		m_children.erase( NodeSmartReference( node ) );
 	}
-/// \brief \copydoc scene::Traversable::traverse()
+	/// \brief \copydoc scene::Traversable::traverse()
 	void traverse( const Walker& walker ){
 		UnsortedNodeSet::iterator i = m_children.begin();
 		while ( i != m_children.end() )
@@ -266,7 +266,7 @@ public:
 			// this container without invalidating the iterator
 		}
 	}
-/// \brief \copydoc scene::Traversable::empty()
+	/// \brief \copydoc scene::Traversable::empty()
 	bool empty() const {
 		return m_children.empty();
 	}
@@ -540,6 +540,7 @@ public:
 	}
 
 	const int m_MSAA = 8;
+	Vector3 m_background_color = Vector3( .25f );
 
 	QWidget* m_parent = nullptr;
 	QOpenGLWidget* m_gl_widget = nullptr;
@@ -766,7 +767,9 @@ void ModelBrowser_render(){
 	gl().glDepthMask( GL_TRUE );
 	gl().glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
 
-	gl().glClearColor( .25f, .25f, .25f, 0 );
+	gl().glClearColor( g_ModelBrowser.m_background_color[0],
+	                   g_ModelBrowser.m_background_color[1],
+	                   g_ModelBrowser.m_background_color[2], 0 );
 	gl().glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 
 	const unsigned int globalstate = RENDER_DEPTHTEST
@@ -857,7 +860,9 @@ void ModelBrowser_render(){
 		}
 
 		{	// brighter background squares
-			gl().glColor4f( 0.3f, 0.3f, 0.3f, 1.f );
+			gl().glColor4f( g_ModelBrowser.m_background_color[0] + .05f,
+			                g_ModelBrowser.m_background_color[1] + .05f,
+			                g_ModelBrowser.m_background_color[2] + .05f, 1.f );
 			gl().glDepthMask( GL_FALSE );
 			gl().glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
 			gl().glDisable( GL_CULL_FACE );
@@ -1179,19 +1184,19 @@ public:
 };
 
 
-typedef std::set<CopiedString, bool(*)( const CopiedString&, const CopiedString& )> StringSetWithLambda;
+using StringSetNoCase = std::set<CopiedString, StringLessNoCase>;
 
 class ModelPaths_ArchiveVisitor : public Archive::Visitor
 {
-	const StringSetWithLambda& m_modelExtensions;
+	const StringSetNoCase& m_modelExtensions;
 	ModelFS& m_modelFS;
 public:
 	const ModelFoldersMap& m_modelFoldersMap;
-	ModelPaths_ArchiveVisitor( const StringSetWithLambda& modelExtensions, ModelFS& modelFS, const ModelFoldersMap& modelFoldersMap )
+	ModelPaths_ArchiveVisitor( const StringSetNoCase& modelExtensions, ModelFS& modelFS, const ModelFoldersMap& modelFoldersMap )
 		: m_modelExtensions( modelExtensions ),	m_modelFS( modelFS ), m_modelFoldersMap( modelFoldersMap ){
 	}
 	void visit( const char* name ) override {
-		if( m_modelExtensions.count( path_get_extension( name ) ) ){
+		if( m_modelExtensions.contains( path_get_extension( name ) ) ){
 			m_modelFS.insert( name );
 //%			globalOutputStream() << name << " name\n";
 		}
@@ -1207,7 +1212,7 @@ void ModelPaths_addFromArchive( ModelPaths_ArchiveVisitor& visitor, const char *
 		}
 	}
 }
-typedef ReferenceCaller1<ModelPaths_ArchiveVisitor, const char*, ModelPaths_addFromArchive> ModelPaths_addFromArchiveCaller;
+typedef ReferenceCaller<ModelPaths_ArchiveVisitor, void(const char*), ModelPaths_addFromArchive> ModelPaths_addFromArchiveCaller;
 
 void ModelBrowser_constructTree(){
 	g_ModelBrowser.m_modelFS.m_folders.clear();
@@ -1218,9 +1223,7 @@ void ModelBrowser_constructTree(){
 	class : public IFileTypeList
 	{
 	public:
-		StringSetWithLambda m_modelExtensions{ []( const CopiedString& lhs, const CopiedString& rhs )->bool{
-			return string_less_nocase( lhs.c_str(), rhs.c_str() );
-		} };
+		StringSetNoCase m_modelExtensions;
 		void addType( const char* moduleName, filetype_t type ) override {
 			m_modelExtensions.emplace( moduleName );
 		}
@@ -1281,7 +1284,7 @@ QWidget* ModelBrowser_constructWindow( QWidget* toplevel ){
 		QToolBar* toolbar = new QToolBar;
 		vbox->addWidget( toolbar );
 
-		toolbar_append_button( toolbar, "Reload Model Folders Tree View", "texbro_refresh.png", FreeCaller<ModelBrowser_constructTree>() );
+		toolbar_append_button( toolbar, "Reload Model Folders Tree View", "texbro_refresh.png", FreeCaller<void(), ModelBrowser_constructTree>() );
 	}
 	{	// TreeView
 		g_ModelBrowser.m_treeView = new TexBro_QTreeView;
@@ -1324,6 +1327,16 @@ void ModelBrowser_destroyWindow(){
 }
 
 
+const Vector3& ModelBrowser_getBackgroundColour(){
+	return g_ModelBrowser.m_background_color;
+}
+
+void ModelBrowser_setBackgroundColour( const Vector3& colour ){
+	g_ModelBrowser.m_background_color = colour;
+	g_ModelBrowser.queueDraw();
+}
+
+
 #include "preferencesystem.h"
 #include "preferences.h"
 #include "stringio.h"
@@ -1336,7 +1349,7 @@ void CellSizeImport( int& oldvalue, int value ){
 		g_ModelBrowser.queueDraw();
 	}
 }
-typedef ReferenceCaller1<int, int, CellSizeImport> CellSizeImportCaller;
+typedef ReferenceCaller<int, void(int), CellSizeImport> CellSizeImportCaller;
 
 void FoldersToLoadImport( CopiedString& self, const char* value ){
 	if( self != value ){
@@ -1344,7 +1357,7 @@ void FoldersToLoadImport( CopiedString& self, const char* value ){
 		ModelBrowser_constructTree();
 	}
 }
-typedef ReferenceCaller1<CopiedString, const char*, FoldersToLoadImport> FoldersToLoadImportCaller;
+typedef ReferenceCaller<CopiedString, void(const char*), FoldersToLoadImport> FoldersToLoadImportCaller;
 
 void ModelBrowser_constructPage( PreferenceGroup& group ){
 	PreferencesPage page( group.createPage( "Model Browser", "Model Browser Preferences" ) );
@@ -1357,12 +1370,13 @@ void ModelBrowser_constructPage( PreferenceGroup& group ){
 	                  StringExportCallback( StringExportCaller( g_ModelBrowser.m_prefFoldersToLoad ) ) );
 }
 void ModelBrowser_registerPreferencesPage(){
-	PreferencesDialog_addSettingsPage( FreeCaller1<PreferenceGroup&, ModelBrowser_constructPage>() );
+	PreferencesDialog_addSettingsPage( makeCallbackF( ModelBrowser_constructPage ) );
 }
 
 void ModelBrowser_Construct(){
 	GlobalPreferenceSystem().registerPreference( "ModelBrowserFolders", CopiedStringImportStringCaller( g_ModelBrowser.m_prefFoldersToLoad ), CopiedStringExportStringCaller( g_ModelBrowser.m_prefFoldersToLoad ) );
 	GlobalPreferenceSystem().registerPreference( "ModelBrowserCellSize", IntImportStringCaller( g_ModelBrowser.m_cellSize ), IntExportStringCaller( g_ModelBrowser.m_cellSize ) );
+	GlobalPreferenceSystem().registerPreference( "ColorModBroBackground", Vector3ImportStringCaller( g_ModelBrowser.m_background_color ), Vector3ExportStringCaller( g_ModelBrowser.m_background_color ) );
 
 	ModelBrowser_registerPreferencesPage();
 

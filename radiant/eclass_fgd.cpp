@@ -64,8 +64,8 @@ EntityClass* EntityClassFGD_insertUniqueBase( EntityClass* entityClass ){
 	std::pair<BaseClasses::iterator, bool> result = g_EntityClassFGD_bases.insert( BaseClasses::value_type( entityClass->name(), entityClass ) );
 	if ( !result.second ) {
 		globalErrorStream() << "duplicate base class: " << makeQuoted( entityClass->name() ) << '\n';
-		//eclass_capture_state(entityClass);
-		//entityClass->free(entityClass);
+		//eclass_capture_state( entityClass );
+		//entityClass->free( entityClass );
 	}
 	return ( *result.first ).second;
 }
@@ -415,7 +415,7 @@ void EntityClassFGD_parseClass( Tokeniser& tokeniser, bool fixedsize, bool isBas
 			ASSERT_MESSAGE( EntityClassFGD_parseToken( tokeniser, "[" ), PARSE_ERROR );
 			tokeniser.nextLine();
 
-			const auto listTypeName = StringStream<64>( entityClass->name(), '_', attribute.m_name );
+			const auto listTypeName = StringStream<64>( entityClass->name(), '_', key );
 			attribute.m_type = listTypeName;
 
 			ListAttributeType& listType = g_listTypesFGD[listTypeName.c_str()];
@@ -610,7 +610,7 @@ EntityClass* EntityClassFGD_findOrInsert( const char *name, bool has_brushes ){
 
 	EntityClasses::iterator i = g_EntityClassFGD_classes.find( name );
 	if ( i != g_EntityClassFGD_classes.end()
-	     //&& string_equal((*i).first, name)
+	     //&& string_equal( ( *i ).first, name )
 	   ) {
 		return ( *i ).second;
 	}

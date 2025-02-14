@@ -216,17 +216,17 @@ private:
 
 		for ( std::size_t i = 0; i < m_vertices.size(); ++i )
 		{
-			picoVec_t* xyz = PicoGetSurfaceXYZ( surface, int(i) );
+			picoVec_t* xyz = PicoGetSurfaceXYZ( surface, int( i ) );
 			m_vertices[i].vertex = vertex3f_from_array( xyz );
 
-			picoVec_t* normal = PicoGetSurfaceNormal( surface, int(i) );
+			picoVec_t* normal = PicoGetSurfaceNormal( surface, int( i ) );
 			m_vertices[i].normal = normal3f_from_array( normal );
 
-			picoVec_t* st = PicoGetSurfaceST( surface, 0, int(i) );
+			picoVec_t* st = PicoGetSurfaceST( surface, 0, int( i ) );
 			m_vertices[i].texcoord = TexCoord2f( st[0], st[1] );
 
 #if 0
-			picoVec_t* color = PicoGetSurfaceColor( surface, 0, int(i) );
+			picoVec_t* color = PicoGetSurfaceColor( surface, 0, int( i ) );
 			m_vertices[i].colour = Colour4b( color[0], color[1], color[2], color[3] );
 #endif
 		}
@@ -264,8 +264,7 @@ private:
 	void constructNull(){
 		AABB aabb( Vector3( 0, 0, 0 ), Vector3( 8, 8, 8 ) );
 
-		Vector3 points[8];
-		aabb_corners( aabb, points );
+		const std::array<Vector3, 8> points = aabb_corners( aabb );
 
 		m_vertices.resize( 24 );
 
@@ -313,7 +312,7 @@ class PicoModel :
 
 	AABB m_aabb_local;
 public:
-	Callback m_lightsChanged;
+	Callback<void()> m_lightsChanged;
 
 	PicoModel(){
 		constructNull();
@@ -459,7 +458,7 @@ public:
 	void lightsChanged(){
 		m_lightList->lightsChanged();
 	}
-	typedef MemberCaller<PicoModelInstance, &PicoModelInstance::lightsChanged> LightsChangedCaller;
+	typedef MemberCaller<PicoModelInstance, void(), &PicoModelInstance::lightsChanged> LightsChangedCaller;
 
 	void constructRemaps(){
 		ASSERT_MESSAGE( m_skins.size() == m_picomodel.size(), "ERROR" );
@@ -514,9 +513,9 @@ public:
 	~PicoModelInstance(){
 		destroyRemaps();
 
-		Instance::setTransformChangedCallback( Callback() );
+		Instance::setTransformChangedCallback( Callback<void()>() );
 
-		m_picomodel.m_lightsChanged = Callback();
+		m_picomodel.m_lightsChanged = Callback<void()>();
 		GlobalShaderCache().detach( *this );
 	}
 

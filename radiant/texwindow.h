@@ -21,8 +21,9 @@
 
 #pragma once
 
-#include "generic/callbackfwd.h"
+#include "generic/callback.h"
 #include "signal/signalfwd.h"
+#include "math/vectorfwd.h"
 
 class QWidget;
 QWidget* TextureBrowser_constructWindow( QWidget* toplevel );
@@ -35,17 +36,13 @@ void TextureBrowser_Construct();
 void TextureBrowser_Destroy();
 
 
-typedef Callback1<const char*> StringImportCallback;
-template<typename FirstArgument, void( *func ) (FirstArgument)>
-class FreeCaller1;
+typedef Callback<void(const char*)> StringImportCallback;
 
 extern QWidget* g_page_textures;
 void TextureBrowser_exportTitle( const StringImportCallback& importer );
-typedef FreeCaller1<const StringImportCallback&, TextureBrowser_exportTitle> TextureBrowserExportTitleCaller;
+typedef FreeCaller<void(const StringImportCallback&), TextureBrowser_exportTitle> TextureBrowserExportTitleCaller;
 
 
-template<typename Element> class BasicVector3;
-typedef BasicVector3<float> Vector3;
 const Vector3& TextureBrowser_getBackgroundColour();
 void TextureBrowser_setBackgroundColour( const Vector3& colour );
 

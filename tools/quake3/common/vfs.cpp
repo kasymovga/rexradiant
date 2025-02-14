@@ -20,7 +20,7 @@
    AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
    IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
    DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR ANY
-   DIRECT,INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+   DIRECT INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
    (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
    LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
    ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
@@ -241,20 +241,20 @@ void vfsShutdown(){
 // return the number of files that match
 int vfsGetFileCount( const char *filename ){
 	int count = 0;
+	auto fixedname = StringStream<64>( PathCleaned( filename ) );
 
-	auto fixed = StringStream<64>( PathCleaned( filename ) );
-	strLower( fixed.c_str() );
-
-	for ( const VFS_PAKFILE& file : g_pakFiles )
+	for ( const auto& dir : g_strDirs )
 	{
-		if ( strEqual( file.name.c_str(), fixed ) ) {
+		if ( FileExists( StringStream( dir, fixedname ) ) ) {
 			++count;
 		}
 	}
 
-	for ( const auto& dir : g_strDirs )
+	strLower( fixedname.c_str() );
+
+	for ( const VFS_PAKFILE& file : g_pakFiles )
 	{
-		if ( FileExists( StringStream( dir, filename ) ) ) {
+		if ( strEqual( file.name.c_str(), fixedname ) ) {
 			++count;
 		}
 	}
@@ -286,29 +286,30 @@ MemBuffer vfsLoadFile( const char *filename, int index /* = 0 */ ){
 		return buffer;
 	};
 
+	auto fixedname = StringStream<64>( PathCleaned( filename ) );
+
 	// filename is a full path
 	if ( index == -1 ) {
-		return load_full_path( filename );
+		return load_full_path( fixedname );
 	}
 
 	for ( const auto& dir : g_strDirs )
 	{
-		const auto fullpath = StringStream( dir, filename );
+		const auto fullpath = StringStream( dir, fixedname );
 		if ( FileExists( fullpath ) && 0 == index-- ) {
 			return load_full_path( fullpath );
 		}
 	}
 
-	auto fixed = StringStream<64>( PathCleaned( filename ) );
-	strLower( fixed.c_str() );
+	strLower( fixedname.c_str() );
 
 	MemBuffer buffer;
 
 	for ( const VFS_PAKFILE& file : g_pakFiles )
 	{
-		if ( strEqual( file.name.c_str(), fixed ) && 0 == index-- )
+		if ( strEqual( file.name.c_str(), fixedname ) && 0 == index-- )
 		{
-			snprintf( g_strLoadedFileLocation, sizeof( g_strLoadedFileLocation ), "%s :: %s", file.pak.unzFilePath.c_str(), filename );
+			std::snprintf( g_strLoadedFileLocation, std::size( g_strLoadedFileLocation ), "%s :: %s", file.pak.unzFilePath.c_str(), filename );
 
 			unzFile zipfile = file.pak.zipfile;
 			*(unz_s*)zipfile = file.zipinfo;
@@ -371,7 +372,7 @@ bool vfsPackFile_Absolute_Path( const char *filepath, const char *filename, cons
 	if ( FileExists( filepath ) ) {
 		if ( FileExists( packname ) ) {
 			mz_zip_archive zip;
-			memset( &zip, 0, sizeof(zip) );
+			memset( &zip, 0, sizeof( zip ) );
 
 			if ( !mz_zip_reader_init_file( &zip, packname, 0 )
 			  || !mz_zip_writer_init_from_reader( &zip, packname )
@@ -384,7 +385,7 @@ bool vfsPackFile_Absolute_Path( const char *filepath, const char *filename, cons
 		}
 		else{
 			mz_zip_archive zip;
-			memset( &zip, 0, sizeof(zip) );
+			memset( &zip, 0, sizeof( zip ) );
 
 			if ( !mz_zip_writer_init_file( &zip, packname, 0 )
 			  || !mz_zip_writer_add_file( &zip, filename, filepath, 0, 0, compLevel )

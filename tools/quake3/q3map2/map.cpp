@@ -167,23 +167,23 @@ static bool SnapNormal( Vector3& normal ){
 
 
 	/*
-	for ( i=0; i<30; i++ )
+	for ( i = 0; i < 30; i++ )
 	{
 		double x, y, z, length;
-		x=(double) 1.0;
-		y=(double) ( 0.00001 * i );
-		z=(double) 0.0;
+		x = (double) 1.0;
+		y = (double) ( 0.00001 * i );
+		z = (double) 0.0;
 
-		Sys_Printf("(%6.18f %6.18f %6.18f)inNormal\n", x,y,z );
+		Sys_Printf( "(%6.18f %6.18f %6.18f)inNormal\n", x, y, z );
 
 		length = sqrt( ( x * x ) + ( y * y ) + ( z * z ) );
-		Sys_Printf("(%6.18f)length\n", length);
+		Sys_Printf( "(%6.18f)length\n", length );
 		x = (vec_t) ( x / length );
 		y = (vec_t) ( y / length );
 		z = (vec_t) ( z / length );
-		Sys_Printf("(%6.18f %6.18f %6.18f)outNormal\n\n", x,y,z );
+		Sys_Printf( "(%6.18f %6.18f %6.18f)outNormal\n\n", x, y, z );
 	}
-	Error("vectorNormalize test completed");
+	Error( "vectorNormalize test completed" );
 	*/
 
 	for ( i = 0; i < 3; i++ )
@@ -206,16 +206,16 @@ static bool SnapNormal( Vector3& normal ){
 	// results:
 
 	/*
-	   Sys_Printf("normalEpsilon is %f\n", normalEpsilon);
-	   for (i = 0;; i++)
+	   Sys_Printf( "normalEpsilon is %f\n", normalEpsilon );
+	   for ( i = 0;; i++ )
 	   {
 	    normal[0] = 1.0;
 	    normal[1] = 0.0;
 	    normal[2] = i * 0.000001;
-	    VectorNormalize(normal, normal);
-	    if (1.0 - normal[0] >= normalEpsilon) {
-	        Sys_Printf("(%f %f %f)\n", normal[0], normal[1], normal[2]);
-	        Error("SnapNormal: test completed");
+	    VectorNormalize( normal, normal );
+	    if ( 1.0 - normal[0] >= normalEpsilon ) {
+	        Sys_Printf( "(%f %f %f)\n", normal[0], normal[1], normal[2] );
+	        Error( "SnapNormal: test completed" );
 	    }
 	   }
 	 */
@@ -496,16 +496,16 @@ static void SetBrushContents( brush_t& b ){
 		else if ( s->compileFlags & C_FOG ){
 			b.contentShader = s->shaderInfo;
 		}
-		else if ( b.contentShader->contentFlags & GetRequiredSurfaceParm( "playerclip"_Tstring ).contentFlags ){
+		else if ( b.contentShader->contentFlags & GetRequiredSurfaceParm<"playerclip">().contentFlags ){
 			continue;
 		}
-		else if ( s->contentFlags & GetRequiredSurfaceParm( "playerclip"_Tstring ).contentFlags ){
+		else if ( s->contentFlags & GetRequiredSurfaceParm<"playerclip">().contentFlags ){
 			b.contentShader = s->shaderInfo;
 		}
-		else if (!( b.contentShader->compileFlags & C_SOLID )){
+		else if ( !( b.contentShader->compileFlags & C_SOLID ) ){
 			continue;
 		}
-		else if (!( s->compileFlags & C_SOLID )){
+		else if ( !( s->compileFlags & C_SOLID ) ){
 			b.contentShader = s->shaderInfo;
 		}
 	}
@@ -634,14 +634,12 @@ void AddBrushBevels(){
 
 				s.planenum = FindFloatPlane( plane, 0, NULL );
 				s.contentFlags = sides[ 0 ].contentFlags;
-				/* handle bevel surfaceflags for topmost one only: assuming that only walkable ones are meaningful */
-				if( axis == 2 && dir == 1 ){
-					for ( const side_t& side : sides ) {
-						for ( const Vector3& point : side.winding ) {
-							if ( fabs( plane.dist() - point[axis] ) < .1f ) {
-								s.surfaceFlags |= ( side.surfaceFlags & surfaceFlagsMask );
-								break;
-							}
+				/* handle bevel surfaceflags */
+				for ( const side_t& side : sides ) {
+					for ( const Vector3& point : side.winding ) {
+						if ( fabs( plane.dist() - point[axis] ) < .1f ) {
+							s.surfaceFlags |= ( side.surfaceFlags & surfaceFlagsMask );
+							break;
 						}
 					}
 				}
@@ -1401,7 +1399,7 @@ static void LoadEntityIndexMap( entity_t& e ){
 			}
 
 			/* debug code */
-			//%	if( (i % w) == 0 )
+			//%	if( ( i % w ) == 0 )
 			//%		Sys_Printf( "\n" );
 			//%	Sys_Printf( "%c", pixels[ i ] + '0' );
 		}

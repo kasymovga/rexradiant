@@ -761,6 +761,10 @@ int BSPMain( Args& args ){
 				Sys_Printf( "Snapping brush bevel planes to %d units\n", bevelSnap );
 			}
 		}
+		while ( args.takeArg( "-nobrushsnap" ) ) {
+			Sys_Printf( "Brush vertices snapping disabled\n" );
+			g_brushSnap = false;
+		}
 		while ( args.takeArg( "-nohint" ) ) {
 			Sys_Printf( "Hint brushes disabled\n" );
 			noHint = true;
@@ -862,6 +866,10 @@ int BSPMain( Args& args ){
 		while ( args.takeArg( "-noob" ) ) {
 			Sys_Printf( "No oBs!\n" );
 			g_noob = true;
+		}
+		while ( args.takeArg( "-globalflag" ) ) {
+			ApplySurfaceParm( args.takeNext(), nullptr, &g_globalSurfaceFlags, nullptr );
+			Sys_Printf( "g_globalSurfaceFlags: 0x%.8X\n", g_globalSurfaceFlags );
 		}
 		while ( args.takeArg( "-autocaulk" ) ) {
 			Sys_Printf( "\trunning in autocaulk mode\n" );

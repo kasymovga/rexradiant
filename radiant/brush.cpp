@@ -78,7 +78,7 @@ public:
 				return true;
 			}
 			v = v->m_next;
-			//ASSERT_MESSAGE(DEBUG_LOOP < c_brush_maxFaces, "infinite loop");
+			//ASSERT_MESSAGE DEBUG_LOOP < c_brush_maxFaces, "infinite loop" );
 			if ( !( DEBUG_LOOP < c_brush_maxFaces ) ) {
 				break;
 			}
@@ -318,17 +318,18 @@ void Brush::buildBRep(){
 }
 
 
-class FaceFilterWrapper : public Filter
+class FaceFilterWrapper final : public Filter
 {
-	FaceFilter& m_filter;
 	bool m_active;
 	bool m_invert;
+	FaceFilter& m_filter;
 public:
 	FaceFilterWrapper( FaceFilter& filter, bool invert ) :
-		m_filter( filter ),
-		m_invert( invert ){
+		m_active( false ), // suppress uninitialized warning
+		m_invert( invert ),
+		m_filter( filter ){
 	}
-	void setActive( bool active ){
+	void setActive( bool active ) override {
 		m_active = active;
 	}
 	bool active(){
@@ -359,15 +360,18 @@ bool face_filtered( Face& face ){
 }
 
 
-class BrushFilterWrapper : public Filter
+class BrushFilterWrapper final : public Filter
 {
 	bool m_active;
 	bool m_invert;
 	BrushFilter& m_filter;
 public:
-	BrushFilterWrapper( BrushFilter& filter, bool invert ) : m_invert( invert ), m_filter( filter ){
+	BrushFilterWrapper( BrushFilter& filter, bool invert ) :
+		m_active( false ), // suppress uninitialized warning
+		m_invert( invert ),
+		m_filter( filter ){
 	}
-	void setActive( bool active ){
+	void setActive( bool active ) override {
 		m_active = active;
 	}
 	bool active(){
@@ -492,7 +496,7 @@ void Brush::vertexModeBuildHull( bool allTransformed /*= false*/ ){
 		}
 	}
 
-	if( vertexModePlanes.size() >=4 ){ //avoid obvious transform to degenerate
+	if( vertexModePlanes.size() >= 4 ){ //avoid obvious transform to degenerate
 		const bool isdetail = isDetail();
 		clear();
 		for( const auto& i : vertexModePlanes ){

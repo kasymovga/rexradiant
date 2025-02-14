@@ -22,9 +22,8 @@
 #pragma once
 
 #include "generic/constant.h"
+#include "math/vectorfwd.h"
 
-template<typename Element> class BasicVector3;
-typedef BasicVector3<float> Vector3;
 template<typename T> class Plane3___;
 typedef Plane3___<double> Plane3;
 class Matrix4;
@@ -39,17 +38,17 @@ class VolumeTest
 {
 public:
 
-/// \brief Returns true if \p point intersects volume.
+	/// \brief Returns true if \p point intersects volume.
 	virtual bool TestPoint( const Vector3& point ) const = 0;
-/// \brief Returns true if \p segment intersects volume.
+	/// \brief Returns true if \p segment intersects volume.
 	virtual bool TestLine( const Segment& segment ) const = 0;
-/// \brief Returns true if \p plane faces towards volume.
+	/// \brief Returns true if \p plane faces towards volume.
 	virtual bool TestPlane( const Plane3& plane ) const = 0;
-/// \brief Returns true if \p plane transformed by \p localToWorld faces the viewer.
+	/// \brief Returns true if \p plane transformed by \p localToWorld faces the viewer.
 	virtual bool TestPlane( const Plane3& plane, const Matrix4& localToWorld ) const = 0;
-/// \brief Returns the intersection of \p aabb and volume.
+	/// \brief Returns the intersection of \p aabb and volume.
 	virtual VolumeIntersectionValue TestAABB( const AABB& aabb ) const = 0;
-/// \brief Returns the intersection of \p aabb transformed by \p localToWorld and volume.
+	/// \brief Returns the intersection of \p aabb transformed by \p localToWorld and volume.
 	virtual VolumeIntersectionValue TestAABB( const AABB& aabb, const Matrix4& localToWorld ) const = 0;
 
 	virtual bool fill() const = 0;

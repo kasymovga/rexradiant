@@ -108,6 +108,7 @@
 #include "qe3.h"
 #include "qgl.h"
 #include "select.h"
+#include "selection.h"
 #include "server.h"
 #include "surfacedialog.h"
 #include "textures.h"
@@ -348,7 +349,7 @@ void setEnginePath( CopiedString& self, const char* value ){
 		EnginePath_Realise();
 	}
 }
-typedef ReferenceCaller1<CopiedString, const char*, setEnginePath> EnginePathImportCaller;
+typedef ReferenceCaller<CopiedString, void(const char*), setEnginePath> EnginePathImportCaller;
 
 
 // Extra Resource Path
@@ -418,7 +419,7 @@ void Paths_constructPage( PreferenceGroup& group ){
 
 }
 void Paths_registerPreferencesPage(){
-	PreferencesDialog_addGamePage( FreeCaller1<PreferenceGroup&, Paths_constructPage>() );
+	PreferencesDialog_addGamePage( makeCallbackF( Paths_constructPage ) );
 }
 
 
@@ -535,22 +536,6 @@ void gamemode_set( const char* gamemode ){
 
 #include "os/dir.h"
 
-class CLoadModule
-{
-	const char* m_path;
-public:
-	CLoadModule( const char* path ) : m_path( path ){
-	}
-	void operator()( const char* name ) const {
-		char fullname[1024];
-		ASSERT_MESSAGE( strlen( m_path ) + strlen( name ) < 1024, "" );
-		strcpy( fullname, m_path );
-		strcat( fullname, name );
-		globalOutputStream() << "Found '" << fullname << "'\n";
-		GlobalModuleServer_loadModule( fullname );
-	}
-};
-
 const char* const c_library_extension =
 #if defined( WIN32 )
     "dll"
@@ -562,7 +547,14 @@ const char* const c_library_extension =
     ;
 
 void Radiant_loadModules( const char* path ){
-	Directory_forEach( path, MatchFileExtension<CLoadModule>( c_library_extension, CLoadModule( path ) ) );
+	Directory_forEach( path, matchFileExtension( c_library_extension, [&]( const char *name ){
+		char fullname[1024];
+		ASSERT_MESSAGE( strlen( path ) + strlen( name ) < 1024, "" );
+		strcpy( fullname, path );
+		strcat( fullname, name );
+		globalOutputStream() << "Found '" << fullname << "'\n";
+		GlobalModuleServer_loadModule( fullname );
+	}));
 }
 
 void Radiant_loadModulesFromRoot( const char* directory ){
@@ -935,7 +927,7 @@ void create_edit_menu( QMenuBar *menubar ){
 	create_menu_item_with_mnemonic( menu, "Select Connected Entities", "SelectConnectedEntities" );
 
 	menu->addSeparator();
-	create_menu_item_with_mnemonic( menu, "&Shortcuts...", FreeCaller<DoCommandListDlg>() );
+	create_menu_item_with_mnemonic( menu, "&Shortcuts...", "Shortcuts" );
 	create_menu_item_with_mnemonic( menu, "Pre&ferences...", "Preferences" );
 }
 
@@ -1056,7 +1048,7 @@ void create_view_menu( QMenuBar *menubar, MainFrame::EViewStyle style ){
 
 		create_menu_item_with_mnemonic( submenu, "&Off", "RegionOff" );
 		create_menu_item_with_mnemonic( submenu, "&Set XY", "RegionSetXY" );
-		create_menu_item_with_mnemonic( submenu, "Set _Brush", "RegionSetBrush" );
+		create_menu_item_with_mnemonic( submenu, "Set &Brush", "RegionSetBrush" );
 		create_check_menu_item_with_mnemonic( submenu, "Set Se&lection", "RegionSetSelection" );
 	}
 
@@ -1123,7 +1115,26 @@ void create_selection_menu( QMenuBar *menubar ){
 	menu->addSeparator();
 	create_menu_item_with_mnemonic( menu, "Arbitrary rotation...", "ArbitraryRotation" );
 	create_menu_item_with_mnemonic( menu, "Arbitrary scale...", "ArbitraryScale" );
-	create_menu_item_with_mnemonic( menu, "Repeat Transforms", "RepeatTransforms" );
+	menu->addSeparator();
+	{
+		QMenu* submenu = menu->addMenu( "Repeat" );
+
+		submenu->setTearOffEnabled( g_Layout_enableDetachableMenus.m_value );
+
+		create_menu_item_with_mnemonic( submenu, "Repeat Transforms", "RepeatTransforms" );
+
+		using SetTextCB = PointerCaller<QAction, void(const char*), +[]( QAction *action, const char *text ){ action->setText( text ); }>;
+		const auto addItem = [submenu]<SelectionSystem::EManipulatorMode mode>() -> SetTextCB {
+			return SetTextCB( create_menu_item_with_mnemonic( submenu, "", makeCallbackF( +[](){ GlobalSelectionSystem().resetTransforms( mode ); } ) ) );
+		};
+		SelectionSystem_connectTransformsCallbacks( { addItem.operator()<SelectionSystem::eTranslate>(),
+		                                              addItem.operator()<SelectionSystem::eRotate>(),
+		                                              addItem.operator()<SelectionSystem::eScale>(),
+		                                              addItem.operator()<SelectionSystem::eSkew>() } );
+		GlobalSelectionSystem().resetTransforms(); // init texts immediately
+
+		create_menu_item_with_mnemonic( submenu, "Reset Transforms", "ResetTransforms" );
+	}
 }
 
 void create_bsp_menu( QMenuBar *menubar ){
@@ -1158,13 +1169,13 @@ void create_misc_menu( QMenuBar *menubar ){
 
 	menu->setTearOffEnabled( g_Layout_enableDetachableMenus.m_value );
 #if 0
-	create_menu_item_with_mnemonic( menu, "&Benchmark", FreeCaller<GlobalCamera_Benchmark>() );
+	create_menu_item_with_mnemonic( menu, "&Benchmark", makeCallbackF( GlobalCamera_Benchmark ) );
 #endif
 	create_colours_menu( menu );
 
 	create_menu_item_with_mnemonic( menu, "Find brush...", "FindBrush" );
 	create_menu_item_with_mnemonic( menu, "Map Info...", "MapInfo" );
-	create_menu_item_with_mnemonic( menu, "Set 2D &Background image...", FreeCaller<WXY_SetBackgroundImage>() );
+	create_menu_item_with_mnemonic( menu, "Set 2D &Background image...", makeCallbackF( WXY_SetBackgroundImage ) );
 	create_menu_item_with_mnemonic( menu, "Fullscreen", "Fullscreen" );
 	create_menu_item_with_mnemonic( menu, "Maximize view", "MaximizeView" );
 }
@@ -1180,7 +1191,7 @@ void create_entity_menu( QMenuBar *menubar ){
 
 void create_brush_menu( QMenuBar *menubar ){
 	// Brush menu
-	QMenu *menu = menubar->addMenu( "B&rush" );
+	QMenu *menu = menubar->addMenu( "Brush" );
 
 	menu->setTearOffEnabled( g_Layout_enableDetachableMenus.m_value );
 
@@ -1208,9 +1219,9 @@ void create_help_menu( QMenuBar *menubar ){
 	// it will take care of hooking the Sys_OpenURL calls etc.
 	create_game_help_menu( menu );
 
-	create_menu_item_with_mnemonic( menu, "Bug report", FreeCaller<OpenBugReportURL>() );
-	create_menu_item_with_mnemonic( menu, "Check for NetRadiant update (web)", "CheckForUpdate" ); // FIXME
-	create_menu_item_with_mnemonic( menu, "&About", FreeCaller<DoAbout>() );
+	create_menu_item_with_mnemonic( menu, "Bug report", makeCallbackF( OpenBugReportURL ) );
+	create_menu_item_with_mnemonic( menu, "Check for NetRadiant update", "CheckForUpdate" ); // FIXME
+	create_menu_item_with_mnemonic( menu, "&About", makeCallbackF( DoAbout ) );
 }
 
 void create_main_menu( QMenuBar *menubar, MainFrame::EViewStyle style ){
@@ -1419,7 +1430,7 @@ void create_main_toolbar( QToolBar *toolbar,  MainFrame::EViewStyle style ){
 	}
 
 	// TODO: call light inspector
-	//QAction* g_view_lightinspector_button = toolbar_append_button(toolbar, "Light Inspector", "lightinspector.png", "ToggleLightInspector");
+	//QAction* g_view_lightinspector_button = toolbar_append_button( toolbar, "Light Inspector", "lightinspector.png", "ToggleLightInspector" );
 
 	toolbar->addSeparator();
 	toolbar_append_button( toolbar, "Refresh Models", "refresh_models.png", "RefreshReferences" );
@@ -1840,7 +1851,7 @@ void MainFrame::Create(){
 	SetActiveXY( m_pXYWnd );
 
 	AddGridChangeCallback( SetGridStatusCaller( *this ) );
-	AddGridChangeCallback( FreeCaller<XY_UpdateAllWindows>() );
+	AddGridChangeCallback( FreeCaller<void(), XY_UpdateAllWindows>() );
 
 	s_qe_every_second_timer.enable();
 
@@ -2019,7 +2030,7 @@ void Layout_constructPage( PreferenceGroup& group ){
 }
 
 void Layout_registerPreferencesPage(){
-	PreferencesDialog_addInterfacePage( FreeCaller1<PreferenceGroup&, Layout_constructPage>() );
+	PreferencesDialog_addInterfacePage( makeCallbackF( Layout_constructPage ) );
 }
 
 
@@ -2032,32 +2043,33 @@ void FocusAllViews(){
 #include "stringio.h"
 
 void MainFrame_Construct(){
-	GlobalCommands_insert( "OpenManual", FreeCaller<OpenHelpURL>(), QKeySequence( "F1" ) );
+	GlobalCommands_insert( "OpenManual", makeCallbackF( OpenHelpURL ), QKeySequence( "F1" ) );
 
-	GlobalCommands_insert( "RefreshReferences", FreeCaller<RefreshReferences>() );
-	GlobalCommands_insert( "CheckForUpdate", FreeCaller<OpenUpdateURL>() );
-	GlobalCommands_insert( "Exit", FreeCaller<Exit>() );
+	GlobalCommands_insert( "RefreshReferences", makeCallbackF( RefreshReferences ) );
+	GlobalCommands_insert( "CheckForUpdate", makeCallbackF( OpenUpdateURL ) );
+	GlobalCommands_insert( "Exit", makeCallbackF( Exit ) );
 
-	GlobalCommands_insert( "Preferences", FreeCaller<PreferencesDialog_showDialog>(), QKeySequence( "P" ) );
+	GlobalCommands_insert( "Shortcuts", makeCallbackF( DoCommandListDlg ), QKeySequence( "Ctrl+Shift+P" ) );
+	GlobalCommands_insert( "Preferences", makeCallbackF( PreferencesDialog_showDialog ), QKeySequence( "P" ) );
 
-	GlobalCommands_insert( "ToggleConsole", FreeCaller<Console_ToggleShow>(), QKeySequence( "O" ) );
-	GlobalCommands_insert( "ToggleEntityInspector", FreeCaller<EntityInspector_ToggleShow>(), QKeySequence( "N" ) );
-	GlobalCommands_insert( "ToggleModelBrowser", FreeCaller<ModelBrowser_ToggleShow>(), QKeySequence( "/" ) );
-	GlobalCommands_insert( "EntityList", FreeCaller<EntityList_toggleShown>(), QKeySequence( "L" ) );
+	GlobalCommands_insert( "ToggleConsole", makeCallbackF( Console_ToggleShow ), QKeySequence( "O" ) );
+	GlobalCommands_insert( "ToggleEntityInspector", makeCallbackF( EntityInspector_ToggleShow ), QKeySequence( "N" ) );
+	GlobalCommands_insert( "ToggleModelBrowser", makeCallbackF( ModelBrowser_ToggleShow ), QKeySequence( "/" ) );
+	GlobalCommands_insert( "EntityList", makeCallbackF( EntityList_toggleShown ), QKeySequence( "L" ) );
 
 	Select_registerCommands();
 
 	Tools_registerCommands();
 
-	GlobalCommands_insert( "BuildMenuCustomize", FreeCaller<DoBuildMenu>() );
-	GlobalCommands_insert( "Build_runRecentExecutedBuild", FreeCaller<Build_runRecentExecutedBuild>(), QKeySequence( "F5" ) );
+	GlobalCommands_insert( "BuildMenuCustomize", makeCallbackF( DoBuildMenu ) );
+	GlobalCommands_insert( "Build_runRecentExecutedBuild", makeCallbackF( Build_runRecentExecutedBuild ), QKeySequence( "F5" ) );
 
-	GlobalCommands_insert( "OpenGLFont", FreeCaller<OpenGLFont_select>() );
+	GlobalCommands_insert( "OpenGLFont", makeCallbackF( OpenGLFont_select ) );
 
 	Colors_registerCommands();
 
-	GlobalCommands_insert( "Fullscreen", FreeCaller<MainFrame_toggleFullscreen>(), QKeySequence( "F11" ) );
-	GlobalCommands_insert( "MaximizeView", FreeCaller<Maximize_View>(), QKeySequence( "F12" ) );
+	GlobalCommands_insert( "Fullscreen", makeCallbackF( MainFrame_toggleFullscreen ), QKeySequence( "F11" ) );
+	GlobalCommands_insert( "MaximizeView", makeCallbackF( Maximize_View ), QKeySequence( "F12" ) );
 
 	CSG_registerCommands();
 
@@ -2099,11 +2111,11 @@ void MainFrame_Construct(){
 	Layout_registerPreferencesPage();
 	Paths_registerPreferencesPage();
 
-	g_brushCount.setCountChangedCallback( FreeCaller<QE_brushCountChanged>() );
-	g_patchCount.setCountChangedCallback( FreeCaller<QE_brushCountChanged>() );
-	g_entityCount.setCountChangedCallback( FreeCaller<QE_brushCountChanged>() );
+	g_brushCount.setCountChangedCallback( makeCallbackF( QE_brushCountChanged ) );
+	g_patchCount.setCountChangedCallback( makeCallbackF( QE_brushCountChanged ) );
+	g_entityCount.setCountChangedCallback( makeCallbackF( QE_brushCountChanged ) );
 	GlobalEntityCreator().setCounter( &g_entityCount );
-	GlobalSelectionSystem().addSelectionChangeCallback( FreeCaller1<const Selectable&, brushCountChanged>() );
+	GlobalSelectionSystem().addSelectionChangeCallback( FreeCaller<void(const Selectable&), brushCountChanged>() );
 
 	GLWidget_sharedContextCreated = GlobalGL_sharedContextCreated;
 	GLWidget_sharedContextDestroyed = GlobalGL_sharedContextDestroyed;
@@ -2115,8 +2127,8 @@ void MainFrame_Destroy(){
 	GlobalEntityClassManager().detach( g_WorldspawnColourEntityClassObserver );
 
 	GlobalEntityCreator().setCounter( 0 );
-	g_entityCount.setCountChangedCallback( Callback() );
-	g_patchCount.setCountChangedCallback( Callback() );
-	g_brushCount.setCountChangedCallback( Callback() );
+	g_entityCount.setCountChangedCallback( Callback<void()>() );
+	g_patchCount.setCountChangedCallback( Callback<void()>() );
+	g_brushCount.setCountChangedCallback( Callback<void()>() );
 }
 

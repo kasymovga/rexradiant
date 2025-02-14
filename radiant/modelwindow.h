@@ -30,3 +30,8 @@ class QWidget* ModelBrowser_constructWindow( QWidget* toplevel );
 void ModelBrowser_destroyWindow();
 
 void ModelBrowser_flushReferences();
+
+#include "math/vectorfwd.h"
+
+const Vector3& ModelBrowser_getBackgroundColour();
+void ModelBrowser_setBackgroundColour( const Vector3& colour );

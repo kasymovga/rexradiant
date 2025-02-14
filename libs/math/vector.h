@@ -25,48 +25,6 @@
 /// \brief Vector data types and related operations.
 
 #include "generic/vector.h"
-
-#if defined ( _MSC_VER )
-
-inline int lrint( double flt ){
-	int i;
-
-	_asm
-	{
-		fld flt
-		fistp i
-	};
-
-	return i;
-}
-
-inline __int64 llrint( double f ){
-	return static_cast<__int64>( f + 0.5 );
-}
-
-#elif defined( __FreeBSD__ )
-
-inline long lrint( double f ){
-	return static_cast<long>( f + 0.5 );
-}
-
-inline long long llrint( double f ){
-	return static_cast<long long>( f + 0.5 );
-}
-
-#elif defined( __GNUC__ )
-
-// lrint is part of ISO C99
-#define _ISOC9X_SOURCE  1
-#define _ISOC99_SOURCE  1
-
-#define __USE_ISOC9X    1
-#define __USE_ISOC99    1
-
-#else
-#error "unsupported platform"
-#endif
-
 #include <cmath>
 #include <cfloat>
 #include <algorithm>
@@ -89,17 +47,17 @@ inline Element float_mid( const Element& self, const Element& other ){
 /// \brief Returns \p f rounded to the nearest integer. Note that this is not the same behaviour as casting from float to int.
 template<typename Element>
 inline int float_to_integer( const Element& f ){
-	return lrint( f );
+	return std::lrint( f );
 }
 
 /// \brief Returns \p f rounded to the nearest multiple of \p snap.
 template<typename Element, typename OtherElement>
 inline Element float_snapped( const Element& f, const OtherElement& snap ){
-	//return Element(float_to_integer(f / snap) * snap);
+	//return Element( float_to_integer( f / snap ) * snap );
 	if ( snap == 0 ) {
 		return f;
 	}
-	return Element( llrint( f / snap ) * snap ); // llrint has more significant bits
+	return Element( std::llrint( f / snap ) * snap ); // llrint has more significant bits
 }
 
 /// \brief Returns true if \p f has no decimal fraction part.
@@ -293,7 +251,7 @@ inline double vector2_cross( const BasicVector2<Element>& self, const BasicVecto
 
 template<typename Element>
 inline Element float_divided( Element f, Element other ){
-	//ASSERT_MESSAGE(other != 0, "float_divided: invalid divisor");
+	//ASSERT_MESSAGE( other != 0, "float_divided: invalid divisor" );
 	return f / other;
 }
 
@@ -624,10 +582,10 @@ inline bool vector4_equal_epsilon( const BasicVector4<Element>& self, const Basi
 template<typename Element, typename OtherElement>
 inline BasicVector4<Element> vector4_added( const BasicVector4<Element>& self, const BasicVector4<OtherElement>& other ){
 	return BasicVector4<Element>(
-	           float(self.x() + other.x() ),
-	           float(self.y() + other.y() ),
-	           float(self.z() + other.z() ),
-	           float(self.w() + other.w() )
+	           float( self.x() + other.x() ),
+	           float( self.y() + other.y() ),
+	           float( self.z() + other.z() ),
+	           float( self.w() + other.w() )
 	       );
 }
 template<typename Element, typename OtherElement>
@@ -649,10 +607,10 @@ inline void operator+=( BasicVector4<Element>& self, const BasicVector4<OtherEle
 template<typename Element, typename OtherElement>
 inline BasicVector4<Element> vector4_subtracted( const BasicVector4<Element>& self, const BasicVector4<OtherElement>& other ){
 	return BasicVector4<Element>(
-	           float(self.x() - other.x() ),
-	           float(self.y() - other.y() ),
-	           float(self.z() - other.z() ),
-	           float(self.w() - other.w() )
+	           float( self.x() - other.x() ),
+	           float( self.y() - other.y() ),
+	           float( self.z() - other.z() ),
+	           float( self.w() - other.w() )
 	       );
 }
 template<typename Element, typename OtherElement>
@@ -674,10 +632,10 @@ inline void operator-=( BasicVector4<Element>& self, const BasicVector4<OtherEle
 template<typename Element, typename OtherElement>
 inline BasicVector4<Element> vector4_scaled( const BasicVector4<Element>& self, const BasicVector4<OtherElement>& other ){
 	return BasicVector4<Element>(
-	           float(self.x() * other.x() ),
-	           float(self.y() * other.y() ),
-	           float(self.z() * other.z() ),
-	           float(self.w() * other.w() )
+	           float( self.x() * other.x() ),
+	           float( self.y() * other.y() ),
+	           float( self.z() * other.z() ),
+	           float( self.w() * other.w() )
 	       );
 }
 template<typename Element, typename OtherElement>
@@ -699,10 +657,10 @@ inline void operator*=( BasicVector4<Element>& self, const BasicVector4<OtherEle
 template<typename Element, typename OtherElement>
 inline BasicVector4<Element> vector4_scaled( const BasicVector4<Element>& self, OtherElement scale ){
 	return BasicVector4<Element>(
-	           float(self.x() * scale),
-	           float(self.y() * scale),
-	           float(self.z() * scale),
-	           float(self.w() * scale)
+	           float( self.x() * scale ),
+	           float( self.y() * scale ),
+	           float( self.z() * scale ),
+	           float( self.w() * scale )
 	       );
 }
 template<typename Element, typename OtherElement>
@@ -724,10 +682,10 @@ inline void operator*=( BasicVector4<Element>& self, OtherElement scale ){
 template<typename Element, typename OtherElement>
 inline BasicVector4<Element> vector4_divided( const BasicVector4<Element>& self, OtherElement divisor ){
 	return BasicVector4<Element>(
-	           float(self.x() / divisor),
-	           float(self.y() / divisor),
-	           float(self.z() / divisor),
-	           float(self.w() / divisor)
+	           float( self.x() / divisor ),
+	           float( self.y() / divisor ),
+	           float( self.z() / divisor ),
+	           float( self.w() / divisor )
 	       );
 }
 template<typename Element, typename OtherElement>

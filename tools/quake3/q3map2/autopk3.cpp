@@ -107,7 +107,7 @@ static void parseBspFile( const char *bspPath, StrList& outShaders, StrList& out
 		}
 
 		for ( size_t i = 0; i < bspShaders.size(); ++i ){
-			if ( drawsurfSHs[i] && !( bspShaders[i].surfaceFlags & GetRequiredSurfaceParm( "nodraw"_Tstring ).surfaceFlags ) ){ // also sort out nodraw patches
+			if ( drawsurfSHs[i] && !( bspShaders[i].surfaceFlags & GetRequiredSurfaceParm<"nodraw">().surfaceFlags ) ){ // also sort out nodraw patches
 				res2list( pk3Shaders, bspShaders[i].shader );
 			}
 		}
@@ -533,10 +533,10 @@ int pk3BSPMain( Args& args ){
 //wanted shaders from excluded .shaders
 	Sys_Printf( "\n" );
 	for ( auto& s : pk3Shaders ){
-		if ( !s.empty() && ( ExReasonShader.count( &s ) || ExReasonShaderFile.count( &s ) ) ){
+		if ( !s.empty() && ( ExReasonShader.contains( &s ) || ExReasonShaderFile.contains( &s ) ) ){
 			Sys_FPrintf( SYS_WRN, "  !FAIL! %s\n", s.c_str() );
 			packFAIL = true;
-			if ( ExReasonShader.count( &s ) ){
+			if ( ExReasonShader.contains( &s ) ){
 				Sys_Printf( "     reason: is located in %s,\n     containing restricted shader %s\n", ExReasonShaderFile[&s].c_str(), ExReasonShader[&s].c_str() );
 			}
 			else{
@@ -942,7 +942,7 @@ int repackBSPMain( Args& args ){
 
 	/* write shader */
 	stream( g_enginePath, nameOFpack, "_strippedBYrepacker.shader" );
-	SaveFile( stream, allShaders, allShaders.end() - allShaders.begin() );
+	SaveFile( stream, allShaders, allShaders.cend() - allShaders.cbegin() );
 	Sys_Printf( "Shaders saved to %s\n", stream.c_str() );
 
 	/* make a pack */

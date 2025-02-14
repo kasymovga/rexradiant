@@ -25,6 +25,7 @@
 #include "generic/callback.h"
 #include "signal/signalfwd.h"
 #include "string/stringfwd.h"
+#include "math/vectorfwd.h"
 
 class Map;
 extern Map g_map;
@@ -36,11 +37,11 @@ bool Map_Valid( const Map& map );
 
 class DeferredDraw
 {
-	Callback m_draw;
+	Callback<void()> m_draw;
 	bool m_defer;
 	bool m_deferred;
 public:
-	DeferredDraw( const Callback& draw ) : m_draw( draw ), m_defer( false ), m_deferred( false ){
+	DeferredDraw( const Callback<void()>& draw ) : m_draw( draw ), m_defer( false ), m_deferred( false ){
 	}
 	void defer(){
 		m_defer = true;
@@ -72,7 +73,7 @@ inline void DeferredDraw_onMapValidChanged( DeferredDraw& self ){
 		self.defer();
 	}
 }
-typedef ReferenceCaller<DeferredDraw, DeferredDraw_onMapValidChanged> DeferredDrawOnMapValidChangedCaller;
+typedef ReferenceCaller<DeferredDraw, void(), DeferredDraw_onMapValidChanged> DeferredDrawOnMapValidChangedCaller;
 
 
 
@@ -90,9 +91,6 @@ class Graph;
 scene::Node* Map_GetWorldspawn( const Map& map );
 scene::Node* Map_FindWorldspawn( Map& map );
 scene::Node& Map_FindOrInsertWorldspawn( Map& map );
-
-template<typename Element> class BasicVector3;
-typedef BasicVector3<float> Vector3;
 
 extern Vector3 g_region_mins, g_region_maxs;
 extern bool g_region_active;
