@@ -145,7 +145,7 @@ winding_accu_t BaseWindingForPlaneAccu( const Plane3& plane ){
 	// One of the components of normal must have a magnitiude greater than this value,
 	// otherwise normal is not a unit vector.  This is a little bit of inexpensive
 	// partial error checking we can do.
-	max = 0.56; // 1 / sqrt(1^2 + 1^2 + 1^2) = 0.577350269
+	max = 0.56; // 1 / sqrt( 1^2 + 1^2 + 1^2 ) = 0.577350269
 
 	x = -1;
 	for ( i = 0; i < 3; i++ ) {
@@ -643,7 +643,7 @@ inline const MinMax c_worldMinmax( Vector3( MIN_WORLD_COORD ), Vector3( MAX_WORL
  */
 void CheckWinding( const winding_t& w ){
 	if ( w.size() < 3 ) {
-		Error( "CheckWinding: %zu points",w.size() );
+		Error( "CheckWinding: %zu points", w.size() );
 	}
 
 	const float area = WindingArea( w );

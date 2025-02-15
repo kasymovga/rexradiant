@@ -208,7 +208,7 @@ void HL_SplitBrush(bspbrush_t *brush, int planenum, int nodenum,
 		BoundBrush (b[i]);
 		for (j=0 ; j<3 ; j++)
 		{
-			if (b[i]->mins[j] < -4096 || b[i]->maxs[j] > 4096)
+			if (b[i]->mins[j] < -4096 * 4 || b[i]->maxs[j] > 4096 * 4)
 			{
 				Log_Print("HL_SplitBrush: bogus brush after clip\n");
 				break;
@@ -363,9 +363,6 @@ bspbrush_t *HL_CreateBrushes_r(bspbrush_t *brush, int nodenum)
 				return NULL;
 			} //end case
 			case HL_CONTENTS_SOLID:
-#ifdef HLCONTENTS
-			case HL_CONTENTS_CLIP:
-#endif //HLCONTENTS
 			case HL_CONTENTS_SKY:
 #ifdef HLCONTENTS
 			case HL_CONTENTS_TRANSLUCENT:
@@ -374,6 +371,13 @@ bspbrush_t *HL_CreateBrushes_r(bspbrush_t *brush, int nodenum)
 				brush->side = CONTENTS_SOLID;
 				return brush;
 			} //end case
+#ifdef HLCONTENTS
+			case HL_CONTENTS_CLIP:
+			{
+				brush->side = CONTENTS_PLAYERCLIP;
+				return brush;
+			} //end case
+#endif //HLCONTENTS
 			case HL_CONTENTS_WATER:
 			{
 				brush->side = CONTENTS_WATER;
@@ -512,7 +516,7 @@ bspbrush_t *HL_MergeBrushes(bspbrush_t *brushlist, int modelnum)
 
 	if (!brushlist) return NULL;
 
-	if (!modelnum) qprintf("%5d brushes merged", nummerges = 0);
+	if (!modelnum) qprintf("%6d brushes merged", nummerges);
 	do
 	{
 		for (tail = brushlist; tail; tail = tail->next)
@@ -549,7 +553,7 @@ bspbrush_t *HL_MergeBrushes(bspbrush_t *brushlist, int modelnum)
 						if (!tail->next) break;
 					} //end for
 					merged++;
-					if (!modelnum) qprintf("\r%5d", nummerges++);
+					if (!modelnum) qprint_progress(++nummerges);
 					break;
 				} //end if
 				lastb2 = b2;
@@ -565,7 +569,7 @@ bspbrush_t *HL_MergeBrushes(bspbrush_t *brushlist, int modelnum)
 		} //end for
 		brushlist = newbrushlist;
 	} while(merged);
-	if (!modelnum) qprintf("\n");
+	if (!modelnum) qprintf("\r%6d brushes merged\n", nummerges);
 	return newbrushlist;
 } //end of the function HL_MergeBrushes
 //===========================================================================
@@ -712,7 +716,7 @@ bspbrush_t *HL_TextureBrushes(bspbrush_t *brushlist, int modelnum)
 	const int lastFaceId = firstFaceId + hl_dmodels[modelnum].numfaces;
 
 	if (!modelnum) qprintf("texturing brushes\n");
-	if (!modelnum) qprintf("%5d brushes", numbrushes = 0);
+	if (!modelnum) qprintf("%6d brushes", numbrushes);
 	//get a pointer to the last brush in the list
 	for (brushlistend = brushlist; brushlistend; brushlistend = brushlistend->next)
 	{
@@ -870,11 +874,11 @@ bspbrush_t *HL_TextureBrushes(bspbrush_t *brushlist, int modelnum)
 			} //end if
 		} //end for
 		//
-		if (!modelnum && prevbrush != brush) qprintf("\r%5d", ++numbrushes);
+		if (!modelnum && prevbrush != brush) qprint_progress(++numbrushes);
 		//previous brush in the list
 		prevbrush = brush;
 	} //end for
-	if (!modelnum) qprintf("\n");
+	if (!modelnum) qprintf("\r%6d brushes\n", numbrushes);
 	//return the new list with brushes
 	return brushlist;
 } //end of the function HL_TextureBrushes
@@ -899,7 +903,7 @@ void HL_FixContentsTextures(bspbrush_t *brushlist)
 		for (i = 0; i < brush->numsides; i++)
 		{
 			texinfonum = brush->sides[i].texinfo;
-			if (HL_TextureContents(map_texinfo[texinfonum].texture) == brush->side) break;
+			if (texinfonum >= 0 && HL_TextureContents(map_texinfo[texinfonum].texture) == brush->side) break;
 		} //end for
 		//if no specific contents texture was found
 		if (i >= brush->numsides)
@@ -917,10 +921,12 @@ void HL_FixContentsTextures(bspbrush_t *brushlist)
 		//
 		if (texinfonum >= 0)
 		{
-			//give all the brush sides this contents texture
+			//replace all non matching brush sides texinfos with this contents texture
 			for (i = 0; i < brush->numsides; i++)
 			{
-				brush->sides[i].texinfo = texinfonum;
+				const int ti = brush->sides[i].texinfo;
+				if(ti < 0 || HL_TextureContents(map_texinfo[ti].texture) != brush->side)
+					brush->sides[i].texinfo = texinfonum;
 			} //end for
 		} //end if
 		else Log_Print("brush contents %d with wrong textures\n", brush->side);
@@ -986,7 +992,7 @@ void HL_BSPBrushToMapBrush(bspbrush_t *bspbrush, entity_t *mapent)
 		mapbrush->numsides++;
 	} //end for
 	//
-	if (besttexinfo == TEXINFO_NODE)
+	if (besttexinfo == TEXINFO_NODE && !(bspbrush->side & (CONTENTS_SOLID | CONTENTS_PLAYERCLIP)))
 	{
 		mapbrush->numsides = 0;
 		hl_numclipbrushes++;
@@ -1042,16 +1048,16 @@ void HL_CreateMapBrushes(entity_t *mapent, int modelnum)
 	} //end if
 	//
 	if (!modelnum) qprintf("converting brushes to map brushes\n");
-	if (!modelnum) qprintf("%5d brushes", i );
+	if (!modelnum) qprintf("%6d brushes", i );
 	for (brush = brushlist; brush; brush = nextbrush)
 	{
 		nextbrush = brush->next;
 		HL_BSPBrushToMapBrush(brush, mapent);
 		brush->next = NULL;
 		FreeBrush(brush);
-		if (!modelnum) qprintf("\r%5d", ++i);
+		if (!modelnum) qprint_progress(++i);
 	} //end for
-	if (!modelnum) qprintf("\n");
+	if (!modelnum) qprintf("\r%6d brushes\n", i );
 } //end of the function HL_CreateMapBrushes
 //===========================================================================
 //

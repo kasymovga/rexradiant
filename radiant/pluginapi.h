@@ -21,8 +21,7 @@
 
 #pragma once
 
-template<typename Element> class BasicVector3;
-typedef BasicVector3<float> Vector3;
+#include "math/vectorfwd.h"
 
 // camera API
 void QERApp_GetCamera( Vector3& origin, Vector3& angles );

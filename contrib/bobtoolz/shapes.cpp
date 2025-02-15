@@ -20,12 +20,9 @@
 
 #include "shapes.h"
 
-#include <list>
-
 #include "DPoint.h"
 #include "DPlane.h"
 
-#include "str.h"
 #include "misc.h"
 #include "funchandlers.h"
 
@@ -36,9 +33,6 @@
 #include "ipatch.h"
 #include "qerplugin.h"
 
-#include <vector>
-#include <list>
-#include <map>
 #include <algorithm>
 #include <ctime>
 
@@ -624,15 +618,15 @@ void MakeBevel( vec3_t vMin, vec3_t vMax ){
 	{
 		for ( int j = 0; j < 1; j++ )
 		{
-			PatchControl& p = matrix( i,2 - j );
+			PatchControl& p = matrix( i, 2 - j );
 			PatchControl& q = matrix( i, j );
 			std::swap( p.m_vertex, q.m_vertex );
-			//std::swap(p.m_texcoord, q.m_texcoord);
+			//std::swap( p.m_texcoord, q.m_texcoord );
 		}
 	}
 	GlobalPatchCreator().Patch_controlPointsChanged( patch );
 	//TODO - the patch has textures weird, patchmanip.h has all function it needs.. lots of duplicate code..
-	//NaturalTexture(patch);
+	//NaturalTexture( patch );
 	Node_getTraversable( GlobalRadiant().getMapWorldEntity() )->insert( patch );
 }
 

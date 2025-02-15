@@ -373,7 +373,7 @@ const shaderInfo_t *CustomShader( const shaderInfo_t *si, const char *find, char
 		               "\t}\n"
 		               "\tq3map_styleMarker\n"
 		               "\t{\n"
-		               "\t\tmap %s\n"
+		               "\t\tmap %s.tga\n"
 		               "\t\tblendFunc GL_DST_COLOR GL_ZERO\n"
 		               "\t\trgbGen identity\n"
 		               "\t}\n"
@@ -388,7 +388,7 @@ const shaderInfo_t *CustomShader( const shaderInfo_t *si, const char *find, char
 		               "{ // Q3Map2 defaulted (implicitMask)\n"
 		               "\tcull none\n"
 		               "\t{\n"
-		               "\t\tmap %s\n"
+		               "\t\tmap %s.tga\n"
 		               "\t\talphaFunc GE128\n"
 		               "\t\tdepthWrite\n"
 		               "\t}\n"
@@ -399,7 +399,7 @@ const shaderInfo_t *CustomShader( const shaderInfo_t *si, const char *find, char
 		               "\t}\n"
 		               "\tq3map_styleMarker\n"
 		               "\t{\n"
-		               "\t\tmap %s\n"
+		               "\t\tmap %s.tga\n"
 		               "\t\tblendFunc GL_DST_COLOR GL_ZERO\n"
 		               "\t\tdepthFunc equal\n"
 		               "\t\trgbGen identity\n"
@@ -416,7 +416,7 @@ const shaderInfo_t *CustomShader( const shaderInfo_t *si, const char *find, char
 		               "{ // Q3Map2 defaulted (implicitBlend)\n"
 		               "\tcull none\n"
 		               "\t{\n"
-		               "\t\tmap %s\n"
+		               "\t\tmap %s.tga\n"
 		               "\t\tblendFunc GL_SRC_ALPHA GL_ONE_MINUS_SRC_ALPHA\n"
 		               "\t}\n"
 		               "\t{\n"
@@ -557,7 +557,7 @@ static shaderInfo_t *AllocShaderInfo(){
 
 	/* ydnar: clear to 0 first */
 //	memset( si, 0, sizeof( shaderInfo_t ) );
-	new (si) shaderInfo_t{}; // placement new
+	new( si ) shaderInfo_t{}; // placement new
 
 	/* set defaults */
 	ApplySurfaceParm( "default", &si->contentFlags, &si->surfaceFlags, &si->compileFlags );
@@ -646,6 +646,7 @@ static void FinishShader( shaderInfo_t *si ){
 	if( g_noob && !( si->compileFlags & C_OB ) ){
 		ApplySurfaceParm( "noob", nullptr, &si->surfaceFlags, nullptr );
 	}
+	si->surfaceFlags |= g_globalSurfaceFlags;
 
 	/* set to finished */
 	si->finished = true;
@@ -998,7 +999,7 @@ static void ParseShaderFile( const char *filename ){
 					si->implicitImagePath = si->shader;
 				}
 				else{
-					si->implicitImagePath = token;
+					si->implicitImagePath( PathExtensionless( token ) );
 				}
 			}
 
@@ -1009,7 +1010,7 @@ static void ParseShaderFile( const char *filename ){
 					si->implicitImagePath = si->shader;
 				}
 				else{
-					si->implicitImagePath = token;
+					si->implicitImagePath( PathExtensionless( token ) );
 				}
 			}
 
@@ -1020,7 +1021,7 @@ static void ParseShaderFile( const char *filename ){
 					si->implicitImagePath = si->shader;
 				}
 				else{
-					si->implicitImagePath = token;
+					si->implicitImagePath( PathExtensionless( token ) );
 				}
 			}
 

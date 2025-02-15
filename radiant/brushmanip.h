@@ -23,7 +23,8 @@
 
 #include <cstddef>
 #include "string/stringfwd.h"
-#include "generic/callbackfwd.h"
+#include "generic/callback.h"
+#include "math/vectorfwd.h"
 
 enum class EBrushPrefab
 {
@@ -37,6 +38,7 @@ enum class EBrushPrefab
 
 class TextureProjection;
 class ContentsFlagsValue;
+class texdef_t;
 namespace scene
 {
 class Graph;
@@ -74,9 +76,6 @@ void Scene_BrushSelectByShader( scene::Graph& graph, const char* name );
 void Scene_BrushSelectByShader_Component( scene::Graph& graph, const char* name );
 void Scene_BrushFacesSelectByShader( scene::Graph& graph, const char* name );
 
-#include "itexdef.h"
-template<typename Element> class BasicVector3;
-typedef BasicVector3<float> Vector3;
 void Scene_BrushProjectTexture_Selected( scene::Graph& graph, const texdef_t& texdef, const Vector3* direction );
 void Scene_BrushProjectTexture_Component_Selected( scene::Graph& graph, const texdef_t& texdef, const Vector3* direction );
 void Scene_BrushProjectTexture_Selected( scene::Graph& graph, const TextureProjection& projection, const Vector3& normal );
@@ -87,7 +86,7 @@ void Scene_BrushFitTexture_Component_Selected( scene::Graph& graph, float s_repe
 
 void Brush_constructMenu( class QMenu* menu );
 
-extern Callback g_texture_lock_status_changed;
+extern Callback<void()> g_texture_lock_status_changed;
 
 void BrushFilters_construct();
 void Brush_registerCommands();

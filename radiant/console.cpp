@@ -28,7 +28,6 @@
 #include "gtkutil/menu.h"
 #include "gtkutil/nonmodal.h"
 #include "stream/stringstream.h"
-#include "convert.h"
 
 #include "version.h"
 #include "aboutmsg.h"
@@ -37,6 +36,10 @@
 
 #include <QPlainTextEdit>
 #include <QContextMenuEvent>
+
+#ifndef WIN32
+#include <unistd.h> // write()
+#endif
 
 // handle to the console log file
 namespace
@@ -149,6 +152,23 @@ std::size_t Sys_Print( int level, const char* buf, std::size_t length ){
 	}
 
 	if ( level != SYS_NOCON ) {
+#ifndef WIN32
+		{  // on linux/macos log also to terminal
+			switch ( level )
+			{
+			case SYS_WRN:
+			case SYS_ERR:
+				write( 2, buf, length );
+				break;
+			case SYS_STD:
+			case SYS_VRB:
+			default:
+				write( 1, buf, length );
+				break;
+			}
+		}
+#endif
+
 		if ( g_console != 0 ) {
 			g_console->moveCursor( QTextCursor::End ); // must go before setCurrentCharFormat() & insertPlainText()
 
@@ -173,14 +193,7 @@ std::size_t Sys_Print( int level, const char* buf, std::size_t length ){
 
 			{
 				GtkTextBufferOutputStream textBuffer( g_console );
-				if ( !globalCharacterSet().isUTF8() ) {
-					BufferedTextOutputStream<GtkTextBufferOutputStream> buffered( textBuffer );
-					buffered << StringRange( buf, length );
-				}
-				else
-				{
-					textBuffer << StringRange( buf, length );
-				}
+				textBuffer << StringRange( buf, length );
 			}
 
  			if ( contains_newline ) {

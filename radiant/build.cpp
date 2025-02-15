@@ -630,6 +630,7 @@ void build_commands_write( const char* filename ){
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QTreeWidget>
+#include <QScrollBar>
 #include <QHeaderView>
 #include <QGroupBox>
 #include <QDialogButtonBox>
@@ -819,7 +820,7 @@ protected:
 				else if ( keyEvent->matches( QKeySequence::StandardKey::Copy ) && x != build.end() ) {
 					g_buildcommand_copied = ( *x );
 				}
-				else if ( keyEvent->matches( QKeySequence::StandardKey::Paste ) && !g_buildpair_copied.first.empty() ) {
+				else if ( keyEvent->matches( QKeySequence::StandardKey::Paste ) && !string_empty( g_buildcommand_copied.c_str() ) ) {
 					g_build_changed = true;
 					build.insert( x, g_buildcommand_copied );
 
@@ -834,32 +835,41 @@ protected:
 };
 
 #include "qe3.h"
+#include "gtkutil/guisettings.h"
 
 EMessageBoxReturn BuildMenuDialog_construct( ProjectList& projectList ){
-	QDialog dialog( MainFrame_getWindow(), Qt::Dialog | Qt::WindowCloseButtonHint );
-	dialog.setWindowTitle( "Build Menu" );
+	static auto [dialog, rootLayout] = [](){
+		QDialog *dialog = new QDialog( MainFrame_getWindow(), Qt::Dialog | Qt::WindowCloseButtonHint );
+		dialog->setWindowTitle( "Build Menu" );
+		g_guiSettings.addWindow( dialog, "BuildMenu/geometry", 700, 500 );
+		auto *rootLayout = new QHBoxLayout( dialog );
+		rootLayout->setContentsMargins( 0, 0, 0, 0 );
+		return std::pair( dialog, rootLayout );
+	}();
 
-	QTreeWidget* buildView = nullptr;
+	auto *container = new QWidget; // use container widget to easily remove window content
+	rootLayout->addWidget( container );
 
 	{
-		auto grid = new QGridLayout( &dialog );
-		grid->setSizeConstraint( QLayout::SizeConstraint::SetFixedSize );
+		auto grid = new QGridLayout( container );
 		{
 			auto buttons = new QDialogButtonBox;
 			buttons->setOrientation( Qt::Orientation::Vertical );
 			// rejection via dialog means will return DialogCode::Rejected (0), eID* > 0
 			QObject::connect( buttons->addButton( QDialogButtonBox::StandardButton::Ok ),
-								&QAbstractButton::clicked, [&dialog](){ dialog.done( eIDOK ); } );
+								&QAbstractButton::clicked, [dialog = dialog](){ dialog->done( eIDOK ); } );
 			QObject::connect( buttons->addButton( QDialogButtonBox::StandardButton::Cancel ),
-								&QAbstractButton::clicked, &dialog, &QDialog::reject );
+								&QAbstractButton::clicked, dialog, &QDialog::reject );
 			QObject::connect( buttons->addButton( QDialogButtonBox::StandardButton::Reset ),
-								&QAbstractButton::clicked, [&dialog](){ dialog.done( eIDNO ); } );
+								&QAbstractButton::clicked, [dialog = dialog](){ dialog->done( eIDNO ); } );
 			buttons->button( QDialogButtonBox::StandardButton::Reset )->setToolTip( "Reset to editor start state" );
 			grid->addWidget( buttons, 0, 1 );
 		}
+		QTreeWidget* buildView = nullptr;
 		{
 			auto frame = new QGroupBox( "Build menu" );
 			grid->addWidget( frame, 0, 0 );
+			grid->setRowStretch( 0, 1 );
 			{
 				auto tree = projectList.m_buildView = buildView = new QTreeWidget;
 				tree->setColumnCount( 1 );
@@ -887,7 +897,7 @@ EMessageBoxReturn BuildMenuDialog_construct( ProjectList& projectList ){
 				auto tree = new QTreeWidget;
 				tree->setColumnCount( 1 );
 				tree->setUniformRowHeights( true ); // optimization
-				tree->setHorizontalScrollBarPolicy( Qt::ScrollBarPolicy::ScrollBarAlwaysOff );
+				tree->setVerticalScrollBarPolicy( Qt::ScrollBarPolicy::ScrollBarAlwaysOff );
 				tree->setSizeAdjustPolicy( QAbstractScrollArea::SizeAdjustPolicy::AdjustToContents ); // scroll area will inherit column size
 				tree->header()->setStretchLastSection( false ); // non greedy column sizing
 				tree->header()->setSectionResizeMode( QHeaderView::ResizeMode::ResizeToContents ); // no text elision
@@ -904,6 +914,11 @@ EMessageBoxReturn BuildMenuDialog_construct( ProjectList& projectList ){
 					} );
 
 					tree->installEventFilter( new Commands_key_press( tree ) );
+
+					QObject::connect( tree->model(), &QAbstractItemModel::rowsInserted, [tree]( const QModelIndex &parent, int first, int last ){
+						tree->setFixedHeight( tree->sizeHintForRow( 0 ) * std::max( tree->model()->rowCount(), 4 )
+							+ tree->horizontalScrollBar()->sizeHint().height() + tree->frameWidth() * 2 );
+					} );
 				}
 			}
 		}
@@ -935,7 +950,9 @@ EMessageBoxReturn BuildMenuDialog_construct( ProjectList& projectList ){
 
 	BSPCommandList_Construct( projectList.m_buildView, g_build_project );
 
-	return static_cast<EMessageBoxReturn>( dialog.exec() );
+	const auto ret = static_cast<EMessageBoxReturn>( dialog->exec() );
+	delete container;
+	return ret;
 }
 
 void LoadBuildMenu();
@@ -984,7 +1001,7 @@ public:
 	void run() const {
 		RunBSP( m_buildIdx );
 	}
-	typedef ConstMemberCaller<BuildMenuItem, &BuildMenuItem::run> RunCaller;
+	typedef ConstMemberCaller<BuildMenuItem, void(), &BuildMenuItem::run> RunCaller;
 };
 
 typedef std::list<BuildMenuItem> BuildMenuItems;

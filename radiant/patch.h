@@ -439,8 +439,8 @@ private:
 	bool m_bOverlay;
 
 	bool m_transformChanged;
-	Callback m_evaluateTransform;
-	Callback m_boundsChanged;
+	Callback<void()> m_evaluateTransform;
+	Callback<void()> m_boundsChanged;
 
 	void construct(){
 		m_bOverlay = false;
@@ -457,13 +457,13 @@ private:
 	}
 
 public:
-	Callback m_lightsChanged;
+	Callback<void()> m_lightsChanged;
 
 	static EPatchType m_type;
 
 	STRING_CONSTANT( Name, "Patch" );
 
-	Patch( scene::Node& node, const Callback& evaluateTransform, const Callback& boundsChanged ) :
+	Patch( scene::Node& node, const Callback<void()>& evaluateTransform, const Callback<void()>& boundsChanged ) :
 		m_node( &node ),
 		m_shader( texdef_name_default() ),
 		m_state( 0 ),
@@ -479,7 +479,7 @@ public:
 		m_boundsChanged( boundsChanged ){
 		construct();
 	}
-	Patch( const Patch& other, scene::Node& node, const Callback& evaluateTransform, const Callback& boundsChanged ) :
+	Patch( const Patch& other, scene::Node& node, const Callback<void()>& evaluateTransform, const Callback<void()>& boundsChanged ) :
 		m_node( &node ),
 		m_shader( texdef_name_default() ),
 		m_state( 0 ),
@@ -667,7 +667,7 @@ public:
 		m_lightsChanged();
 		SceneChangeNotify();
 	}
-	typedef MemberCaller<Patch, &Patch::transformChanged> TransformChangedCaller;
+	typedef MemberCaller<Patch, void(), &Patch::transformChanged> TransformChangedCaller;
 
 	void evaluateTransform(){
 		if ( m_transformChanged ) {
@@ -923,8 +923,8 @@ public:
 	void Calculate_AvgAxes( Vector3& wDir, Vector3& hDir ) const;
 	void ProjectTexture( TextureProjection projection, const Vector3& normal );
 	void ProjectTexture( const texdef_t& texdef, const Vector3* direction );
-	void createThickenedOpposite(const Patch& sourcePatch, const float thickness, const int axis, bool& no12, bool& no34 );
-	void createThickenedWall(const Patch& sourcePatch, const Patch& targetPatch, const int wallIndex);
+	void createThickenedOpposite( const Patch& sourcePatch, const float thickness, const int axis, bool& no12, bool& no34 );
+	void createThickenedWall( const Patch& sourcePatch, const Patch& targetPatch, const int wallIndex );
 
 	void undoSave(){
 		if ( m_map != 0 ) {
@@ -1091,11 +1091,11 @@ inline bool Patch_importMatrix( Patch& patch, Tokeniser& tokeniser ){
 			{
 				RETURN_FALSE_IF_FAIL( Tokeniser_parseToken( tokeniser, "(" ) );
 
-				RETURN_FALSE_IF_FAIL( Tokeniser_getFloat( tokeniser, patch.ctrlAt( r,c ).m_vertex[0] ) );
-				RETURN_FALSE_IF_FAIL( Tokeniser_getFloat( tokeniser, patch.ctrlAt( r,c ).m_vertex[1] ) );
-				RETURN_FALSE_IF_FAIL( Tokeniser_getFloat( tokeniser, patch.ctrlAt( r,c ).m_vertex[2] ) );
-				RETURN_FALSE_IF_FAIL( Tokeniser_getFloat( tokeniser, patch.ctrlAt( r,c ).m_texcoord[0] ) );
-				RETURN_FALSE_IF_FAIL( Tokeniser_getFloat( tokeniser, patch.ctrlAt( r,c ).m_texcoord[1] ) );
+				RETURN_FALSE_IF_FAIL( Tokeniser_getFloat( tokeniser, patch.ctrlAt( r, c ).m_vertex[0] ) );
+				RETURN_FALSE_IF_FAIL( Tokeniser_getFloat( tokeniser, patch.ctrlAt( r, c ).m_vertex[1] ) );
+				RETURN_FALSE_IF_FAIL( Tokeniser_getFloat( tokeniser, patch.ctrlAt( r, c ).m_vertex[2] ) );
+				RETURN_FALSE_IF_FAIL( Tokeniser_getFloat( tokeniser, patch.ctrlAt( r, c ).m_texcoord[0] ) );
+				RETURN_FALSE_IF_FAIL( Tokeniser_getFloat( tokeniser, patch.ctrlAt( r, c ).m_texcoord[1] ) );
 
 				RETURN_FALSE_IF_FAIL( Tokeniser_parseToken( tokeniser, ")" ) );
 			}
@@ -1212,11 +1212,11 @@ inline void Patch_exportMatrix( const Patch& patch, TokenWriter& writer ){
 		{
 			writer.writeToken( "(" );
 
-			writer.writeFloat( patch.ctrlAt( r,c ).m_vertex[0] );
-			writer.writeFloat( patch.ctrlAt( r,c ).m_vertex[1] );
-			writer.writeFloat( patch.ctrlAt( r,c ).m_vertex[2] );
-			writer.writeFloat( patch.ctrlAt( r,c ).m_texcoord[0] );
-			writer.writeFloat( patch.ctrlAt( r,c ).m_texcoord[1] );
+			writer.writeFloat( patch.ctrlAt( r, c ).m_vertex[0] );
+			writer.writeFloat( patch.ctrlAt( r, c ).m_vertex[1] );
+			writer.writeFloat( patch.ctrlAt( r, c ).m_vertex[2] );
+			writer.writeFloat( patch.ctrlAt( r, c ).m_texcoord[0] );
+			writer.writeFloat( patch.ctrlAt( r, c ).m_texcoord[1] );
 
 			writer.writeToken( ")" );
 		}
@@ -1346,7 +1346,7 @@ public:
 	void lightsChanged(){
 		m_lightList->lightsChanged();
 	}
-	typedef MemberCaller<PatchInstance, &PatchInstance::lightsChanged> LightsChangedCaller;
+	typedef MemberCaller<PatchInstance, void(), &PatchInstance::lightsChanged> LightsChangedCaller;
 
 	STRING_CONSTANT( Name, "PatchInstance" );
 
@@ -1367,9 +1367,9 @@ public:
 		Instance::setTransformChangedCallback( LightsChangedCaller( *this ) );
 	}
 	~PatchInstance(){
-		Instance::setTransformChangedCallback( Callback() );
+		Instance::setTransformChangedCallback( Callback<void()>() );
 
-		m_patch.m_lightsChanged = Callback();
+		m_patch.m_lightsChanged = Callback<void()>();
 		GlobalShaderCache().detach( *this );
 
 		m_counter->decrement();
@@ -1383,13 +1383,13 @@ public:
 
 		Instance::selectedChanged();
 	}
-	typedef MemberCaller1<PatchInstance, const Selectable&, &PatchInstance::selectedChanged> SelectedChangedCaller;
+	typedef MemberCaller<PatchInstance, void(const Selectable&), &PatchInstance::selectedChanged> SelectedChangedCaller;
 
 	void selectedChangedComponent( const Selectable& selectable ){
 		GlobalSelectionSystem().getObserver ( SelectionSystem::eComponent )( selectable );
 		GlobalSelectionSystem().onComponentSelection( *this, selectable );
 	}
-	typedef MemberCaller1<PatchInstance, const Selectable&, &PatchInstance::selectedChangedComponent> SelectedChangedComponentCaller;
+	typedef MemberCaller<PatchInstance, void(const Selectable&), &PatchInstance::selectedChangedComponent> SelectedChangedComponentCaller;
 
 	Patch& getPatch(){
 		return m_patch;
@@ -1627,27 +1627,27 @@ public:
 	}
 
 
-	void selectPlanes( Selector& selector, SelectionTest& test, const PlaneCallback& selectedPlaneCallback ){
+	void selectPlanes( Selector& selector, SelectionTest& test, const PlaneCallback& selectedPlaneCallback ) override {
 		test.BeginMesh( localToWorld() );
 
 		m_dragPlanes.selectPlanes( m_patch.localAABB(), selector, test, selectedPlaneCallback );
 	}
-	void selectReversedPlanes( Selector& selector, const SelectedPlanes& selectedPlanes ){
+	void selectReversedPlanes( Selector& selector, const SelectedPlanes& selectedPlanes ) override {
 		m_dragPlanes.selectReversedPlanes( m_patch.localAABB(), selector, selectedPlanes );
 	}
 
-	void bestPlaneDirect( SelectionTest& test, Plane3& plane, SelectionIntersection& intersection ) const {
+	void bestPlaneDirect( SelectionTest& test, BestPlaneData& planeData ) const override {
 		test.BeginMesh( localToWorld() );
-		m_dragPlanes.bestPlaneDirect( m_patch.localAABB(), test, plane, intersection );
+		m_dragPlanes.bestPlaneDirect( m_patch.localAABB(), test, planeData );
 	}
-	void bestPlaneIndirect( SelectionTest& test, Plane3& plane, Vector3& intersection, float& dist ) const {
+	void bestPlaneIndirect( SelectionTest& test, BestPlaneData& planeData ) const override {
 		test.BeginMesh( localToWorld() );
-		m_dragPlanes.bestPlaneIndirect( m_patch.localAABB(), test, plane, intersection, dist );
+		m_dragPlanes.bestPlaneIndirect( m_patch.localAABB(), test, planeData );
 	}
-	void selectByPlane( const Plane3& plane ){
+	void selectByPlane( const Plane3& plane ) override {
 		m_dragPlanes.selectByPlane( m_patch.localAABB(), plane );
 	}
-	void gatherPolygonsByPlane( const Plane3& plane, std::vector<std::vector<Vector3>>& polygons ) const {
+	void gatherPolygonsByPlane( const Plane3& plane, std::vector<std::vector<Vector3>>& polygons ) const override {
 		m_dragPlanes.gatherPolygonsByPlane( m_patch.localAABB(), plane, polygons );
 	}
 
@@ -1681,7 +1681,7 @@ public:
 		evaluateTransform();
 		m_patch.freezeTransform();
 	}
-	typedef MemberCaller<PatchInstance, &PatchInstance::applyTransform> ApplyTransformCaller;
+	typedef MemberCaller<PatchInstance, void(), &PatchInstance::applyTransform> ApplyTransformCaller;
 
 
 	bool testLight( const RendererLight& light ) const {

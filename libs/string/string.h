@@ -52,6 +52,14 @@ inline int string_compare( const char* string, const char* other ){
 	return std::strcmp( string, other );
 }
 
+/// \brief Returns <0 if [\p string, \p string + \p n) is lexicographically less than [\p other, \p other + \p n).
+/// Returns >0 if [\p string, \p string + \p n) is lexicographically greater than [\p other, \p other + \p n).
+/// Returns 0 if [\p string, \p string + \p n) is lexicographically equal to [\p other, \p other + \p n).
+/// O(n)
+inline int string_compare_n( const char* string, const char* other, std::size_t n ){
+	return std::strncmp( string, other, n );
+}
+
 /// \brief Returns true if \p string is lexicographically equal to \p other.
 /// O(n)
 inline bool string_equal( const char* string, const char* other ){
@@ -61,7 +69,7 @@ inline bool string_equal( const char* string, const char* other ){
 /// \brief Returns true if [\p string, \p string + \p n) is lexicographically equal to [\p other, \p other + \p n).
 /// O(n)
 inline bool string_equal_n( const char* string, const char* other, std::size_t n ){
-	return std::strncmp( string, other, n ) == 0;
+	return string_compare_n( string, other, n ) == 0;
 }
 
 /// \brief Returns true if \p string is lexicographically less than \p other.
@@ -213,8 +221,8 @@ inline char* string_clone( const char* other, Allocator& allocator ){
 /// The returned buffer must be released with \c string_release using a matching \p allocator.
 template<typename Allocator>
 inline char* string_clone_range( StringRange range, Allocator& allocator ){
-	char* copied = strncpy( string_new( range.size(), allocator ), range.data(), range.size() );
-	copied[range.size()] = '\0';
+	char* copied = string_new( range.size(), allocator );
+	*std::copy_n( range.data(), range.size(), copied ) = '\0';
 	return copied;
 }
 
@@ -337,7 +345,7 @@ public:
 	~StringTokeniser(){
 		string_release( m_string, m_length );
 	}
-/// \brief Returns the next token or "" if there are no more tokens available.
+	/// \brief Returns the next token or "" if there are no more tokens available.
 	const char* getToken(){
 		return advance();
 	}
@@ -549,8 +557,7 @@ class SmartBuffer : private Allocator
 
 	char* copy_range( StringRange range ){
 		char* buffer = Allocator::allocate( sizeof( std::size_t ) + range.size() + 1 );
-		strncpy( buffer + sizeof( std::size_t ), range.data(), range.size() );
-		buffer[sizeof( std::size_t ) + range.size()] = '\0';
+		*std::copy_n( range.data(), range.size(), buffer + sizeof( std::size_t ) ) = '\0';
 		*reinterpret_cast<std::size_t*>( buffer ) = 0;
 		return buffer;
 	}
@@ -609,6 +616,30 @@ public:
 /// \brief A non-mutable string which uses copy-by-reference for assignment of SmartString.
 typedef String< SmartBuffer< DefaultAllocator<char> > > SmartString;
 
+
+template<>
+struct std::less<CopiedString>
+{
+	using is_transparent = void;
+
+	bool operator()( const CopiedString& x, const CopiedString& y ) const {
+		return string_less( x.c_str(), y.c_str() );
+	}
+	bool operator()( const CopiedString& x, const char *y ) const {
+		return string_less( x.c_str(), y );
+	}
+	bool operator()( const char *x, const CopiedString& y ) const {
+		return string_less( x, y.c_str() );
+	}
+	bool operator()( const CopiedString& string, const StringRange range ) const {
+		return string_compare_n( string.c_str(), range.data(), range.size() ) < 0;
+	}
+	bool operator()( const StringRange range, const CopiedString& string ) const {
+		return string_compare_n( string.c_str(), range.data(), range.size() ) > 0;
+	}
+};
+
+
 class StringEqualNoCase
 {
 public:
@@ -619,8 +650,22 @@ public:
 
 struct StringLessNoCase
 {
+	using is_transparent = void;
+
 	bool operator()( const CopiedString& x, const CopiedString& y ) const {
 		return string_less_nocase( x.c_str(), y.c_str() );
+	}
+	bool operator()( const CopiedString& x, const char *y ) const {
+		return string_less_nocase( x.c_str(), y );
+	}
+	bool operator()( const char *x, const CopiedString& y ) const {
+		return string_less_nocase( x, y.c_str() );
+	}
+	bool operator()( const CopiedString& string, const StringRange range ) const {
+		return string_compare_nocase_n( string.c_str(), range.data(), range.size() ) < 0;
+	}
+	bool operator()( const StringRange range, const CopiedString& string ) const {
+		return string_compare_nocase_n( string.c_str(), range.data(), range.size() ) > 0;
 	}
 };
 

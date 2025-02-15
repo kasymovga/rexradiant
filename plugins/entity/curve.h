@@ -57,7 +57,7 @@ inline void plotBasisFunction( std::size_t numSegments, int point, int degree ){
 	globalOutputStream() << "t=0 basis=" << BSpline_basis( knots, point, degree, 0.0 ) << '\n';
 	for ( std::size_t i = 1; i < numSegments; ++i )
 	{
-		double t = ( 1.0 / double(numSegments) ) * double(i);
+		double t = ( 1.0 / double( numSegments ) ) * double( i );
 		globalOutputStream() << "t=" << t << " basis=" << BSpline_basis( knots, point, degree, t ) << '\n';
 	}
 	globalOutputStream() << "t=1 basis=" << BSpline_basis( knots, point, degree, 1.0 ) << '\n';
@@ -109,50 +109,6 @@ inline void ControlPoint_testSelect( const Vector3& point, ObservedSelectable& s
 		Selector_add( selector, selectable, best );
 	}
 }
-
-class ControlPointTransform
-{
-	const Matrix4& m_matrix;
-public:
-	ControlPointTransform( const Matrix4& matrix ) : m_matrix( matrix ){
-	}
-	void operator()( Vector3& point ) const {
-		matrix4_transform_point( m_matrix, point );
-	}
-};
-
-class ControlPointSnap
-{
-	float m_snap;
-public:
-	ControlPointSnap( float snap ) : m_snap( snap ){
-	}
-	void operator()( Vector3& point ) const {
-		vector3_snap( point, m_snap );
-	}
-};
-
-class ControlPointAdd
-{
-	RenderablePointVector& m_points;
-public:
-	ControlPointAdd( RenderablePointVector& points ) : m_points( points ){
-	}
-	void operator()( const Vector3& point ) const {
-		m_points.push_back( PointVertex( vertex3f_for_vector3( point ), colour_vertex ) );
-	}
-};
-
-class ControlPointAddSelected
-{
-	RenderablePointVector& m_points;
-public:
-	ControlPointAddSelected( RenderablePointVector& points ) : m_points( points ){
-	}
-	void operator()( const Vector3& point ) const {
-		m_points.push_back( PointVertex( vertex3f_for_vector3( point ), colour_selected ) );
-	}
-};
 
 class CurveEditType
 {
@@ -252,15 +208,21 @@ public:
 	}
 
 	void transform( const Matrix4& matrix ){
-		forEachSelected( ControlPointTransform( matrix ) );
+		forEachSelected( [&]( Vector3& point ){
+			matrix4_transform_point( matrix, point );
+		});
 	}
 	void snapto( float snap ){
-		forEachSelected( ControlPointSnap( snap ) );
+		forEachSelected( [&]( Vector3& point ){
+			vector3_snap( point, snap );
+		});
 	}
 
 	void updateSelected() const {
 		m_selectedRender.clear();
-		forEachSelected( ControlPointAddSelected( m_selectedRender ) );
+		forEachSelected( [&]( const Vector3& point ){
+			m_selectedRender.push_back( PointVertex( vertex3f_for_vector3( point ), colour_selected ) );
+		});
 	}
 
 	void renderComponents( Renderer& renderer, const VolumeTest& volume, const Matrix4& localToWorld ) const {
@@ -284,11 +246,13 @@ public:
 
 		m_controlsRender.clear();
 		m_controlsRender.reserve( m_controlPoints.size() );
-		forEach( ControlPointAdd( m_controlsRender ) );
+		forEach( [&]( const Vector3& point ){
+			m_controlsRender.push_back( PointVertex( vertex3f_for_vector3( point ), colour_vertex ) );
+		});
 
 		m_selectedRender.reserve( m_controlPoints.size() );
 	}
-	typedef MemberCaller<CurveEdit, &CurveEdit::curveChanged> CurveChangedCaller;
+	typedef MemberCaller<CurveEdit, void(), &CurveEdit::curveChanged> CurveChangedCaller;
 };
 
 
@@ -298,7 +262,7 @@ const int NURBS_degree = 3;
 class NURBSCurve
 {
 	Signal0 m_curveChanged;
-	Callback m_boundsChanged;
+	Callback<void()> m_boundsChanged;
 public:
 	ControlPoints m_controlPoints;
 	ControlPoints m_controlPointsTransformed;
@@ -307,7 +271,7 @@ public:
 	RenderableCurve m_renderCurve;
 	AABB m_bounds;
 
-	NURBSCurve( const Callback& boundsChanged ) : m_boundsChanged( boundsChanged ){
+	NURBSCurve( const Callback<void()>& boundsChanged ) : m_boundsChanged( boundsChanged ){
 	}
 
 	SignalHandlerId connect( const SignalHandler& curveChanged ){
@@ -328,7 +292,7 @@ public:
 			m_renderCurve.m_vertices[0].vertex = vertex3f_for_vector3( m_controlPointsTransformed[0] );
 			for ( std::size_t i = 1; i < numSegments; ++i )
 			{
-				m_renderCurve.m_vertices[i].vertex = vertex3f_for_vector3( NURBS_evaluate( m_controlPointsTransformed, m_weights, m_knots, NURBS_degree, ( 1.0 / double(numSegments) ) * double(i) ) );
+				m_renderCurve.m_vertices[i].vertex = vertex3f_for_vector3( NURBS_evaluate( m_controlPointsTransformed, m_weights, m_knots, NURBS_degree, ( 1.0 / double( numSegments ) ) * double( i ) ) );
 			}
 			m_renderCurve.m_vertices[numSegments].vertex = vertex3f_for_vector3( m_controlPointsTransformed[m_controlPointsTransformed.size() - 1] );
 		}
@@ -364,7 +328,7 @@ public:
 
 		KnotVector_openUniform( m_knots, m_controlPoints.size(), NURBS_degree );
 
-		//plotBasisFunction(8, 0, NURBS_degree);
+		//plotBasisFunction( 8, 0, NURBS_degree );
 
 		return true;
 	}
@@ -378,20 +342,20 @@ public:
 		m_controlPointsTransformed = m_controlPoints;
 		curveChanged();
 	}
-	typedef MemberCaller1<NURBSCurve, const char*, &NURBSCurve::curveChanged> CurveChangedCaller;
+	typedef MemberCaller<NURBSCurve, void(const char*), &NURBSCurve::curveChanged> CurveChangedCaller;
 };
 
 class CatmullRomSpline
 {
 	Signal0 m_curveChanged;
-	Callback m_boundsChanged;
+	Callback<void()> m_boundsChanged;
 public:
 	ControlPoints m_controlPoints;
 	ControlPoints m_controlPointsTransformed;
 	RenderableCurve m_renderCurve;
 	AABB m_bounds;
 
-	CatmullRomSpline( const Callback& boundsChanged ) : m_boundsChanged( boundsChanged ){
+	CatmullRomSpline( const Callback<void()>& boundsChanged ) : m_boundsChanged( boundsChanged ){
 	}
 
 	SignalHandlerId connect( const SignalHandler& curveChanged ){
@@ -412,7 +376,7 @@ public:
 			m_renderCurve.m_vertices[0].vertex = vertex3f_for_vector3( m_controlPointsTransformed[0] );
 			for ( std::size_t i = 1; i < numSegments; ++i )
 			{
-				m_renderCurve.m_vertices[i].vertex = vertex3f_for_vector3( CatmullRom_evaluate( m_controlPointsTransformed, ( 1.0 / double(numSegments) ) * double(i) ) );
+				m_renderCurve.m_vertices[i].vertex = vertex3f_for_vector3( CatmullRom_evaluate( m_controlPointsTransformed, ( 1.0 / double( numSegments ) ) * double( i ) ) );
 			}
 			m_renderCurve.m_vertices[numSegments].vertex = vertex3f_for_vector3( m_controlPointsTransformed[m_controlPointsTransformed.size() - 1] );
 		}
@@ -446,7 +410,7 @@ public:
 		m_controlPointsTransformed = m_controlPoints;
 		curveChanged();
 	}
-	typedef MemberCaller1<CatmullRomSpline, const char*, &CatmullRomSpline::curveChanged> CurveChangedCaller;
+	typedef MemberCaller<CatmullRomSpline, void(const char*), &CatmullRomSpline::curveChanged> CurveChangedCaller;
 };
 
 const char* const curve_Nurbs = "curve_Nurbs";

@@ -20,7 +20,7 @@
    AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
    IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
    DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR ANY
-   DIRECT,INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+   DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
    (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
    LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
    ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
@@ -36,7 +36,7 @@
 
 #pragma once
 
-#include "libxml/parser.h"
+#include <libxml/parser.h>
 
 #include <cstddef>
 
@@ -56,9 +56,6 @@ struct message_info_t
 	int stop_depth; // the depth we need to stop at the end
 	int geometry_depth; // are we parsing some geometry information (i.e. do we forward the SAX calls?)
 	ISAXHandler* pGeometry; // the handler
-
-	char m_buffer[1024];
-	std::size_t m_length;
 };
 
 class IGL2DWindow;

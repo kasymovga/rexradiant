@@ -48,15 +48,14 @@ inline float Det3x3( float a00, float a01, float a02,
 	    +   a02 * ( a10 * a21 - a11 * a20 );
 }
 
-static void GetBestSurfaceTriangleMatchForBrushside( const side_t& buildSide, const bspDrawVert_t *bestVert[3] ){
+static TriRef GetBestSurfaceTriangleMatchForBrushside( const side_t& buildSide ){
 	float best = 0;
 	float thisarea;
-	const bspDrawVert_t *vert[3];
 	const plane_t& buildPlane = mapplanes[buildSide.planenum];
 	int matches = 0;
 
 	// first, start out with NULLs
-	bestVert[0] = bestVert[1] = bestVert[2] = NULL;
+	TriRef bestVert{ nullptr };
 
 	// brute force through all surfaces
 	for ( const bspDrawSurface_t& s : bspDrawSurfaces )
@@ -69,9 +68,11 @@ static void GetBestSurfaceTriangleMatchForBrushside( const side_t& buildSide, co
 		}
 		for ( int t = 0; t + 3 <= s.numIndexes; t += 3 )
 		{
-			vert[0] = &bspDrawVerts[s.firstVert + bspDrawIndexes[s.firstIndex + t + 0]];
-			vert[1] = &bspDrawVerts[s.firstVert + bspDrawIndexes[s.firstIndex + t + 1]];
-			vert[2] = &bspDrawVerts[s.firstVert + bspDrawIndexes[s.firstIndex + t + 2]];
+			const TriRef vert{
+				&bspDrawVerts[s.firstVert + bspDrawIndexes[s.firstIndex + t + 0]],
+				&bspDrawVerts[s.firstVert + bspDrawIndexes[s.firstIndex + t + 1]],
+				&bspDrawVerts[s.firstVert + bspDrawIndexes[s.firstIndex + t + 2]]
+			};
 			if ( s.surfaceType == MST_PLANAR && VectorCompare( vert[0]->normal, vert[1]->normal ) && VectorCompare( vert[1]->normal, vert[2]->normal ) ) {
 				if ( vector3_length( vert[0]->normal - buildPlane.normal() ) >= normalEpsilon
 				  || vector3_length( vert[1]->normal - buildPlane.normal() ) >= normalEpsilon
@@ -118,16 +119,15 @@ static void GetBestSurfaceTriangleMatchForBrushside( const side_t& buildSide, co
 			}
 			if ( thisarea > best ) {
 				best = thisarea;
-				bestVert[0] = vert[0];
-				bestVert[1] = vert[1];
-				bestVert[2] = vert[2];
+				bestVert = vert;
 			}
 exwinding:
 			;
 		}
 	}
-	//if(!striEqualPrefix(buildSide.shaderInfo->shader, "textures/common/"))
-	//	fprintf(stderr, "brushside with %s: %d matches (%f area)\n", buildSide.shaderInfo->shader, matches, best);
+	//if( !striEqualPrefix( buildSide.shaderInfo->shader, "textures/common/" ) )
+	//	fprintf( stderr, "brushside with %s: %d matches (%f area)\n", buildSide.shaderInfo->shader, matches, best );
+	return bestVert;
 }
 
 #define FRAC( x ) ( ( x ) - floor( x ) )
@@ -142,8 +142,7 @@ static void ConvertOriginBrush( FILE *f, int num, const Vector3& origin, bool br
 		{ "---", "--+", "+--", "-  ", "  +", "-  ", "  +" },
 		{ "---", "-+-", "--+", " - ", "  +", " + ", "  +" }
 	};
-	int i;
-#define S( a,b,c ) ( pattern[a][b][c] == '+' ? +1 : pattern[a][b][c] == '-' ? -1 : 0 )
+#define S( a, b, c ) ( pattern[a][b][c] == '+' ? +1 : pattern[a][b][c] == '-' ? -1 : 0 )
 
 	/* start brush */
 	fprintf( f, "\t// brush %d\n", num );
@@ -155,15 +154,15 @@ static void ConvertOriginBrush( FILE *f, int num, const Vector3& origin, bool br
 	/* print brush side */
 	/* ( 640 24 -224 ) ( 448 24 -224 ) ( 448 -232 -224 ) common/caulk 0 48 0 0.500000 0.500000 0 0 0 */
 
-	for ( i = 0; i < 6; ++i )
+	for ( int i = 0; i < 6; ++i )
 	{
 		if ( brushPrimitives ) {
 			fprintf( f, "\t\t( %.3f %.3f %.3f ) ( %.3f %.3f %.3f ) ( %.3f %.3f %.3f ) ( ( %.8f %.8f %.8f ) ( %.8f %.8f %.8f ) ) %s %d 0 0\n",
-			         origin[0] + 8 * S( i,0,0 ), origin[1] + 8 * S( i,0,1 ), origin[2] + 8 * S( i,0,2 ),
-			         origin[0] + 8 * S( i,1,0 ), origin[1] + 8 * S( i,1,1 ), origin[2] + 8 * S( i,1,2 ),
-			         origin[0] + 8 * S( i,2,0 ), origin[1] + 8 * S( i,2,1 ), origin[2] + 8 * S( i,2,2 ),
-			         1.0f / 16.0f, 0.0f, FRAC( ( S( i,5,0 ) * origin[0] + S( i,5,1 ) * origin[1] + S( i,5,2 ) * origin[2] ) / 16.0 + 0.5 ),
-			         0.0f, 1.0f / 16.0f, FRAC( ( S( i,6,0 ) * origin[0] + S( i,6,1 ) * origin[1] + S( i,6,2 ) * origin[2] ) / 16.0 + 0.5 ),
+			         origin[0] + 8 * S( i, 0, 0 ), origin[1] + 8 * S( i, 0, 1 ), origin[2] + 8 * S( i, 0, 2 ),
+			         origin[0] + 8 * S( i, 1, 0 ), origin[1] + 8 * S( i, 1, 1 ), origin[2] + 8 * S( i, 1, 2 ),
+			         origin[0] + 8 * S( i, 2, 0 ), origin[1] + 8 * S( i, 2, 1 ), origin[2] + 8 * S( i, 2, 2 ),
+			         1.0f / 16.0f, 0.0f, FRAC( ( S( i, 5, 0 ) * origin[0] + S( i, 5, 1 ) * origin[1] + S( i, 5, 2 ) * origin[2] ) / 16.0 + 0.5 ),
+			         0.0f, 1.0f / 16.0f, FRAC( ( S( i, 6, 0 ) * origin[0] + S( i, 6, 1 ) * origin[1] + S( i, 6, 2 ) * origin[2] ) / 16.0 + 0.5 ),
 			         "common/origin",
 			         0
 			       );
@@ -171,12 +170,12 @@ static void ConvertOriginBrush( FILE *f, int num, const Vector3& origin, bool br
 		else
 		{
 			fprintf( f, "\t\t( %.3f %.3f %.3f ) ( %.3f %.3f %.3f ) ( %.3f %.3f %.3f ) %s %.8f %.8f %.8f %.8f %.8f %d 0 0\n",
-			         origin[0] + 8 * S( i,0,0 ), origin[1] + 8 * S( i,0,1 ), origin[2] + 8 * S( i,0,2 ),
-			         origin[0] + 8 * S( i,1,0 ), origin[1] + 8 * S( i,1,1 ), origin[2] + 8 * S( i,1,2 ),
-			         origin[0] + 8 * S( i,2,0 ), origin[1] + 8 * S( i,2,1 ), origin[2] + 8 * S( i,2,2 ),
+			         origin[0] + 8 * S( i, 0, 0 ), origin[1] + 8 * S( i, 0, 1 ), origin[2] + 8 * S( i, 0, 2 ),
+			         origin[0] + 8 * S( i, 1, 0 ), origin[1] + 8 * S( i, 1, 1 ), origin[2] + 8 * S( i, 1, 2 ),
+			         origin[0] + 8 * S( i, 2, 0 ), origin[1] + 8 * S( i, 2, 1 ), origin[2] + 8 * S( i, 2, 2 ),
 			         "common/origin",
-			         FRAC( ( S( i,3,0 ) * origin[0] + S( i,3,1 ) * origin[1] + S( i,3,2 ) * origin[2] ) / 16.0 + 0.5 ) * originSize,
-			         FRAC( ( S( i,4,0 ) * origin[0] + S( i,4,1 ) * origin[1] + S( i,4,2 ) * origin[2] ) / 16.0 + 0.5 ) * originSize,
+			         FRAC( ( S( i, 3, 0 ) * origin[0] + S( i, 3, 1 ) * origin[1] + S( i, 3, 2 ) * origin[2] ) / 16.0 + 0.5 ) * originSize,
+			         FRAC( ( S( i, 4, 0 ) * origin[0] + S( i, 4, 1 ) * origin[1] + S( i, 4, 2 ) * origin[2] ) / 16.0 + 0.5 ) * originSize,
 			         0.0f, 16.0 / originSize, 16.0 / originSize,
 			         0
 			       );
@@ -340,7 +339,7 @@ static void ConvertBrush( FILE *f, int bspBrushNum, const Vector3& origin, bool 
 
 	/* find out if brush is detail */
 	int contentFlag = 0;
-	if( !( bspShaders[bspBrushes[bspBrushNum].shaderNum].contentFlags & GetRequiredSurfaceParm( "structural"_Tstring ).contentFlags ) ){ // sort out structural transparent brushes, e.g. hints
+	if( !( bspShaders[bspBrushes[bspBrushNum].shaderNum].contentFlags & GetRequiredSurfaceParm<"structural">().contentFlags ) ){ // sort out structural transparent brushes, e.g. hints
 		for( const auto& leaf : bspLeafs ){
 			if( leaf.cluster >= 0 )
 				for( auto id = bspLeafBrushes.cbegin() + leaf.firstBSPLeafBrush, end = id + leaf.numBSPLeafBrushes; id != end; ++id ){
@@ -375,8 +374,7 @@ static void ConvertBrush( FILE *f, int bspBrushNum, const Vector3& origin, bool 
 		//   - meshverts point in pairs of three into verts
 		//   - (triangles)
 		//   - find the triangle that has most in common with our
-		const bspDrawVert_t   *vert[3];
-		GetBestSurfaceTriangleMatchForBrushside( buildSide, vert );
+		const TriRef vert = GetBestSurfaceTriangleMatchForBrushside( buildSide );
 
 		/* get texture name */
 		const char *texture = striEqualPrefix( buildSide.shaderInfo->shader, "textures/" )
@@ -426,7 +424,7 @@ static void ConvertBrush( FILE *f, int bspBrushNum, const Vector3& origin, bool 
 			//Sys_Printf( "not\n" );
 		}
 
-		if ( vert[0] && vert[1] && vert[2] ) {
+		if ( vert[0] != nullptr && vert[1] != nullptr && vert[2] != nullptr ) {
 			if ( brushPrimitives ) {
 				int i;
 				Vector3 texX, texY;
@@ -572,8 +570,8 @@ static void ConvertBrush( FILE *f, int bspBrushNum, const Vector3& origin, bool 
 				// now we must solve:
 				//	// now we must invert:
 				//	ang = degrees_to_radians( rotate );
-				//	sinv = sin(ang);
-				//	cosv = cos(ang);
+				//	sinv = sin( ang );
+				//	cosv = cos( ang );
 				//	ns = cosv * vecs[0][sv];
 				//	nt = sinv * vecs[0][sv];
 				//	vecsrotscaled[0][sv] = ns / scale[0];

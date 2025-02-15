@@ -132,7 +132,7 @@ void QE_CheckAutoSave(){
 		if ( g_AutoSave_Enabled ) {
 			const char* strMsg = g_SnapShots_Enabled ? "Autosaving snapshot..." : "Autosaving...";
 			globalOutputStream() << strMsg << '\n';
-			//Sys_Status(strMsg);
+			//Sys_Status( strMsg );
 
 			// only snapshot if not working on a default map
 			if ( g_SnapShots_Enabled && !Map_Unnamed( g_map ) ) {
@@ -158,13 +158,13 @@ void QE_CheckAutoSave(){
 		else
 		{
 			globalOutputStream() << "Autosave skipped...\n";
-			//Sys_Status ("Autosave skipped...");
+			//Sys_Status( "Autosave skipped..." );
 		}
 	}
 }
 
 void Autosave_constructPreferences( PreferencesPage& page ){
-	QCheckBox* autosave_enabled = page.appendCheckBox( "Autosave", "Enable Autosave", g_AutoSave_Enabled );
+	QCheckBox* autosave_enabled = page.appendCheckBox( "", "Enable Autosave", g_AutoSave_Enabled );
 	QWidget* autosave_frequency = page.appendSpinner( "Autosave Frequency (minutes)", m_AutoSave_Frequency, 1, 60 );
 	Widget_connectToggleDependency( autosave_frequency, autosave_enabled );
 	page.appendCheckBox( "", "Save Snapshots", g_SnapShots_Enabled );
@@ -174,7 +174,7 @@ void Autosave_constructPage( PreferenceGroup& group ){
 	Autosave_constructPreferences( page );
 }
 void Autosave_registerPreferencesPage(){
-	PreferencesDialog_addSettingsPage( FreeCaller1<PreferenceGroup&, Autosave_constructPage>() );
+	PreferencesDialog_addSettingsPage( makeCallbackF( Autosave_constructPage ) );
 }
 
 

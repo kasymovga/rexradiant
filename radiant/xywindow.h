@@ -237,7 +237,7 @@ public:
 	Signal0 onDestroyed;
 	Signal3<const WindowVector&, ButtonIdentifier, ModifierFlags> onMouseDown;
 	void mouseDown( const WindowVector& position, ButtonIdentifier button, ModifierFlags modifiers );
-	typedef Member3<XYWnd, const WindowVector&, ButtonIdentifier, ModifierFlags, void, &XYWnd::mouseDown> MouseDownCaller;
+	typedef Member<XYWnd, void(const WindowVector&, ButtonIdentifier, ModifierFlags), &XYWnd::mouseDown> MouseDownCaller;
 };
 
 inline void XYWnd_Update( XYWnd& xywnd ){
@@ -258,9 +258,7 @@ struct xywindow_globals_t
 	Vector3 color_selbrushes = { 1.0f, 0.627451f, 0.0f };
 	Vector3 color_clipper = { 0.0f, 0.0f, 1.0f };
 	Vector3 color_viewname = { 0.516136f, 0.516136f, 0.516136f };
-	Vector3 AxisColorX = { 1.f, 0.f, 0.f };
-	Vector3 AxisColorY = { 0.f, 1.f, 0.f };
-	Vector3 AxisColorZ = { 0.f, 0.f, 1.f };
+	Vector3 color_camera = { 0.0, 0.0, 1.0 };
 
 	bool m_bNoStipple = true;
 };

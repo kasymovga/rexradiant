@@ -20,7 +20,7 @@
    AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
    IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
    DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR ANY
-   DIRECT,INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+   DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
    (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
    LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
    ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
@@ -56,31 +56,6 @@
 #include "mainframe.h"
 #include "sockets.h"
 #include "timer.h"
-
-void message_flush( message_info_t* self ){
-	Sys_Print( self->msg_level, self->m_buffer, self->m_length );
-	self->m_length = 0;
-}
-
-void message_print( message_info_t* self, const char* characters, std::size_t length ){
-	const char* end = characters + length;
-	while ( characters != end )
-	{
-		std::size_t space = std::size( self->m_buffer ) - 1 - self->m_length;
-		if ( space == 0 ) {
-			message_flush( self );
-		}
-		else
-		{
-			std::size_t size = std::min( space, std::size_t( end - characters ) );
-			memcpy( self->m_buffer + self->m_length, characters, size );
-			self->m_length += size;
-			characters += size;
-		}
-	}
-}
-
-
 #include "xmlstuff.h"
 
 class CWatchBSP
@@ -191,13 +166,13 @@ public:
 		importer( m_string.c_str() );
 	}
 	auto getImportCaller(){
-		return MemberCaller1<DefaultableString, const char*, &DefaultableString::Import>( *this );
+		return MemberCaller<DefaultableString, void(const char*), &DefaultableString::Import>( *this );
 	}
 	auto getExportWithDefaultCaller(){
-		return ConstMemberCaller1<DefaultableString, const StringImportCallback&, &DefaultableString::ExportWithDefault>( *this );
+		return ConstMemberCaller<DefaultableString, void(const StringImportCallback&), &DefaultableString::ExportWithDefault>( *this );
 	}
 	auto getExportCaller(){
-		return ConstMemberCaller1<DefaultableString, const StringImportCallback&, &DefaultableString::Export>( *this );
+		return ConstMemberCaller<DefaultableString, void(const StringImportCallback&), &DefaultableString::Export>( *this );
 	}
 	CopiedString string() const {
 		return m_string.empty()? m_getDefault() : m_string;
@@ -252,6 +227,8 @@ static DefaultableString g_engineExecutableMP( []()->CopiedString{ return g_pGam
 static DefaultableString g_engineArgs( constructEngineArgs<false> );
 static DefaultableString g_engineArgsMP( constructEngineArgs<true> );
 
+extern CopiedString g_regionBoxShader;
+
 
 void Build_constructPreferences( PreferencesPage& page ){
 	QCheckBox* monitorbsp = page.appendCheckBox( "", "Enable Build Process Monitoring", g_WatchBSP_Enabled );
@@ -272,13 +249,15 @@ void Build_constructPreferences( PreferencesPage& page ){
 	}
 
 	page.appendCheckBox( "", "Dump non Monitored Builds Log", g_WatchBSP0_DumpLog );
+
+	page.appendEntry( "Region Box Shader", g_regionBoxShader );
 }
 void Build_constructPage( PreferenceGroup& group ){
 	PreferencesPage page( group.createPage( "Build", "Build Preferences" ) );
 	Build_constructPreferences( page );
 }
 void Build_registerPreferencesPage(){
-	PreferencesDialog_addSettingsPage( FreeCaller1<PreferenceGroup&, Build_constructPage>() );
+	PreferencesDialog_addSettingsPage( makeCallbackF( Build_constructPage ) );
 }
 
 #include "preferencesystem.h"
@@ -297,7 +276,7 @@ void BuildMonitor_Construct(){
 	GlobalPreferenceSystem().registerPreference( "BuildEngineArgs", g_engineArgs.getImportCaller(), g_engineArgs.getExportCaller() );
 	GlobalPreferenceSystem().registerPreference( "BuildEngineArgsMP", g_engineArgsMP.getImportCaller(), g_engineArgsMP.getExportCaller() );
 	GlobalPreferenceSystem().registerPreference( "BuildDumpLog", BoolImportStringCaller( g_WatchBSP0_DumpLog ), BoolExportStringCaller( g_WatchBSP0_DumpLog ) );
-
+	GlobalPreferenceSystem().registerPreference( "RegionBoxShader", CopiedStringImportStringCaller( g_regionBoxShader ), CopiedStringExportStringCaller( g_regionBoxShader ) );
 	Build_registerPreferencesPage();
 }
 
@@ -357,14 +336,12 @@ static void saxStartElement( message_info_t *data, const xmlChar *name, const xm
 				// old q3map don't send a version attribute
 				// the ones we support .. send Q3MAP_STREAM_VERSION
 				if ( !attrs[0] || !attrs[1] || ( strcmp( reinterpret_cast<const char*>( attrs[0] ), "version" ) != 0 ) ) {
-					message_flush( data );
 					globalErrorStream() << "No stream version given in the feedback stream, this is an old q3map version.\n"
 					                       "Please turn off monitored compiling if you still wish to use this q3map executable\n";
 					abortStream( data );
 					return;
 				}
 				else if ( strcmp( reinterpret_cast<const char*>( attrs[1] ), Q3MAP_STREAM_VERSION ) != 0 ) {
-					message_flush( data );
 					globalErrorStream() <<
 					    "This version of Radiant reads version " Q3MAP_STREAM_VERSION " debug streams, I got an incoming connection with version " << reinterpret_cast<const char*>( attrs[1] ) << "\n"
 					    "Please make sure your versions of Radiant and q3map are matching.\n";
@@ -376,7 +353,6 @@ static void saxStartElement( message_info_t *data, const xmlChar *name, const xm
 			else if ( strcmp( reinterpret_cast<const char*>( name ), "message" ) == 0 ) {
 				int msg_level = atoi( reinterpret_cast<const char*>( attrs[1] ) );
 				if ( msg_level != data->msg_level ) {
-					message_flush( data );
 					data->msg_level = msg_level;
 				}
 			}
@@ -387,21 +363,18 @@ static void saxStartElement( message_info_t *data, const xmlChar *name, const xm
 				data->pGeometry->saxStartElement( data, name, attrs );
 			}
 			else if ( strcmp( reinterpret_cast<const char*>( name ), "select" ) == 0 ) {
-				message_flush( data );
 				CSelectMsg *pSelect = new CSelectMsg();
 				data->geometry_depth = data->recurse;
 				data->pGeometry = pSelect;
 				data->pGeometry->saxStartElement( data, name, attrs );
 			}
 			else if ( strcmp( reinterpret_cast<const char*>( name ), "pointmsg" ) == 0 ) {
-				message_flush( data );
 				CPointMsg *pPoint = new CPointMsg();
 				data->geometry_depth = data->recurse;
 				data->pGeometry = pPoint;
 				data->pGeometry->saxStartElement( data, name, attrs );
 			}
 			else if ( strcmp( reinterpret_cast<const char*>( name ), "windingmsg" ) == 0 ) {
-				message_flush( data );
 				CWindingMsg *pWinding = new CWindingMsg();
 				data->geometry_depth = data->recurse;
 				data->pGeometry = pWinding;
@@ -409,7 +382,6 @@ static void saxStartElement( message_info_t *data, const xmlChar *name, const xm
 			}
 			else
 			{
-				message_flush( data );
 				globalWarningStream() << "Warning: ignoring unrecognized node in XML stream (" << reinterpret_cast<const char*>( name ) << ")\n";
 				// we don't recognize this node, jump over it
 				// (NOTE: the ignore mechanism is a bit screwed, only works when starting an ignore at the highest level)
@@ -440,7 +412,6 @@ static void saxEndElement( message_info_t *data, const xmlChar *name ){
 		}
 	}
 	if ( data->recurse == data->stop_depth ) {
-		message_flush( data );
 #ifdef _DEBUG
 		globalWarningStream() << "Received error msg .. shutting down..\n";
 #endif
@@ -463,13 +434,13 @@ public:
 	}
 	std::size_t write( const char* buffer, std::size_t length ){
 		if ( m_data->pGeometry != 0 ) {
-			m_data->pGeometry->saxCharacters( m_data, reinterpret_cast<const xmlChar*>( buffer ), int(length) );
+			m_data->pGeometry->saxCharacters( m_data, reinterpret_cast<const xmlChar*>( buffer ), int( length ) );
 		}
 		else
 		{
 			if ( m_data->ignore_depth == 0 ) {
 				// output the message using the level
-				message_print( m_data, buffer, length );
+				Sys_Print( m_data->msg_level, buffer, length );
 				// if this message has error level flag, we mark the depth to stop the compilation when we get out
 				// we don't set the msg level if we don't stop on leak
 				if ( m_data->msg_level == 3 ) {
@@ -715,7 +686,6 @@ void CWatchBSP::RoutineProcessing(){
 				}
 				else
 				{
-					message_flush( &m_message_info );
 					// error or connection closed/reset
 					// NOTE: if we get an error down the XML stream we don't reach here
 					Net_Disconnect( m_pInSocket );

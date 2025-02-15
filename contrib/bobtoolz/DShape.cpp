@@ -23,9 +23,7 @@
 
 #include "DShape.h"
 
-#include <list>
 #include <ctime>
-#include "str.h"
 
 #include "DPoint.h"
 #include "DPlane.h"
@@ -191,7 +189,7 @@ void DShape::BuildBorderedPrism( vec3_t min, vec3_t max, int nSides, int nBorder
 	VectorScale( origin, 0.5f, origin );
 
 	if ( nBorder >= Min( radius[0], radius[1] ) ) {
-//		DoMessageBox("Border is too large", "Error", EMessageBoxType::Error);
+//		DoMessageBox( "Border is too large", "Error", EMessageBoxType::Error );
 		return;
 	}
 

@@ -243,7 +243,7 @@ int ImportLightmapsMain( Args& args ){
 		{
 			out = lightmap + ( ( g_game->lightmapSize - y ) * g_game->lightmapSize * 3 );
 			for ( x = 0; x < g_game->lightmapSize; x++, in += 4, out += 3 )
-				VectorCopy( in, out );
+				std::copy_n( in, 3, out );
 		}
 
 		/* free the image */
@@ -355,7 +355,7 @@ static void FinishRawLightmap( rawLightmap_t *lm ){
 		/* old code that only worked with a value of 2 */
 		lm->vecs[ 0 ] *= is;
 		lm->vecs[ 1 ] *= is;
-		lm->origin -=  (lm->vecs[ 0 ] + lm->vecs[ 1 ] ) * is;
+		lm->origin -=  ( lm->vecs[ 0 ] + lm->vecs[ 1 ] ) * is;
 		#endif
 	}
 
@@ -452,11 +452,7 @@ static void FinishRawLightmap( rawLightmap_t *lm ){
  */
 
 static bool AddPatchToRawLightmap( int num, rawLightmap_t *lm ){
-	bspDrawSurface_t    *ds;
-	surfaceInfo_t       *info;
-	int x, y;
 	bspDrawVert_t       *verts, *a, *b;
-	mesh_t src, *subdivided, *mesh;
 	float sBasis, tBasis, s, t;
 	float length, widthTable[ MAX_EXPANDED_AXIS ] = {0}, heightTable[ MAX_EXPANDED_AXIS ] = {0};
 
@@ -465,26 +461,27 @@ static bool AddPatchToRawLightmap( int num, rawLightmap_t *lm ){
 	lm->finished = true;
 
 	/* get surface and info  */
-	ds = &bspDrawSurfaces[ num ];
-	info = &surfaceInfos[ num ];
+	const bspDrawSurface_t& ds = bspDrawSurfaces[ num ];
+	const surfaceInfo_t& info = surfaceInfos[ num ];
 
 	/* make a temporary mesh from the drawsurf */
-	src.width = ds->patchWidth;
-	src.height = ds->patchHeight;
-	src.verts = &yDrawVerts[ ds->firstVert ];
-	//%	subdivided = SubdivideMesh( src, 8, 512 );
-	subdivided = SubdivideMesh2( src, info->patchIterations );
+	mesh_t src;
+	src.width = ds.patchWidth;
+	src.height = ds.patchHeight;
+	src.verts = &yDrawVerts[ ds.firstVert ];
+	//%	mesh_t *subdivided = SubdivideMesh( src, 8, 512 );
+	mesh_t *subdivided = SubdivideMesh2( src, info.patchIterations );
 
 	/* fit it to the curve and remove colinear verts on rows/columns */
 	PutMeshOnCurve( *subdivided );
-	mesh = RemoveLinearMeshColumnsRows( subdivided );
+	mesh_t *mesh = RemoveLinearMeshColumnsRows( subdivided );
 	FreeMesh( subdivided );
 
 	/* find the longest distance on each row/column */
 	verts = mesh->verts;
-	for ( y = 0; y < mesh->height; y++ )
+	for ( int y = 0; y < mesh->height; y++ )
 	{
-		for ( x = 0; x < mesh->width; x++ )
+		for ( int x = 0; x < mesh->width; x++ )
 		{
 			/* get width */
 			if ( x + 1 < mesh->width ) {
@@ -504,21 +501,21 @@ static bool AddPatchToRawLightmap( int num, rawLightmap_t *lm ){
 
 	/* determine lightmap width */
 	length = 0;
-	for ( x = 0; x < ( mesh->width - 1 ); x++ )
+	for ( int x = 0; x < ( mesh->width - 1 ); x++ )
 		length += widthTable[ x ];
 	lm->w = lm->sampleSize != 0 ? ceil( length / lm->sampleSize ) + 1 : 0;
-	value_maximize( lm->w, ds->patchWidth );
+	value_maximize( lm->w, ds.patchWidth );
 	value_minimize( lm->w, lm->customWidth );
-	sBasis = (float) ( lm->w - 1 ) / (float) ( ds->patchWidth - 1 );
+	sBasis = (float) ( lm->w - 1 ) / (float) ( ds.patchWidth - 1 );
 
 	/* determine lightmap height */
 	length = 0;
-	for ( y = 0; y < ( mesh->height - 1 ); y++ )
+	for ( int y = 0; y < ( mesh->height - 1 ); y++ )
 		length += heightTable[ y ];
 	lm->h = lm->sampleSize != 0 ? ceil( length / lm->sampleSize ) + 1 : 0;
-	value_maximize( lm->h, ds->patchHeight );
+	value_maximize( lm->h, ds.patchHeight );
 	value_minimize( lm->h, lm->customHeight );
-	tBasis = (float) ( lm->h - 1 ) / (float) ( ds->patchHeight - 1 );
+	tBasis = (float) ( lm->h - 1 ) / (float) ( ds.patchHeight - 1 );
 
 	/* free the temporary mesh */
 	FreeMesh( mesh );
@@ -526,32 +523,32 @@ static bool AddPatchToRawLightmap( int num, rawLightmap_t *lm ){
 	/* set the lightmap texture coordinates in yDrawVerts */
 	lm->wrap[ 0 ] = true;
 	lm->wrap[ 1 ] = true;
-	verts = &yDrawVerts[ ds->firstVert ];
-	for ( y = 0; y < ds->patchHeight; y++ )
+	verts = &yDrawVerts[ ds.firstVert ];
+	for ( int y = 0; y < ds.patchHeight; y++ )
 	{
 		t = ( tBasis * y ) + 0.5f;
-		for ( x = 0; x < ds->patchWidth; x++ )
+		for ( int x = 0; x < ds.patchWidth; x++ )
 		{
 			s = ( sBasis * x ) + 0.5f;
-			verts[ ( y * ds->patchWidth ) + x ].lightmap[ 0 ][ 0 ] = s * superSample;
-			verts[ ( y * ds->patchWidth ) + x ].lightmap[ 0 ][ 1 ] = t * superSample;
+			verts[ ( y * ds.patchWidth ) + x ].lightmap[ 0 ][ 0 ] = s * superSample;
+			verts[ ( y * ds.patchWidth ) + x ].lightmap[ 0 ][ 1 ] = t * superSample;
 
-			if ( y == 0 && !VectorCompare( verts[ x ].xyz, verts[ ( ( ds->patchHeight - 1 ) * ds->patchWidth ) + x ].xyz ) ) {
+			if ( y == 0 && !VectorCompare( verts[ x ].xyz, verts[ ( ( ds.patchHeight - 1 ) * ds.patchWidth ) + x ].xyz ) ) {
 				lm->wrap[ 1 ] = false;
 			}
 		}
 
-		if ( !VectorCompare( verts[ ( y * ds->patchWidth ) ].xyz, verts[ ( y * ds->patchWidth ) + ( ds->patchWidth - 1 ) ].xyz ) ) {
+		if ( !VectorCompare( verts[ ( y * ds.patchWidth ) ].xyz, verts[ ( y * ds.patchWidth ) + ( ds.patchWidth - 1 ) ].xyz ) ) {
 			lm->wrap[ 0 ] = false;
 		}
 	}
 
 	/* debug code: */
 	//%	Sys_Printf( "wrap S: %d wrap T: %d\n", lm->wrap[ 0 ], lm->wrap[ 1 ] );
-	//% if( lm->w > (ds->lightmapWidth & 0xFF) || lm->h > (ds->lightmapHeight & 0xFF) )
-	//%		Sys_Printf( "Patch lightmap: (%3d %3d) > (%3d, %3d)\n", lm->w, lm->h, ds->lightmapWidth & 0xFF, ds->lightmapHeight & 0xFF );
-	//% ds->lightmapWidth = lm->w | (ds->lightmapWidth & 0xFFFF0000);
-	//% ds->lightmapHeight = lm->h | (ds->lightmapHeight & 0xFFFF0000);
+	//% if( lm->w > ( ds.lightmapWidth & 0xFF ) || lm->h > ( ds.lightmapHeight & 0xFF ) )
+	//%		Sys_Printf( "Patch lightmap: (%3d %3d) > (%3d, %3d)\n", lm->w, lm->h, ds.lightmapWidth & 0xFF, ds.lightmapHeight & 0xFF );
+	//% ds.lightmapWidth = lm->w | ( ds.lightmapWidth & 0xFFFF0000 );
+	//% ds.lightmapHeight = lm->h | ( ds.lightmapHeight & 0xFFFF0000 );
 
 	/* add to counts */
 	numPatchesLightmapped++;
@@ -936,7 +933,7 @@ struct CompareSurfaceInfo
  */
 
 void SetupSurfaceLightmaps(){
-	int i, j, k, s,num, num2;
+	int i, j, k, s, num, num2;
 	bspDrawSurface_t    *ds;
 	surfaceInfo_t       *info, *info2;
 	rawLightmap_t       *lm;
@@ -1497,10 +1494,10 @@ static bool MergeBSPLuxels( rawLightmap_t *a, int aNum, rawLightmap_t *b, int bN
    determines if a single luxel is can be approximated with the interpolated vertex rgba
  */
 
-static bool ApproximateLuxel( rawLightmap_t *lm, bspDrawVert_t *dv ){
+static bool ApproximateLuxel( rawLightmap_t *lm, const bspDrawVert_t& dv ){
 	/* find luxel xy coords */
-	const int x = std::clamp( int( dv->lightmap[ 0 ][ 0 ] / superSample ), 0, lm->w - 1 );
-	const int y = std::clamp( int( dv->lightmap[ 0 ][ 1 ] / superSample ), 0, lm->h - 1 );
+	const int x = std::clamp( int( dv.lightmap[ 0 ][ 0 ] / superSample ), 0, lm->w - 1 );
+	const int y = std::clamp( int( dv.lightmap[ 0 ][ 1 ] / superSample ), 0, lm->h - 1 );
 
 	/* walk list */
 	for ( int lightmapNum = 0; lightmapNum < MAX_LIGHTMAPS; lightmapNum++ )
@@ -1520,7 +1517,7 @@ static bool ApproximateLuxel( rawLightmap_t *lm, bspDrawVert_t *dv ){
 
 		/* copy, set min color and compare */
 		Vector3 color = luxel;
-		Vector3 vertexColor = dv->color[ 0 ].rgb();
+		Vector3 vertexColor = dv.color[ 0 ].rgb();
 
 		/* styles are not affected by minlight */
 		if ( lightmapNum == 0 ) {
@@ -1556,32 +1553,21 @@ static bool ApproximateLuxel( rawLightmap_t *lm, bspDrawVert_t *dv ){
    determines if a single triangle can be approximated with vertex rgba
  */
 
-static bool ApproximateTriangle_r( rawLightmap_t *lm, bspDrawVert_t *dv[ 3 ] ){
-	bspDrawVert_t mid, *dv2[ 3 ];
-	int max;
-
-
+static bool ApproximateTriangle_r( rawLightmap_t *lm, const TriRef& tri ){
 	/* approximate the vertexes */
-	if ( !ApproximateLuxel( lm, dv[ 0 ] ) ) {
+	if ( !ApproximateLuxel( lm, *tri[ 0 ] )
+	  || !ApproximateLuxel( lm, *tri[ 1 ] )
+	  || !ApproximateLuxel( lm, *tri[ 2 ] ) )
 		return false;
-	}
-	if ( !ApproximateLuxel( lm, dv[ 1 ] ) ) {
-		return false;
-	}
-	if ( !ApproximateLuxel( lm, dv[ 2 ] ) ) {
-		return false;
-	}
 
 	/* subdivide calc */
+	int max = -1;
 	{
-		int i;
-
 		/* find the longest edge and split it */
-		max = -1;
 		float maxDist = 0;
-		for ( i = 0; i < 3; i++ )
+		for ( int i = 0; i < 3; i++ )
 		{
-			const float dist = vector2_length( dv[ i ]->lightmap[ 0 ] - dv[ ( i + 1 ) % 3 ]->lightmap[ 0 ] );
+			const float dist = vector2_length( tri[ i ]->lightmap[ 0 ] - tri[ ( i + 1 ) % 3 ]->lightmap[ 0 ] );
 			if ( dist > maxDist ) {
 				maxDist = dist;
 				max = i;
@@ -1589,28 +1575,28 @@ static bool ApproximateTriangle_r( rawLightmap_t *lm, bspDrawVert_t *dv[ 3 ] ){
 		}
 
 		/* try to early out */
-		if ( i < 0 || maxDist < subdivideThreshold ) {
+		if ( max < 0 || maxDist < subdivideThreshold ) {
 			return true;
 		}
 	}
 
 	/* split the longest edge and map it */
-	LerpDrawVert( dv[ max ], dv[ ( max + 1 ) % 3 ], &mid );
-	if ( !ApproximateLuxel( lm, &mid ) ) {
+	const bspDrawVert_t mid = LerpDrawVert( *tri[ max ], *tri[ ( max + 1 ) % 3 ] );
+	if ( !ApproximateLuxel( lm, mid ) ) {
 		return false;
 	}
 
 	/* recurse to first triangle */
-	VectorCopy( dv, dv2 );
-	dv2[ max ] = &mid;
-	if ( !ApproximateTriangle_r( lm, dv2 ) ) {
+	TriRef tri2 = tri;
+	tri2[ max ] = &mid;
+	if ( !ApproximateTriangle_r( lm, tri2 ) ) {
 		return false;
 	}
 
 	/* recurse to second triangle */
-	VectorCopy( dv, dv2 );
-	dv2[ ( max + 1 ) % 3 ] = &mid;
-	return ApproximateTriangle_r( lm, dv2 );
+	tri2 = tri;
+	tri2[ ( max + 1 ) % 3 ] = &mid;
+	return ApproximateTriangle_r( lm, tri2 );
 }
 
 
@@ -1621,14 +1607,6 @@ static bool ApproximateTriangle_r( rawLightmap_t *lm, bspDrawVert_t *dv[ 3 ] ){
  */
 
 static bool ApproximateLightmap( rawLightmap_t *lm ){
-	int n, num, i, x, y, pw[ 5 ], r;
-	bspDrawSurface_t    *ds;
-	surfaceInfo_t       *info;
-	mesh_t src, *subdivided, *mesh;
-	bspDrawVert_t       *verts, *dv[ 3 ];
-	bool approximated;
-
-
 	/* approximating? */
 	if ( approximateTolerance <= 0 ) {
 		return false;
@@ -1642,7 +1620,7 @@ static bool ApproximateLightmap( rawLightmap_t *lm ){
 	}
 
 	/* don't approx lightmaps with styles */
-	for ( i = 1; i < MAX_LIGHTMAPS; i++ )
+	for ( int i = 1; i < MAX_LIGHTMAPS; i++ )
 	{
 		if ( lm->styles[ i ] != LS_NONE ) {
 			return false;
@@ -1651,100 +1629,104 @@ static bool ApproximateLightmap( rawLightmap_t *lm ){
 	#endif
 
 	/* assume reduced until shadow detail is found */
-	approximated = true;
+	bool approximated = true;
 
 	/* walk the list of surfaces on this raw lightmap */
-	for ( n = 0; n < lm->numLightSurfaces; n++ )
+	for ( int n = 0; n < lm->numLightSurfaces; n++ )
 	{
 		/* get surface */
-		num = lightSurfaces[ lm->firstLightSurface + n ];
-		ds = &bspDrawSurfaces[ num ];
-		info = &surfaceInfos[ num ];
+		const int num = lightSurfaces[ lm->firstLightSurface + n ];
+		const bspDrawSurface_t& ds = bspDrawSurfaces[ num ];
+		surfaceInfo_t& info = surfaceInfos[ num ];
 
 		/* assume not-reduced initially */
-		info->approximated = false;
+		info.approximated = false;
 
 		/* bail if lightmap doesn't match up */
-		if ( info->lm != lm ) {
+		if ( info.lm != lm ) {
 			continue;
 		}
 
 		/* bail if not vertex lit */
-		if ( info->si->noVertexLight ) {
+		if ( info.si->noVertexLight ) {
 			continue;
 		}
 
 		/* assume that surfaces whose bounding boxes is smaller than 2x samplesize will be forced to vertex */
-		if ( ( info->minmax.maxs[ 0 ] - info->minmax.mins[ 0 ] ) <= ( 2.0f * info->sampleSize ) &&
-		     ( info->minmax.maxs[ 1 ] - info->minmax.mins[ 1 ] ) <= ( 2.0f * info->sampleSize ) &&
-		     ( info->minmax.maxs[ 2 ] - info->minmax.mins[ 2 ] ) <= ( 2.0f * info->sampleSize ) ) {
-			info->approximated = true;
+		if ( ( info.minmax.maxs[ 0 ] - info.minmax.mins[ 0 ] ) <= ( 2.0f * info.sampleSize ) &&
+		     ( info.minmax.maxs[ 1 ] - info.minmax.mins[ 1 ] ) <= ( 2.0f * info.sampleSize ) &&
+		     ( info.minmax.maxs[ 2 ] - info.minmax.mins[ 2 ] ) <= ( 2.0f * info.sampleSize ) ) {
+			info.approximated = true;
 			numSurfsVertexForced++;
 			continue;
 		}
 
 		/* handle the triangles */
-		switch ( ds->surfaceType )
+		switch ( ds.surfaceType )
 		{
 		case MST_PLANAR:
+		{
 			/* get verts */
-			verts = &yDrawVerts[ ds->firstVert ];
+			const bspDrawVert_t *verts = &yDrawVerts[ ds.firstVert ];
 
 			/* map the triangles */
-			info->approximated = true;
-			for ( i = 0; i < ds->numIndexes && info->approximated; i += 3 )
+			info.approximated = true;
+			for ( int i = 0; i < ds.numIndexes && info.approximated; i += 3 )
 			{
-				dv[ 0 ] = &verts[ bspDrawIndexes[ ds->firstIndex + i ] ];
-				dv[ 1 ] = &verts[ bspDrawIndexes[ ds->firstIndex + i + 1 ] ];
-				dv[ 2 ] = &verts[ bspDrawIndexes[ ds->firstIndex + i + 2 ] ];
-				info->approximated = ApproximateTriangle_r( lm, dv );
+				info.approximated = ApproximateTriangle_r( lm, TriRef{
+					&verts[ bspDrawIndexes[ ds.firstIndex + i + 0 ] ],
+					&verts[ bspDrawIndexes[ ds.firstIndex + i + 1 ] ],
+					&verts[ bspDrawIndexes[ ds.firstIndex + i + 2 ] ] } );
 			}
 			break;
-
+		}
 		case MST_PATCH:
+		{
 			/* make a mesh from the drawsurf */
-			src.width = ds->patchWidth;
-			src.height = ds->patchHeight;
-			src.verts = &yDrawVerts[ ds->firstVert ];
-			//%	subdivided = SubdivideMesh( src, 8, 512 );
-			subdivided = SubdivideMesh2( src, info->patchIterations );
+			mesh_t src;
+			src.width = ds.patchWidth;
+			src.height = ds.patchHeight;
+			src.verts = &yDrawVerts[ ds.firstVert ];
+			//%	mesh_t *subdivided = SubdivideMesh( src, 8, 512 );
+			mesh_t *subdivided = SubdivideMesh2( src, info.patchIterations );
 
 			/* fit it to the curve and remove colinear verts on rows/columns */
 			PutMeshOnCurve( *subdivided );
-			mesh = RemoveLinearMeshColumnsRows( subdivided );
+			mesh_t *mesh = RemoveLinearMeshColumnsRows( subdivided );
 			FreeMesh( subdivided );
 
 			/* get verts */
-			verts = mesh->verts;
+			const bspDrawVert_t *verts = mesh->verts;
 
 			/* map the mesh quads */
-			info->approximated = true;
-			for ( y = 0; y < ( mesh->height - 1 ) && info->approximated; y++ )
+			info.approximated = true;
+			for ( int y = 0; y < ( mesh->height - 1 ) && info.approximated; y++ )
 			{
-				for ( x = 0; x < ( mesh->width - 1 ) && info->approximated; x++ )
+				for ( int x = 0; x < ( mesh->width - 1 ) && info.approximated; x++ )
 				{
 					/* set indexes */
-					pw[ 0 ] = x + ( y * mesh->width );
-					pw[ 1 ] = x + ( ( y + 1 ) * mesh->width );
-					pw[ 2 ] = x + 1 + ( ( y + 1 ) * mesh->width );
-					pw[ 3 ] = x + 1 + ( y * mesh->width );
-					pw[ 4 ] = x + ( y * mesh->width );      /* same as pw[ 0 ] */
-
+					const int pw[ 5 ] = {
+						x + ( y * mesh->width ),
+						x + ( ( y + 1 ) * mesh->width ),
+						x + 1 + ( ( y + 1 ) * mesh->width ),
+						x + 1 + ( y * mesh->width ),
+						x + ( y * mesh->width )      /* same as pw[ 0 ] */
+					};
 					/* set radix */
-					r = ( x + y ) & 1;
+					const int r = ( x + y ) & 1;
 
 					/* get drawverts and map first triangle */
-					dv[ 0 ] = &verts[ pw[ r + 0 ] ];
-					dv[ 1 ] = &verts[ pw[ r + 1 ] ];
-					dv[ 2 ] = &verts[ pw[ r + 2 ] ];
-					info->approximated = ApproximateTriangle_r( lm, dv );
+					info.approximated = ApproximateTriangle_r( lm, TriRef{
+						&verts[ pw[ r + 0 ] ],
+						&verts[ pw[ r + 1 ] ],
+						&verts[ pw[ r + 2 ] ] } );
 
 					/* get drawverts and map second triangle */
-					dv[ 0 ] = &verts[ pw[ r + 0 ] ];
-					dv[ 1 ] = &verts[ pw[ r + 2 ] ];
-					dv[ 2 ] = &verts[ pw[ r + 3 ] ];
-					if ( info->approximated ) {
-						info->approximated = ApproximateTriangle_r( lm, dv );
+					if ( info.approximated ) {
+						info.approximated = ApproximateTriangle_r( lm, TriRef{
+							&verts[ pw[ r + 0 ] ],
+							&verts[ pw[ r + 2 ] ],
+							&verts[ pw[ r + 3 ] ] } );
 					}
 				}
 			}
@@ -1752,13 +1734,13 @@ static bool ApproximateLightmap( rawLightmap_t *lm ){
 			/* free the mesh */
 			FreeMesh( mesh );
 			break;
-
+		}
 		default:
 			break;
 		}
 
 		/* reduced? */
-		if ( !info->approximated ) {
+		if ( !info.approximated ) {
 			approximated = false;
 		}
 		else{
@@ -1985,7 +1967,7 @@ static void FindOutLightmaps( rawLightmap_t *lm, bool fastAllocate ){
 
 				/* if fast allocation, skip lightmap files that are more than 90% complete */
 				if ( fastAllocate ) {
-					if (olm->freeLuxels < (olm->customWidth * olm->customHeight) / 10) {
+					if ( olm->freeLuxels < ( olm->customWidth * olm->customHeight ) / 10 ) {
 						continue;
 					}
 				}
@@ -2238,12 +2220,12 @@ static void FillOutLightmap( outLightmap_t *olm ){
 	}
 
 	/*
-	   memset(olm->lightBits, 0, (olm->customWidth * olm->customHeight + 8) / 8);
+	   memset( olm->lightBits, 0, ( olm->customWidth * olm->customHeight + 8 ) / 8 );
 	    olm->lightBits[0] |= 1;
-	    olm->lightBits[(10 * olm->customWidth + 30) >> 3] |= 1 << ((10 * olm->customWidth + 30) & 7);
-	   memset(olm->bspLightBytes, 0, olm->customWidth * olm->customHeight * 3);
+	    olm->lightBits[( 10 * olm->customWidth + 30 ) >> 3] |= 1 << ( ( 10 * olm->customWidth + 30 ) & 7 );
+	   memset( olm->bspLightBytes, 0, olm->customWidth * olm->customHeight * 3 );
 	    olm->bspLightBytes[0] = 255;
-	    olm->bspLightBytes[(10 * olm->customWidth + 30) * 3 + 2] = 255;
+	    olm->bspLightBytes[( 10 * olm->customWidth + 30 ) * 3 + 2] = 255;
 	 */
 
 	memcpy( lightBitsNew, olm->lightBits, ( olm->customWidth * olm->customHeight + 8 ) / 8 );

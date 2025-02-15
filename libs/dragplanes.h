@@ -62,21 +62,19 @@ public:
 		               ObservedSelectable( onchanged ) }{
 	}
 	bool isSelected() const {
-		for ( std::size_t i = 0; i < 6; ++i )
-			if( m_selectables[i].isSelected() )
-				return true;
-		return false;
+		return std::ranges::any_of( m_selectables, std::identity{}, &ObservedSelectable::isSelected );
 	}
 	void setSelected( bool selected ){
-		for ( std::size_t i = 0; i < 6; ++i )
-			m_selectables[i].setSelected( selected );
+		for ( auto& se : m_selectables )
+			se.setSelected( selected );
+	}
+	const ObservedSelectable(& getSelectables() const )[6] {
+		return m_selectables;
 	}
 	void selectPlanes( const AABB& aabb, Selector& selector, SelectionTest& test, const PlaneCallback& selectedPlaneCallback, const Matrix4& rotation = g_matrix4_identity ){
-		Vector3 corners[8];
-		aabb_corners_oriented( aabb, rotation, corners );
+		const std::array<Vector3, 8> corners = aabb_corners_oriented( aabb, rotation );
 
-		Plane3 planes[6];
-		aabb_planes_oriented( aabb, rotation, planes );
+		const std::array<Plane3, 6> planes = aabb_planes_oriented( aabb, rotation );
 
 		const std::size_t indices[24] = {
 			2, 1, 5, 6, //+x //right
@@ -89,8 +87,7 @@ public:
 
 		const Vector3 viewdir( test.getVolume().getViewDir() );
 		double bestDot = 1;
-		ObservedSelectable* selectable = 0;
-		ObservedSelectable* selectable2 = 0;
+		int iselect[2] = { -1, -1 };
 
 		for ( std::size_t i = 0; i < 6; ++i ){
 			const std::size_t index = i * 4;
@@ -105,42 +102,39 @@ public:
 				const double diff = bestDot - dot;
 				if( diff > 0.03 ){
 					bestDot = dot;
-					selectable = &m_selectables[i];
-					selectable2 = 0;
+					iselect[0] = i;
+					iselect[1] = -1;
 				}
-				else if( fabs( diff ) <= 0.03 ){
-					selectable2 = &m_selectables[i];
+				else if( fabs( diff ) <= 0.03 && !test.getVolume().fill() ){ // select only plane in camera
+					iselect[1] = i;
 				}
 			}
 		}
-		if( test.getVolume().fill() ) // select only plane in camera
-			selectable2 = 0;
-		for ( std::size_t i = 0; i < 6; ++i )
-			if( &m_selectables[i] == selectable || &m_selectables[i] == selectable2 ){
+
+		for ( int i : iselect )
+			if( i >= 0 ){
 				Selector_add( selector, m_selectables[i] );
 				selectedPlaneCallback( planes[i] );
 			}
+
 		m_bounds = aabb;
 	}
 	void selectReversedPlanes( const AABB& aabb, Selector& selector, const SelectedPlanes& selectedPlanes, const Matrix4& rotation = g_matrix4_identity ){
-		Plane3 planes[6];
-		aabb_planes_oriented( aabb, rotation, planes );
+		const std::array<Plane3, 6> planes = aabb_planes_oriented( aabb, rotation );
 		for ( std::size_t i = 0; i < 6; ++i )
 			if ( selectedPlanes.contains( plane3_flipped( planes[i] ) ) )
 				Selector_add( selector, m_selectables[i] );
 	}
 
-	void bestPlaneDirect( const AABB& aabb, SelectionTest& test, Plane3& plane, SelectionIntersection& intersection, const Matrix4& rotation = g_matrix4_identity ) const {
+	void bestPlaneDirect( const AABB& aabb, SelectionTest& test, PlaneSelectable::BestPlaneData& planeData, const Matrix4& rotation = g_matrix4_identity ) const {
 		AABB aabb_ = aabb;
 		for( std::size_t i = 0; i < 3; ++i ) /* make sides of flat patches more selectable */
 			if( aabb_.extents[i] < 1 )
 				aabb_.extents[i] = 4;
 
-		Vector3 corners[8];
-		aabb_corners_oriented( aabb_, rotation, corners );
+		const std::array<Vector3, 8> corners = aabb_corners_oriented( aabb_, rotation );
 
-		Plane3 planes[6];
-		aabb_planes_oriented( aabb_, rotation, planes );
+		const std::array<Plane3, 6> planes = aabb_planes_oriented( aabb_, rotation );
 
 		const IndexPointer::index_type indices[24] = {
 			2, 1, 5, 6, //+x //right
@@ -153,21 +147,19 @@ public:
 
 		for ( std::size_t i = 0; i < 6; ++i ){
 			const std::size_t index = i * 4;
-			SelectionIntersection intersection_new;
-			test.TestQuads( VertexPointer( reinterpret_cast<VertexPointer::pointer>( corners ), sizeof( Vector3 ) ), IndexPointer( &indices[index], 4 ), intersection_new );
-			if( SelectionIntersection_closer( intersection_new, intersection ) ){
-				intersection = intersection_new;
-				plane = planes[i];
+			SelectionIntersection intersection;
+			test.TestQuads( VertexPointer( corners[0].data(), sizeof( Vector3 ) ), IndexPointer( &indices[index], 4 ), intersection );
+			if( SelectionIntersection_closer( intersection, planeData.m_intersection ) ){
+				planeData.m_intersection = intersection;
+				planeData.m_plane = planes[i];
 			}
 		}
 		m_bounds = aabb;
 	}
-	void bestPlaneIndirect( const AABB& aabb, SelectionTest& test, Plane3& plane, Vector3& intersection, float& dist, const Matrix4& rotation = g_matrix4_identity ) const {
-		Vector3 corners[8];
-		aabb_corners_oriented( aabb, rotation, corners );
+	void bestPlaneIndirect( const AABB& aabb, SelectionTest& test, PlaneSelectable::BestPlaneData& planeData, const Matrix4& rotation = g_matrix4_identity ) const {
+		const std::array<Vector3, 8> corners = aabb_corners_oriented( aabb, rotation );
 
-		Plane3 planes[6];
-		aabb_planes_oriented( aabb, rotation, planes );
+		const std::array<Plane3, 6> planes = aabb_planes_oriented( aabb, rotation );
 	/*
 		const std::size_t indices[24] = {
 			2, 1, 5, 6, //+x //right
@@ -228,19 +220,19 @@ public:
 		for ( std::size_t i = 0; i < 24; ++++i ){
 			Line line( corners[edges[i]], corners[edges[i + 1]] );
 			if( aabb.extents[i / 8] != 0.f && matrix4_clip_line_by_nearplane( test.getVolume().GetViewMatrix(), line ) == 2 ){
-				const Vector3 intersection_new = line_closest_point( line, g_vector3_identity );
-				const float dist_new = vector3_length_squared( intersection_new );
-				const float dot_new = fabs( vector3_dot( vector3_normalised( intersection_new ), vector3_normalised( line.end - line.start ) ) );
+				const Vector3 point_new = line_closest_point( line, g_vector3_identity );
+				const float dist_new = vector3_length_squared( point_new );
+				const float dot_new = fabs( vector3_dot( vector3_normalised( point_new ), vector3_normalised( line.end - line.start ) ) );
 				//effective epsilon is rather big: optimized 32 bit build is using doubles implicitly (floats might be straightly checked for equality); same code in brush.h is cool with way smaller epsilon
-				if( dist - dist_new > 1e-2f // new dist noticeably smaller
-				 || ( float_equal_epsilon( dist_new, dist, 1e-2f ) && dot_new < dot ) ){ // or ambiguous case. Resolve it by dot comparison
+				if( planeData.m_dist - dist_new > 1e-2f // new dist noticeably smaller
+				 || ( float_equal_epsilon( dist_new, planeData.m_dist, 1e-2f ) && dot_new < dot ) ){ // or ambiguous case. Resolve it by dot comparison
 					const Plane3& plane1 = planes[adjacent_planes[i]];
 					const Plane3& plane2 = planes[adjacent_planes[i + 1]];
 
-					auto assign_plane = [&plane, &intersection, intersection_new, &dist, dist_new, &dot, dot_new]( const Plane3& plane_new ){
-						plane = plane_new;
-						intersection = intersection_new;
-						dist = dist_new;
+					auto assign_plane = [&planeData, point_new, dist_new, &dot, dot_new]( const Plane3& plane_new ){
+						planeData.m_plane = plane_new;
+						planeData.m_closestPoint = point_new;
+						planeData.m_dist = dist_new;
 						dot = dot_new;
 					};
 
@@ -279,8 +271,7 @@ public:
 		m_bounds = aabb;
 	}
 	void selectByPlane( const AABB& aabb, const Plane3& plane, const Matrix4& rotation = g_matrix4_identity ){
-		Plane3 planes[6];
-		aabb_planes_oriented( aabb, rotation, planes );
+		const std::array<Plane3, 6> planes = aabb_planes_oriented( aabb, rotation );
 
 		for ( std::size_t i = 0; i < 6; ++i ){
 			if( plane3_equal( plane, planes[i] ) || plane3_equal( plane, plane3_flipped( planes[i] ) ) ){
@@ -290,11 +281,9 @@ public:
 		}
 	}
 	void gatherPolygonsByPlane( const AABB& aabb, const Plane3& plane, std::vector<std::vector<Vector3>>& polygons, const Matrix4& rotation = g_matrix4_identity ) const {
-		Vector3 corners[8];
-		aabb_corners_oriented( aabb, rotation, corners );
+		const std::array<Vector3, 8> corners = aabb_corners_oriented( aabb, rotation );
 
-		Plane3 planes[6];
-		aabb_planes_oriented( aabb, rotation, planes );
+		const std::array<Plane3, 6> planes = aabb_planes_oriented( aabb, rotation );
 
 		const std::size_t indices[24] = {
 			2, 1, 5, 6, //+x //right

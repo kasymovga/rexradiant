@@ -85,13 +85,13 @@ class NameObserver
 
 	void construct(){
 		if ( !empty() ) {
-			//globalOutputStream() << "construct " << makeQuoted(c_str()) << '\n';
+			//globalOutputStream() << "construct " << makeQuoted( c_str() ) << '\n';
 			m_names.insert( name_read( c_str() ) );
 		}
 	}
 	void destroy(){
 		if ( !empty() ) {
-			//globalOutputStream() << "destroy " << makeQuoted(c_str()) << '\n';
+			//globalOutputStream() << "destroy " << makeQuoted( c_str() ) << '\n';
 			m_names.erase( name_read( c_str() ) );
 		}
 	}
@@ -117,7 +117,7 @@ public:
 		m_name = name;
 		construct();
 	}
-	typedef MemberCaller1<NameObserver, const char*, &NameObserver::nameChanged> NameChangedCaller;
+	typedef MemberCaller<NameObserver, void(const char*), &NameObserver::nameChanged> NameChangedCaller;
 };
 
 class BasicNamespace : public Namespace
@@ -133,12 +133,12 @@ public:
 		std::pair<Names::iterator, bool> result = m_names.insert( Names::value_type( setName, m_uniqueNames ) );
 		ASSERT_MESSAGE( result.second, "cannot attach name" );
 		attachObserver( NameObserver::NameChangedCaller( ( *result.first ).second ) );
-		//globalOutputStream() << "attach: " << reinterpret_cast<const unsigned int&>(setName) << '\n';
+		//globalOutputStream() << "attach: " << reinterpret_cast<const unsigned int&>( setName ) << '\n';
 	}
 	void detach( const NameCallback& setName, const NameCallbackCallback& detachObserver ){
 		Names::iterator i = m_names.find( setName );
 		ASSERT_MESSAGE( i != m_names.end(), "cannot detach name" );
-		//globalOutputStream() << "detach: " << reinterpret_cast<const unsigned int&>(setName) << '\n';
+		//globalOutputStream() << "detach: " << reinterpret_cast<const unsigned int&>( setName ) << '\n';
 		detachObserver( NameObserver::NameChangedCaller( ( *i ).second ) );
 		m_names.erase( i );
 	}
@@ -169,7 +169,7 @@ public:
 			char buffer[1024];
 			name_write( buffer, uniqueName );
 
-			//globalOutputStream() << "renaming " << makeQuoted(name.c_str()) << " to " << makeQuoted(buffer) << '\n';
+			//globalOutputStream() << "renaming " << makeQuoted( name.c_str() ) << " to " << makeQuoted( buffer ) << '\n';
 
 			for ( const NameCallback& nameCallback : setNameCallbacks )
 			{
@@ -1173,7 +1173,7 @@ void Map_RenameAbsolute( const char* absolute ){
 	resource->setNode( clone.get_pointer() );
 
 	{
-		//ScopeTimer timer("clone subgraph");
+		//ScopeTimer timer( "clone subgraph" );
 		Node_getTraversable( GlobalSceneGraph().root() )->traverse( CloneAll( clone ) );
 	}
 
@@ -1228,7 +1228,7 @@ void Map_New(){
 
 	{
 		g_map.m_resource = GlobalReferenceCache().capture( g_map.m_name.c_str() );
-//    ASSERT_MESSAGE(g_map.m_resource->getNode() == 0, "bleh");
+//		ASSERT_MESSAGE( g_map.m_resource->getNode() == 0, "bleh" );
 		g_map.m_resource->attach( g_map );
 
 		SceneChangeNotify();
@@ -1255,8 +1255,10 @@ ToggleItem g_region_item{ BoolExportCaller( g_region_active ) };
 Vector3 g_region_mins;
 Vector3 g_region_maxs;
 void Region_defaultMinMax(){
-	g_region_maxs = Vector3( GetMaxGridCoord() );
-	g_region_mins = -g_region_maxs;
+	if( !g_region_active ){ // don't invalidate region bounds, while in region mode
+		g_region_maxs = Vector3( GetMaxGridCoord() );
+		g_region_mins = -g_region_maxs;
+	}
 }
 
 /*
@@ -2378,31 +2380,31 @@ MapModuleObserver g_MapModuleObserver;
 #include "preferencesystem.h"
 
 CopiedString g_strLastMap;
-bool g_bLoadLastMap = false;
+bool g_bLoadLastMap = true;
 
 void Map_Construct(){
-	GlobalCommands_insert( "NewMap", FreeCaller<NewMap>() );
-	GlobalCommands_insert( "OpenMap", FreeCaller<OpenMap>(), QKeySequence( "Ctrl+O" ) );
-	GlobalCommands_insert( "ImportMap", FreeCaller<ImportMap>() );
-	GlobalCommands_insert( "SaveMap", FreeCaller<SaveMap>(), QKeySequence( "Ctrl+S" ) );
-	GlobalCommands_insert( "SaveMapAs", FreeCaller<SaveMapAs>() );
-	GlobalCommands_insert( "SaveSelected", FreeCaller<ExportMap>() );
-	GlobalCommands_insert( "SaveRegion", FreeCaller<SaveRegion>() );
+	GlobalCommands_insert( "NewMap", makeCallbackF( NewMap ) );
+	GlobalCommands_insert( "OpenMap", makeCallbackF( OpenMap ), QKeySequence( "Ctrl+O" ) );
+	GlobalCommands_insert( "ImportMap", makeCallbackF( ImportMap ) );
+	GlobalCommands_insert( "SaveMap", makeCallbackF( SaveMap ), QKeySequence( "Ctrl+S" ) );
+	GlobalCommands_insert( "SaveMapAs", makeCallbackF( SaveMapAs ) );
+	GlobalCommands_insert( "SaveSelected", makeCallbackF( ExportMap ) );
+	GlobalCommands_insert( "SaveRegion", makeCallbackF( SaveRegion ) );
 
-	GlobalCommands_insert( "RegionOff", FreeCaller<RegionOff>() );
-	GlobalCommands_insert( "RegionSetXY", FreeCaller<RegionXY>() );
-	GlobalCommands_insert( "RegionSetBrush", FreeCaller<RegionBrush>() );
-	//GlobalCommands_insert( "RegionSetSelection", FreeCaller<RegionSelected>(), QKeySequence( "Ctrl+Shift+R" ) );
-	GlobalToggles_insert( "RegionSetSelection", FreeCaller<RegionSelected>(), ToggleItem::AddCallbackCaller( g_region_item ), QKeySequence( "Ctrl+Shift+R" ) );
-	GlobalCommands_insert( "AutoCaulkSelected", FreeCaller<map_autocaulk_selected>(), QKeySequence( "F4" ) );
+	GlobalCommands_insert( "RegionOff", makeCallbackF( RegionOff ) );
+	GlobalCommands_insert( "RegionSetXY", makeCallbackF( RegionXY ) );
+	GlobalCommands_insert( "RegionSetBrush", makeCallbackF( RegionBrush ) );
+	//GlobalCommands_insert( "RegionSetSelection", makeCallbackF( RegionSelected ), QKeySequence( "Ctrl+Shift+R" ) );
+	GlobalToggles_insert( "RegionSetSelection", makeCallbackF( RegionSelected ), ToggleItem::AddCallbackCaller( g_region_item ), QKeySequence( "Ctrl+Shift+R" ) );
+	GlobalCommands_insert( "AutoCaulkSelected", makeCallbackF( map_autocaulk_selected ), QKeySequence( "F4" ) );
 
-	GlobalCommands_insert( "FindBrush", FreeCaller<DoFind>() );
-	GlobalCommands_insert( "MapInfo", FreeCaller<DoMapInfo>(), QKeySequence( "M" ) );
+	GlobalCommands_insert( "FindBrush", makeCallbackF( DoFind ) );
+	GlobalCommands_insert( "MapInfo", makeCallbackF( DoMapInfo ), QKeySequence( "M" ) );
 
 	GlobalPreferenceSystem().registerPreference( "LastMap", CopiedStringImportStringCaller( g_strLastMap ), CopiedStringExportStringCaller( g_strLastMap ) );
 	GlobalPreferenceSystem().registerPreference( "LoadLastMap", BoolImportStringCaller( g_bLoadLastMap ), BoolExportStringCaller( g_bLoadLastMap ) );
 
-	PreferencesDialog_addSettingsPreferences( FreeCaller1<PreferencesPage&, Map_constructPreferences>() );
+	PreferencesDialog_addSettingsPreferences( makeCallbackF( Map_constructPreferences ) );
 
 	GlobalEntityClassManager().attach( g_MapEntityClasses );
 	Radiant_attachHomePathsObserver( g_MapModuleObserver );

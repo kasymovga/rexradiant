@@ -219,26 +219,6 @@ static mapDrawSurface_t *MakeSkyboxSurface( mapDrawSurface_t *src ){
 
 
 /*
-   IsTriangleDegenerate
-   returns true if all three points are colinear, backwards, or the triangle is just plain bogus
- */
-
-#define TINY_AREA   1.0f
-
-bool IsTriangleDegenerate( bspDrawVert_t *points, int a, int b, int c ){
-	/* calcuate the area of the triangle */
-	/* assume all very small or backwards triangles will cause problems */
-	if ( vector3_length( vector3_cross( points[ b ].xyz - points[ a ].xyz, points[ c ].xyz - points[ a ].xyz ) ) < TINY_AREA ) {
-		return true;
-	}
-
-	/* must be a good triangle */
-	return false;
-}
-
-
-
-/*
    ClearSurface() - ydnar
    clears a surface and frees any allocated memory
  */
@@ -667,8 +647,8 @@ static shaderInfo_t *GetIndexedShader( const shaderInfo_t *parent, const indexMa
 
 	/* get the shader */
 	shaderInfo_t *si = ShaderInfoForShader( ( minShaderIndex == maxShaderIndex )?
-	                            String64( "textures/", im->shader, '_', int(maxShaderIndex) ):
-	                            String64( "textures/", im->shader, '_', int(minShaderIndex), "to", int(maxShaderIndex) ) );
+	                            String64( "textures/", im->shader, '_', int( maxShaderIndex ) ):
+	                            String64( "textures/", im->shader, '_', int( minShaderIndex ), "to", int( maxShaderIndex ) ) );
 
 	/* inherit a few things from parent shader */
 	if ( parent->globalTexture ) {
@@ -800,8 +780,9 @@ mapDrawSurface_t *DrawSurfaceForSide( const entity_t& e, const brush_t& b, const
 		}
 
 		/* round the xyz to a given precision and translate by origin */
-		for ( size_t i = 0; i < 3; i++ )
-			dv->xyz[ i ] = SNAP_INT_TO_FLOAT * floor( dv->xyz[ i ] * SNAP_FLOAT_TO_INT + 0.5 );
+		if( g_brushSnap )
+			for ( size_t i = 0; i < 3; i++ )
+				dv->xyz[ i ] = SNAP_INT_TO_FLOAT * floor( dv->xyz[ i ] * SNAP_FLOAT_TO_INT + 0.5 );
 		vTranslated = dv->xyz + e.originbrush_origin;
 
 		/* ydnar: tek-fu celshading support for flat shaded shit */
@@ -2278,6 +2259,89 @@ static void EmitPatchSurface( const entity_t& e, mapDrawSurface_t *ds ){
 }
 
 /*
+	Autosprite2Deform() function in vanilla Q3 engine and most of sourceports
+	produces inconsistent results, which depend on vertex order and indexing.
+	Try to please that windy lady.
+*/
+static void FixAutosprite2Surface( mapDrawSurface_t *ds ){
+	if( ds->numVerts != 4 || ds->numIndexes != 6 ){
+		Sys_Warning( "autosprite2 surface: ds->numVerts != 4 or ds->numIndexes != 6: must be simple rectangle\n" );
+		return;
+	}
+
+	Plane3f plane;
+	if( !PlaneFromPoints( plane, ds->verts[ds->indexes[0]].xyz, ds->verts[ds->indexes[1]].xyz, ds->verts[ds->indexes[2]].xyz ) ){
+		Sys_Warning( "autosprite2 surface: degenerate triangle\n" );
+		return;
+	}
+
+	// reproduce Autosprite2Deform() calculations
+	const int edgeVerts[6][2] = {
+		{ 0, 1 },
+		{ 0, 2 },
+		{ 0, 3 },
+		{ 1, 2 },
+		{ 1, 3 },
+		{ 2, 3 }
+	};
+	float lengths[2] = { 999999, 999999 };
+	int edgeIdx[2] = {0};
+
+	// identify the two shortest edges
+	for ( int j = 0; j < 6; ++j ) {
+		const float l = vector3_length_squared( ds->verts[edgeVerts[j][0]].xyz - ds->verts[edgeVerts[j][1]].xyz );
+
+		if ( l < lengths[0] ) {
+			edgeIdx[1] = edgeIdx[0];
+			lengths[1] = lengths[0];
+			edgeIdx[0] = j;
+			lengths[0] = l;
+		} else if ( l < lengths[1] ) {
+			edgeIdx[1] = j;
+			lengths[1] = l;
+		}
+	}
+	// ref edges
+	const bspDrawVert_t *edges[2][2] = { { ds->verts + edgeVerts[edgeIdx[0]][0], ds->verts + edgeVerts[edgeIdx[0]][1] },
+						                 { ds->verts + edgeVerts[edgeIdx[1]][0], ds->verts + edgeVerts[edgeIdx[1]][1] } };
+
+	if( edges[0][0] == edges[1][0]
+	 || edges[0][0] == edges[1][1]
+	 || edges[0][1] == edges[1][0]
+	 || edges[0][1] == edges[1][1] ){
+		Sys_Warning( "autosprite2 surface: two shortest edges share a vertex\n" ); // note also fails on exact square
+		return;
+	}
+
+	// find the midpoints
+	const Vector3 mid[2] = { vector3_mid( edges[0][0]->xyz, edges[0][1]->xyz ),
+	                         vector3_mid( edges[1][0]->xyz, edges[1][1]->xyz ) };
+
+	// find the vector of the major axis
+	const Vector3 major = mid[1] - mid[0];
+
+	// cross this with the view direction to get minor axis
+	const Vector3 minor = vector3_cross( major, -plane.normal() );
+
+	/* the rest of Autosprite2Deform() algorithm is srsly hot trash
+	   thus simply force the order and indexing, which are known as working */
+
+/*   1-----------2 C      C 1-----------2 A          ^minor
+     |           |          |           |            |
+   B 0-----------3 A      B 0-----------3            -----------> major  */
+
+	if( vector3_dot( edges[0][1]->xyz - edges[0][0]->xyz, minor ) < 0 )
+		std::swap( edges[0][0], edges[0][1] );
+	if( vector3_dot( edges[1][1]->xyz - edges[1][0]->xyz, minor ) > 0 )
+		std::swap( edges[1][0], edges[1][1] );
+
+	const bspDrawVert_t outverts[4] = { *edges[0][0], *edges[0][1], *edges[1][0], *edges[1][1] };
+	std::copy_n( outverts, 4, ds->verts );
+
+	std::copy_n( std::array<int, 6>{ 3, 0, 2, 2, 0, 1 }.data(), 6, ds->indexes );
+}
+
+/*
    OptimizeTriangleSurface() - ydnar
    optimizes the vertex/index data in a triangle surface
  */
@@ -2402,16 +2466,12 @@ static void OptimizeTriangleSurface( mapDrawSurface_t *ds ){
  */
 
 static void EmitTriangleSurface( mapDrawSurface_t *ds ){
-	int i, temp;
-
 	/* invert the surface if necessary */
 	if ( ds->backSide || ds->shaderInfo->invert ) {
 		/* walk the indexes, reverse the triangle order */
-		for ( i = 0; i < ds->numIndexes; i += 3 )
+		for ( int i = 0; i < ds->numIndexes; i += 3 )
 		{
-			temp = ds->indexes[ i ];
-			ds->indexes[ i ] = ds->indexes[ i + 1 ];
-			ds->indexes[ i + 1 ] = temp;
+			std::swap( ds->indexes[ i ], ds->indexes[ i + 1 ] );
 		}
 
 		/* walk the verts, flip the normal */
@@ -2420,6 +2480,12 @@ static void EmitTriangleSurface( mapDrawSurface_t *ds ){
 
 		/* invert facing */
 		vector3_negate( ds->lightmapVecs[ 2 ] );
+	}
+
+	if( ds->shaderInfo->autosprite
+	 && ds->shaderInfo->shaderText != nullptr
+	 && strIstr( ds->shaderInfo->shaderText, "autosprite2" ) != nullptr ){
+		FixAutosprite2Surface( ds );
 	}
 
 	/* allocate a new surface */
@@ -2462,7 +2528,7 @@ static void EmitTriangleSurface( mapDrawSurface_t *ds ){
 		bspDrawVert_t   *a, *b, *c;
 
 		/* walk triangle list */
-		for ( i = 0; i < ds->numIndexes; i += 3 )
+		for ( int i = 0; i < ds->numIndexes; i += 3 )
 		{
 			/* get verts */
 			a = &ds->verts[ ds->indexes[ i ] ];
@@ -2480,7 +2546,7 @@ static void EmitTriangleSurface( mapDrawSurface_t *ds ){
 	}
 
 	/* RBSP */
-	for ( i = 0; i < MAX_LIGHTMAPS; i++ )
+	for ( int i = 0; i < MAX_LIGHTMAPS; i++ )
 	{
 		out.lightmapNum[ i ] = -3;
 		out.lightmapStyles[ i ] = LS_NONE;
@@ -2714,8 +2780,7 @@ static void BiasSurfaceTextures( mapDrawSurface_t *ds ){
    adds models to a specified triangle, returns the number of models added
  */
 
-static int AddSurfaceModelsToTriangle_r( mapDrawSurface_t *ds, const surfaceModel_t& model, bspDrawVert_t **tri, entity_t& entity ){
-	bspDrawVert_t mid, *tri2[ 3 ];
+static int AddSurfaceModelsToTriangle_r( mapDrawSurface_t *ds, const surfaceModel_t& model, const TriRef& tri, entity_t& entity ){
 	int max, n, localNumSurfaceModels;
 
 
@@ -2814,10 +2879,10 @@ static int AddSurfaceModelsToTriangle_r( mapDrawSurface_t *ds, const surfaceMode
 	}
 
 	/* split the longest edge and map it */
-	LerpDrawVert( tri[ max ], tri[ ( max + 1 ) % 3 ], &mid );
+	const bspDrawVert_t mid = LerpDrawVert( *tri[ max ], *tri[ ( max + 1 ) % 3 ] );
 
 	/* recurse to first triangle */
-	VectorCopy( tri, tri2 );
+	TriRef tri2 = tri;
 	tri2[ max ] = &mid;
 	n = AddSurfaceModelsToTriangle_r( ds, model, tri2, entity );
 	if ( n < 0 ) {
@@ -2826,7 +2891,7 @@ static int AddSurfaceModelsToTriangle_r( mapDrawSurface_t *ds, const surfaceMode
 	localNumSurfaceModels += n;
 
 	/* recurse to second triangle */
-	VectorCopy( tri, tri2 );
+	tri2 = tri;
 	tri2[ ( max + 1 ) % 3 ] = &mid;
 	n = AddSurfaceModelsToTriangle_r( ds, model, tri2, entity );
 	if ( n < 0 ) {
@@ -2846,19 +2911,13 @@ static int AddSurfaceModelsToTriangle_r( mapDrawSurface_t *ds, const surfaceMode
  */
 
 static int AddSurfaceModels( mapDrawSurface_t *ds, entity_t& entity ){
-	int i, x, y, n, pw[ 5 ], r, localNumSurfaceModels, iterations;
-	mesh_t src, *mesh, *subdivided;
-	bspDrawVert_t centroid, *tri[ 3 ];
-	float alpha;
-
-
 	/* dummy check */
 	if ( ds == NULL || ds->shaderInfo == NULL || ds->shaderInfo->surfaceModels.empty() ) {
 		return 0;
 	}
 
 	/* init */
-	localNumSurfaceModels = 0;
+	int localNumSurfaceModels = 0;
 
 	/* walk the model list */
 	for ( const auto& model : ds->shaderInfo->surfaceModels )
@@ -2869,9 +2928,11 @@ static int AddSurfaceModels( mapDrawSurface_t *ds, entity_t& entity ){
 		/* handle brush faces and decals */
 		case ESurfaceType::Face:
 		case ESurfaceType::Decal:
+		{
 			/* calculate centroid */
+			bspDrawVert_t centroid;
 			memset( &centroid, 0, sizeof( centroid ) );
-			alpha = 0.0f;
+			float alpha = 0.0f;
 
 			/* walk verts */
 			for ( const bspDrawVert_t& vert : Span( ds->verts, ds->numVerts ) )
@@ -2890,92 +2951,91 @@ static int AddSurfaceModels( mapDrawSurface_t *ds, entity_t& entity ){
 			centroid.st /= ds->numVerts;
 			centroid.color[ 0 ] = { 255, 255, 255, color_to_byte( alpha / ds->numVerts ) };
 
-			/* head vert is centroid */
-			tri[ 0 ] = &centroid;
-
 			/* walk fanned triangles */
-			for ( i = 0; i < ds->numVerts; i++ )
+			for ( int i = 0; i < ds->numVerts; i++ )
 			{
-				/* set triangle */
-				tri[ 1 ] = &ds->verts[ i ];
-				tri[ 2 ] = &ds->verts[ ( i + 1 ) % ds->numVerts ];
-
 				/* create models */
-				n = AddSurfaceModelsToTriangle_r( ds, model, tri, entity );
+				const int n = AddSurfaceModelsToTriangle_r( ds, model, TriRef{
+					&centroid, /* head vert is centroid */
+					&ds->verts[ i ],
+					&ds->verts[ ( i + 1 ) % ds->numVerts ] }, entity );
 				if ( n < 0 ) {
 					return n;
 				}
 				localNumSurfaceModels += n;
 			}
 			break;
-
+		}
 		/* handle patches */
 		case ESurfaceType::Patch:
+		{
 			/* subdivide the surface */
+			mesh_t src;
 			src.width = ds->patchWidth;
 			src.height = ds->patchHeight;
 			src.verts = ds->verts;
-			//%	subdivided = SubdivideMesh( src, 8.0f, 512 );
-			iterations = IterationsForCurve( ds->longestCurve, patchSubdivisions );
-			subdivided = SubdivideMesh2( src, iterations );
+			//%	mesh_t *subdivided = SubdivideMesh( src, 8.0f, 512 );
+			const int iterations = IterationsForCurve( ds->longestCurve, patchSubdivisions );
+			mesh_t *subdivided = SubdivideMesh2( src, iterations );
 
 			/* fit it to the curve and remove colinear verts on rows/columns */
 			PutMeshOnCurve( *subdivided );
-			mesh = RemoveLinearMeshColumnsRows( subdivided );
+			mesh_t *mesh = RemoveLinearMeshColumnsRows( subdivided );
 			FreeMesh( subdivided );
 
 			/* subdivide each quad to place the models */
-			for ( y = 0; y < ( mesh->height - 1 ); y++ )
+			for ( int y = 0; y < ( mesh->height - 1 ); y++ )
 			{
-				for ( x = 0; x < ( mesh->width - 1 ); x++ )
+				for ( int x = 0; x < ( mesh->width - 1 ); x++ )
 				{
 					/* set indexes */
-					pw[ 0 ] = x + ( y * mesh->width );
-					pw[ 1 ] = x + ( ( y + 1 ) * mesh->width );
-					pw[ 2 ] = x + 1 + ( ( y + 1 ) * mesh->width );
-					pw[ 3 ] = x + 1 + ( y * mesh->width );
-					pw[ 4 ] = x + ( y * mesh->width );      /* same as pw[ 0 ] */
-
+					const int pw[ 5 ] = {
+						x + ( y * mesh->width ),
+						x + ( ( y + 1 ) * mesh->width ),
+						x + 1 + ( ( y + 1 ) * mesh->width ),
+						x + 1 + ( y * mesh->width ),
+						x + ( y * mesh->width ),      /* same as pw[ 0 ] */
+					};
 					/* set radix */
-					r = ( x + y ) & 1;
+					const int r = ( x + y ) & 1;
 
 					/* triangle 1 */
-					tri[ 0 ] = &mesh->verts[ pw[ r + 0 ] ];
-					tri[ 1 ] = &mesh->verts[ pw[ r + 1 ] ];
-					tri[ 2 ] = &mesh->verts[ pw[ r + 2 ] ];
-					n = AddSurfaceModelsToTriangle_r( ds, model, tri, entity );
+					const int n = AddSurfaceModelsToTriangle_r( ds, model, TriRef{
+						&mesh->verts[ pw[ r + 0 ] ],
+						&mesh->verts[ pw[ r + 1 ] ],
+						&mesh->verts[ pw[ r + 2 ] ] }, entity );
 					if ( n < 0 ) {
 						return n;
 					}
 					localNumSurfaceModels += n;
 
 					/* triangle 2 */
-					tri[ 0 ] = &mesh->verts[ pw[ r + 0 ] ];
-					tri[ 1 ] = &mesh->verts[ pw[ r + 2 ] ];
-					tri[ 2 ] = &mesh->verts[ pw[ r + 3 ] ];
-					n = AddSurfaceModelsToTriangle_r( ds, model, tri, entity );
-					if ( n < 0 ) {
-						return n;
+					const int n2 = AddSurfaceModelsToTriangle_r( ds, model, TriRef{
+						&mesh->verts[ pw[ r + 0 ] ],
+						&mesh->verts[ pw[ r + 2 ] ],
+						&mesh->verts[ pw[ r + 3 ] ] }, entity );
+					if ( n2 < 0 ) {
+						return n2;
 					}
-					localNumSurfaceModels += n;
+					localNumSurfaceModels += n2;
 				}
 			}
 
 			/* free the subdivided mesh */
 			FreeMesh( mesh );
 			break;
-
+		}
 		/* handle triangle surfaces */
 		case ESurfaceType::Triangles:
 		case ESurfaceType::ForcedMeta:
 		case ESurfaceType::Meta:
 			/* walk the triangle list */
-			for ( i = 0; i < ds->numIndexes; i += 3 )
+			for ( int i = 0; i < ds->numIndexes; i += 3 )
 			{
-				tri[ 0 ] = &ds->verts[ ds->indexes[ i ] ];
-				tri[ 1 ] = &ds->verts[ ds->indexes[ i + 1 ] ];
-				tri[ 2 ] = &ds->verts[ ds->indexes[ i + 2 ] ];
-				n = AddSurfaceModelsToTriangle_r( ds, model, tri, entity );
+				const int n = AddSurfaceModelsToTriangle_r( ds, model, TriRef{
+					&ds->verts[ ds->indexes[ i + 0 ] ],
+					&ds->verts[ ds->indexes[ i + 1 ] ],
+					&ds->verts[ ds->indexes[ i + 2 ] ] }, entity );
 				if ( n < 0 ) {
 					return n;
 				}

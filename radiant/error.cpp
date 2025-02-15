@@ -57,8 +57,8 @@ void Error( const char *error, ... ){
 	va_list argptr;
 	char text[4096];
 
-	va_start( argptr,error );
-	vsprintf( text, error,argptr );
+	va_start( argptr, error );
+	vsprintf( text, error, argptr );
 	va_end( argptr );
 
 	strcat( text, "\n" );
@@ -89,7 +89,7 @@ void Error( const char *error, ... ){
 			scan = next;
 			text[strlen( text ) + 1] = '\0';
 			if ( scan[0] >= 0 ) {
-				text[strlen( text )] = char(scan[0]);
+				text[strlen( text )] = char( scan[0] );
 			}
 			else{
 				text[strlen( text )] = '?';

@@ -5,8 +5,6 @@
 #include "math/plane.h"
 
 
-#define VectorCopy( a,b ) ( ( b )[0] = ( a )[0],( b )[1] = ( a )[1],( b )[2] = ( a )[2] )
-
 #define RGBTOGRAY( x ) ( (float)( ( x )[0] ) * 0.2989f + (float)( ( x )[1] ) * 0.5870f + (float)( ( x )[2] ) * 0.1140f )
 
 #define VectorFastNormalize VectorNormalize
@@ -210,7 +208,7 @@ bool PlaneFromPoints( Plane3___<P>& plane, const BasicVector3<V> planepts[3] ) {
    computes the base texture axis for brush primitive texturing
    note: ComputeAxisBase here and in editor code must always BE THE SAME!
    warning: special case behaviour of atan2( y, x ) <-> atan( y / x ) might not be the same everywhere when x == 0
-   rotation by (0,RotY,RotZ) assigns X to normal
+   rotation by ( 0, RotY, RotZ ) assigns X to normal
  */
 
 template <typename Element, typename OtherElement>
@@ -219,11 +217,11 @@ inline void ComputeAxisBase( const BasicVector3<Element>& normal, BasicVector3<O
 	const BasicVector3<Element> up( 0, 0, 1 );
 	const BasicVector3<Element> down( 0, 0, -1 );
 
-	if ( vector3_equal_epsilon( normal, up, Element(1e-6) ) ) {
+	if ( vector3_equal_epsilon( normal, up, Element( 1e-6 ) ) ) {
 		texS = BasicVector3<OtherElement>( 0, 1, 0 );
 		texT = BasicVector3<OtherElement>( 1, 0, 0 );
 	}
-	else if ( vector3_equal_epsilon( normal, down, Element(1e-6) ) ) {
+	else if ( vector3_equal_epsilon( normal, down, Element( 1e-6 ) ) ) {
 		texS = BasicVector3<OtherElement>( 0, 1, 0 );
 		texT = BasicVector3<OtherElement>( -1, 0, 0 );
 	}
@@ -352,4 +350,32 @@ inline void ColorNormalize( Vector3& color ) {
 	else{
 		color *= ( 1.f / max );
 	}
+}
+
+
+inline double angle_squared_sin( const Vector3& a, const Vector3& b, const Vector3& c ){
+	const Vector3 d1 = b - a;
+	const Vector3 d2 = c - a;
+	const Vector3 normal = vector3_cross( d2, d1 );
+	/* https://en.wikipedia.org/wiki/Cross_product#Geometric_meaning
+		cross( a, b ).length = a.length b.length sin( angle ) */
+	const double lengthsSquared = vector3_length_squared( d1 ) * vector3_length_squared( d2 );
+	return lengthsSquared == 0? 0 : ( vector3_length_squared( normal ) / lengthsSquared );
+}
+
+inline double triangle_min_angle_squared_sin( const Vector3& a, const Vector3& b, const Vector3& c ){
+	const Vector3 d[3] = { b - a, c - a, c - b };
+	const double l[3] = { vector3_length_squared( d[0] ), vector3_length_squared( d[1] ), vector3_length_squared( d[2] ) };
+	const size_t mini = ( l[0] < l[1] ) ? ( ( l[0] < l[2] ) ? 0 : 2 ) : ( ( l[1] < l[2] ) ? 1 : 2 );
+	if( l[mini] == 0 )
+		return 0;
+
+	const size_t minj = mini == 2? 0 : mini + 1;
+	const size_t mink = minj == 2? 0 : minj + 1;
+	return vector3_length_squared( vector3_cross( d[minj], d[mink] ) ) / ( l[minj] * l[mink] );
+}
+
+
+inline double triangle_area2x( const Vector3& a, const Vector3& b, const Vector3& c ){
+	return vector3_length( vector3_cross( b - a, c - a ) );
 }

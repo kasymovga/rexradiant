@@ -19,16 +19,6 @@
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-//====================================================================
-//
-// Name:			l_net.c
-// Function:		-
-// Programmer:		MrElusive
-// Last update:		-
-// Tab size:		3
-// Notes:
-//====================================================================
-
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
@@ -41,7 +31,7 @@ void WinPrint( const char *str, ... ){
 	va_list argptr;
 	char text[4096];
 
-	va_start( argptr,str );
+	va_start( argptr, str );
 	vsprintf( text, str, argptr );
 	va_end( argptr );
 
@@ -58,41 +48,6 @@ void WinPrint( const char *str, ... ){
 // Returns:					-
 // Changes Globals:		-
 //===========================================================================
-void Net_SetAddressPort( address_t *address, int port ){
-	sockaddr_t addr;
-
-	WINS_StringToAddr( address->ip, &addr );
-	WINS_SetSocketPort( &addr, port );
-	strcpy( address->ip, WINS_AddrToString( &addr ) );
-} //end of the function Net_SetAddressPort
-//===========================================================================
-//
-// Parameter:				-
-// Returns:					-
-// Changes Globals:		-
-//===========================================================================
-int Net_AddressCompare( address_t *addr1, address_t *addr2 ){
-#ifdef WIN32
-	return _stricmp( addr1->ip, addr2->ip );
-#else
-	return strcasecmp( addr1->ip, addr2->ip );
-#endif
-} //end of the function Net_AddressCompare
-//===========================================================================
-//
-// Parameter:				-
-// Returns:					-
-// Changes Globals:		-
-//===========================================================================
-void Net_SocketToAddress( socket_t *sock, address_t *address ){
-	strcpy( address->ip, WINS_AddrToString( &sock->addr ) );
-} //end of the function Net_SocketToAddress
-//===========================================================================
-//
-// Parameter:				-
-// Returns:					-
-// Changes Globals:		-
-//===========================================================================
 int Net_Send( socket_t *sock, netmessage_t *msg ){
 	int size;
 
@@ -100,7 +55,7 @@ int Net_Send( socket_t *sock, netmessage_t *msg ){
 	msg->size = 0;
 	NMSG_WriteLong( msg, size - 4 );
 	msg->size = size;
-	//WinPrint("Net_Send: message of size %d\n", sendmsg.size);
+	//WinPrint( "Net_Send: message of size %d\n", sendmsg.size );
 	return WINS_Write( sock->socket, msg->data, msg->size, NULL );
 } //end of the function Net_SendSocketReliable
 //===========================================================================
@@ -138,7 +93,7 @@ int Net_Receive( socket_t *sock, netmessage_t *msg ){
 		WinPrint( "Net_Receive: size header read error\n" );
 		return -1;
 	} //end if
-	  //WinPrint("Net_Receive: message size header %d\n", msg->size);
+	  //WinPrint( "Net_Receive: message size header %d\n", msg->size );
 	sock->msg.read = 0;
 	sock->remaining = NMSG_ReadLong( &sock->msg );
 	if ( sock->remaining == 0 ) {
@@ -307,19 +262,8 @@ void Net_StringToAddress( const char *string, address_t *address ){
 // Returns:					-
 // Changes Globals:		-
 //===========================================================================
-void Net_MyAddress( address_t *address ){
-	strcpy( address->ip, WINS_MyAddress() );
-} //end of the function Net_MyAddress
-//===========================================================================
-//
-// Parameter:				-
-// Returns:					-
-// Changes Globals:		-
-//===========================================================================
 void Net_Setup( void ){
 	WINS_Init();
-	//
-	WinPrint( "my address is %s\n", WINS_MyAddress() );
 } //end of the function Net_Setup
 //===========================================================================
 //
@@ -434,13 +378,17 @@ void NMSG_WriteFloat( netmessage_t *msg, float c ){
 // Returns:					-
 // Changes Globals:		-
 //===========================================================================
-void NMSG_WriteString( netmessage_t *msg, char *string ){
-	if ( msg->size + strlen( string ) + 1 >= MAX_NETMESSAGE ) {
+void NMSG_WriteString_n( netmessage_t *msg, const char *string, int n ){
+	if ( msg->size + n >= MAX_NETMESSAGE ) {
 		WinPrint( "NMSG_WriteString: overflow\n" );
 		return;
 	} //end if
-	memcpy( &msg->data[msg->size], string, strlen( string ) + 1 );
-	msg->size += strlen( string ) + 1;
+	memcpy( &msg->data[msg->size], string, n );
+	msg->size += n;
+}
+
+void NMSG_WriteString( netmessage_t *msg, const char *string ){
+	NMSG_WriteString_n( msg, string, strlen( string ) );
 } //end of the function NMSG_WriteString
 //===========================================================================
 //
