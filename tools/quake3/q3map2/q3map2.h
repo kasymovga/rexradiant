@@ -72,6 +72,7 @@
 
 #include <cstddef>
 #include <cstdlib>
+#include <cstdint>
 
 #include "maxworld.h"
 #include "games.h"
