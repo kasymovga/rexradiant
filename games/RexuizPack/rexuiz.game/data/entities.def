@@ -1980,15 +1980,15 @@ angles: direction of camera view
 -------- KEYS --------
 */
 
-/*QUAKED info_jailbreak_controlpoint_red (1 0 0) (-32 -32 -32) (32 32 32) 
+/*QUAKED jailbreak_controlpoint_red (1 0 0) (-32 -32 -32) (32 32 32) 
 -------- KEYS --------
 */
 
-/*QUAKED info_jailbreak_controlpoint_blue (0 0 1) (-32 -32 -32) (32 32 32) 
+/*QUAKED jailbreak_controlpoint_blue (0 0 1) (-32 -32 -32) (32 32 32) 
 -------- KEYS --------
 */
 
-/*QUAKED info_jailbreak_controlpoint_neutral (.5 .5 .5) (-32 -32 -32) (32 32 32) 
+/*QUAKED jailbreak_controlpoint_neutral (.5 .5 .5) (-32 -32 -32) (32 32 32) 
 -------- KEYS --------
 */
 
